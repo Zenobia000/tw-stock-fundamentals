@@ -8,6 +8,14 @@
 現金流量表 dataset，所以 financial_health_quarterly 的
 cash / accounts_receivable / inventory / operating_cash_flow / capex /
 financing_cash_flow / investing_cash_flow 欄位這裡填不出來，留 None。
+
+已驗證的資料整合陷阱（2026-08-17 對 2330 real ingest 確認）：
+t187ap06_L_ci（綜合損益表）的 revenue/eps 等損益數字是「累計」數（第2季
+欄位＝上半年累計，不是單季），跟 margin_quarterly／eps_quarterly（Fubon
+zce/zcd 頁的「季報」，單季數）尺度不同。實測 2330 2026Q2：這裡
+eps=49.33（累計H1），margin_quarterly.eps=27.25（單季）——兩個都對，
+只是口徑不同。組裝股價預估/九宮格時不能直接混用，要嘛都轉單季（用
+本季累計－上季累計），要嘛講清楚哪個欄位是累計哪個是單季。
 """
 
 from dataclasses import dataclass
