@@ -5,6 +5,7 @@ from app.scrapers.fubon_stock_info import StockInfo
 from app.scrapers.histock_cashflow import QuarterlyCashflow
 from app.scrapers.histock_dividend import DividendEvent
 from app.scrapers.histock_revenue import MonthlyRevenue
+from app.scrapers.twse_financials import FinancialHealthQuarter
 from app.scrapers.twse_isin import StockIsinInfo
 
 
@@ -130,5 +131,63 @@ def upsert_quarterly_cashflow(conn: sqlite3.Connection, code: str, rows: list[Qu
             fetched_at = excluded.fetched_at
         """,
         [(code, row.quarter, row.operating, row.investing, row.financing, fetched_at) for row in rows],
+    )
+    conn.commit()
+
+
+def upsert_financial_health(conn: sqlite3.Connection, rows: list[FinancialHealthQuarter]) -> None:
+    fetched_at = datetime.now(UTC).isoformat()
+    conn.executemany(
+        """
+        INSERT INTO financial_health_quarterly (
+            code, quarter, current_assets, total_assets, current_liabilities, total_liabilities,
+            total_equity, capital, book_value_per_share, revenue, gross_profit,
+            operating_income, pretax_income, net_income, eps,
+            gross_margin_pct, operating_margin_pct, net_margin_pct, fetched_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(code, quarter) DO UPDATE SET
+            current_assets = excluded.current_assets,
+            total_assets = excluded.total_assets,
+            current_liabilities = excluded.current_liabilities,
+            total_liabilities = excluded.total_liabilities,
+            total_equity = excluded.total_equity,
+            capital = excluded.capital,
+            book_value_per_share = excluded.book_value_per_share,
+            revenue = excluded.revenue,
+            gross_profit = excluded.gross_profit,
+            operating_income = excluded.operating_income,
+            pretax_income = excluded.pretax_income,
+            net_income = excluded.net_income,
+            eps = excluded.eps,
+            gross_margin_pct = excluded.gross_margin_pct,
+            operating_margin_pct = excluded.operating_margin_pct,
+            net_margin_pct = excluded.net_margin_pct,
+            fetched_at = excluded.fetched_at
+        """,
+        [
+            (
+                row.code,
+                row.quarter,
+                row.current_assets,
+                row.total_assets,
+                row.current_liabilities,
+                row.total_liabilities,
+                row.total_equity,
+                row.capital,
+                row.book_value_per_share,
+                row.revenue,
+                row.gross_profit,
+                row.operating_income,
+                row.pretax_income,
+                row.net_income,
+                row.eps,
+                row.gross_margin_pct,
+                row.operating_margin_pct,
+                row.net_margin_pct,
+                fetched_at,
+            )
+            for row in rows
+        ],
     )
     conn.commit()

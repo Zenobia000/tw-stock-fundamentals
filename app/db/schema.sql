@@ -62,21 +62,28 @@ CREATE TABLE IF NOT EXISTS eps_quarterly (
     PRIMARY KEY (code, quarter)
 );
 
+-- 官方 TWSE OpenAPI 財報快照（app/scrapers/twse_financials.py）。
+-- 該 API 沒有現金/應收帳款/存貨細項，也沒有現金流量表 dataset，
+-- 對應數字改由 cashflow_quarterly（股息&現金流 scraper 來源）補。
 CREATE TABLE IF NOT EXISTS financial_health_quarterly (
     code TEXT NOT NULL REFERENCES stocks(code),
     quarter TEXT NOT NULL,
-    cash REAL,
-    accounts_receivable REAL,
-    inventory REAL,
+    current_assets REAL,
     total_assets REAL,
     current_liabilities REAL,
     total_liabilities REAL,
     total_equity REAL,
-    operating_cash_flow REAL,
-    capex REAL,
-    financing_cash_flow REAL,
-    investing_cash_flow REAL,
-    shares_outstanding_millions REAL,
+    capital REAL,
+    book_value_per_share REAL,
+    revenue REAL,
+    gross_profit REAL,
+    operating_income REAL,
+    pretax_income REAL,
+    net_income REAL,
+    eps REAL,
+    gross_margin_pct REAL,
+    operating_margin_pct REAL,
+    net_margin_pct REAL,
     fetched_at TEXT NOT NULL,
     PRIMARY KEY (code, quarter)
 );
