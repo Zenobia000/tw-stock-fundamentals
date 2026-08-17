@@ -2,6 +2,7 @@ import sqlite3
 from datetime import UTC, datetime
 
 from app.scrapers.fubon_stock_info import StockInfo
+from app.scrapers.histock_cashflow import QuarterlyCashflow
 from app.scrapers.histock_dividend import DividendEvent
 from app.scrapers.histock_revenue import MonthlyRevenue
 from app.scrapers.twse_isin import StockIsinInfo
@@ -112,5 +113,22 @@ def upsert_dividends(conn: sqlite3.Connection, code: str, rows: list[DividendEve
             for row in rows
             if row.ex_dividend_date is not None
         ],
+    )
+    conn.commit()
+
+
+def upsert_quarterly_cashflow(conn: sqlite3.Connection, code: str, rows: list[QuarterlyCashflow]) -> None:
+    fetched_at = datetime.now(UTC).isoformat()
+    conn.executemany(
+        """
+        INSERT INTO cashflow_quarterly (code, quarter, operating, investing, financing, fetched_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(code, quarter) DO UPDATE SET
+            operating = excluded.operating,
+            investing = excluded.investing,
+            financing = excluded.financing,
+            fetched_at = excluded.fetched_at
+        """,
+        [(code, row.quarter, row.operating, row.investing, row.financing, fetched_at) for row in rows],
     )
     conn.commit()
