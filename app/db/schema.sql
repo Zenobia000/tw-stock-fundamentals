@@ -13,12 +13,12 @@ CREATE TABLE IF NOT EXISTS stocks (
 CREATE TABLE IF NOT EXISTS stock_info (
     code TEXT PRIMARY KEY REFERENCES stocks(code),
     price REAL,
-    shares_outstanding_thousands REAL,
-    market_cap REAL,
+    market_cap_millions REAL,
     beta REAL,
-    next_earnings_date TEXT,
-    next_revenue_date TEXT,
-    etf_holding_count INTEGER,
+    pe_ratio REAL,
+    dividend_yield_pct REAL,
+    book_value_per_share REAL,
+    capital_billion_twd REAL,      -- 股本(億, 台幣)
     fetched_at TEXT NOT NULL
 );
 
