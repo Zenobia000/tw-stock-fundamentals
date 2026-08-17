@@ -352,6 +352,24 @@ function renderDebtStat(healthRows) {
   el.textContent = fmtPct((latest.total_liabilities / latest.total_assets) * 100, 1);
 }
 
+function renderTargetPrice(tp) {
+  const bar = document.getElementById("target-price-bar");
+  if (!tp) {
+    bar.classList.add("hidden");
+    return;
+  }
+  bar.classList.remove("hidden");
+  document.getElementById("tp-low").textContent = fmt(tp.target_price_low, 0);
+  document.getElementById("tp-mid").textContent = fmt(tp.target_price_mid, 0);
+  document.getElementById("tp-high").textContent = fmt(tp.target_price_high, 0);
+  const noteEl = document.getElementById("tp-note");
+  if (tp.note) {
+    noteEl.textContent = tp.note;
+  } else {
+    noteEl.textContent = `估TTM EPS ${fmt(tp.estimated_ttm_eps, 2)}　PE分位 ${fmt(tp.pe_low, 1)}/${fmt(tp.pe_mid, 1)}/${fmt(tp.pe_high, 1)}（樣本${tp.sample_size}季）`;
+  }
+}
+
 // ---- main load ----
 async function loadStock(code) {
   els.emptyState.classList.add("hidden");
@@ -370,6 +388,7 @@ async function loadStock(code) {
     renderCashflowPanel(dashboard.cashflow || []);
     renderDividendsTable(dashboard.dividends || []);
     renderChipsPanel(dashboard.chips || []);
+    renderTargetPrice(dashboard.target_price || null);
 
     fetchJson(`${API}/futures`)
       .then(renderFuturesTable)

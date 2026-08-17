@@ -133,6 +133,21 @@ html, body {
 .stat label { color: var(--grey); font-size: 10px; text-transform: uppercase; }
 .stat span { color: var(--amber); font-size: 15px; font-weight: 700; }
 
+.target-price-bar {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: #120c00;
+  border: 1px solid var(--amber-dim);
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.tp-label { color: var(--cyan); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+.tp-band { color: var(--white); font-size: 14px; }
+.tp-band b { color: var(--amber); font-size: 18px; }
+.tp-note { color: var(--grey); font-size: 11px; }
+
 .nine-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

@@ -33,6 +33,7 @@ from app.scrapers.histock_chips import fetch_daily_chips
 from app.scrapers.histock_dividend import fetch_dividend_history
 from app.scrapers.histock_revenue import fetch_monthly_revenue
 from app.scrapers.histock_turnover import fetch_quarterly_turnover
+from app.pricing import fetch_missing_quarterly_close_prices
 from app.scrapers.twse_financials import fetch_financial_health
 from app.scrapers.twse_isin import fetch_stock_isin
 
@@ -79,6 +80,24 @@ def refresh_stock(
                 results[name] = None
             except Exception as exc:  # noqa: BLE001 — 單一來源失敗不能中斷整批
                 results[name] = f"{type(exc).__name__}: {exc}"
+
+        # 季底股價要等 EPS 步驟寫進 eps_quarterly 後才知道該抓哪幾季，
+        # 所以放在主迴圈之後單獨處理；給股價預估頁的本益比分位矩陣用。
+        try:
+            quarters = [
+                row["quarter"]
+                for row in conn.execute(
+                    "SELECT DISTINCT quarter FROM eps_quarterly WHERE code = ? ORDER BY quarter DESC LIMIT 8",
+                    (code,),
+                ).fetchall()
+            ]
+            price_results = fetch_missing_quarterly_close_prices(code, quarters, conn, client=client)
+            failed = {q: err for q, err in price_results.items() if err is not None}
+            results["季底股價(PE分位用)"] = (
+                None if not failed else f"{len(failed)}/{len(quarters)} 季失敗：{failed}"
+            )
+        except Exception as exc:  # noqa: BLE001
+            results["季底股價(PE分位用)"] = f"{type(exc).__name__}: {exc}"
     finally:
         if owns_client:
             client.close()

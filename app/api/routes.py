@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.db import queries
 from app.db.connection import get_connection
+from app.valuation_service import build_valuation_snapshot
 
 router = APIRouter(prefix="/api")
 
@@ -93,6 +94,15 @@ def get_rankings(category: str, conn: Db, limit: int = 20):
     return _rows_to_dicts(queries.get_rankings(conn, category, limit))
 
 
+@router.get("/stocks/{code}/target-price")
+def get_target_price(code: str, conn: Db):
+    """股價預估頁核心產出：估值鏈預估EPS × 本益比高中低分位 → 目標價。"""
+    stock = queries.get_stock(conn, code)
+    if stock is None:
+        raise HTTPException(status_code=404, detail=f"查無股票代碼 {code}")
+    return build_valuation_snapshot(conn, code).__dict__
+
+
 @router.get("/stocks/{code}/dashboard")
 def get_dashboard(code: str, conn: Db):
     """單一 endpoint 一次撈齊一檔股票所有功能資料，給前端股價預估主儀表板用。"""
@@ -109,4 +119,5 @@ def get_dashboard(code: str, conn: Db):
         "dividends": _rows_to_dicts(queries.get_dividends(conn, code)),
         "cashflow": _rows_to_dicts(queries.get_cashflow_quarterly(conn, code)),
         "chips": _rows_to_dicts(queries.get_chips_daily(conn, code)),
+        "target_price": build_valuation_snapshot(conn, code).__dict__,
     }
