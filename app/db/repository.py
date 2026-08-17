@@ -1,11 +1,14 @@
 import sqlite3
 from datetime import UTC, datetime
 
+from app.scrapers.fubon_margin import MarginQuarter
 from app.scrapers.fubon_stock_info import StockInfo
 from app.scrapers.histock_cashflow import QuarterlyCashflow
+from app.scrapers.histock_chips import DailyChips
 from app.scrapers.histock_dividend import DividendEvent
 from app.scrapers.histock_revenue import MonthlyRevenue
 from app.scrapers.histock_turnover import QuarterlyTurnover
+from app.scrapers.taifex_futures import FuturesOI
 from app.scrapers.twse_financials import FinancialHealthQuarter
 from app.scrapers.twse_isin import StockIsinInfo
 
@@ -208,6 +211,102 @@ def upsert_quarterly_turnover(conn: sqlite3.Connection, code: str, rows: list[Qu
         """,
         [
             (code, row.quarter, row.ar_days, row.inventory_days, row.operating_cycle_days, fetched_at)
+            for row in rows
+        ],
+    )
+    conn.commit()
+
+
+def upsert_margin_quarters(conn: sqlite3.Connection, code: str, rows: list[MarginQuarter]) -> None:
+    fetched_at = datetime.now(UTC).isoformat()
+    conn.executemany(
+        """
+        INSERT INTO margin_quarterly (
+            code, quarter, revenue, cost_of_goods_sold, gross_profit, gross_margin_pct,
+            operating_income, operating_margin_pct, non_operating_income, pretax_income,
+            net_income, eps, fetched_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(code, quarter) DO UPDATE SET
+            revenue = excluded.revenue,
+            cost_of_goods_sold = excluded.cost_of_goods_sold,
+            gross_profit = excluded.gross_profit,
+            gross_margin_pct = excluded.gross_margin_pct,
+            operating_income = excluded.operating_income,
+            operating_margin_pct = excluded.operating_margin_pct,
+            non_operating_income = excluded.non_operating_income,
+            pretax_income = excluded.pretax_income,
+            net_income = excluded.net_income,
+            eps = excluded.eps,
+            fetched_at = excluded.fetched_at
+        """,
+        [
+            (
+                code,
+                row.quarter,
+                row.revenue,
+                row.cost_of_goods_sold,
+                row.gross_profit,
+                row.gross_margin_pct,
+                row.operating_income,
+                row.operating_margin_pct,
+                row.non_operating_income,
+                row.pretax_income,
+                row.net_income,
+                row.eps,
+                fetched_at,
+            )
+            for row in rows
+        ],
+    )
+    conn.commit()
+
+
+def upsert_futures_oi(conn: sqlite3.Connection, rows: list[FuturesOI]) -> None:
+    fetched_at = datetime.now(UTC).isoformat()
+    conn.executemany(
+        """
+        INSERT INTO futures_oi_daily (date, institution, contract, long_oi, short_oi, net_oi, fetched_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(date, institution, contract) DO UPDATE SET
+            long_oi = excluded.long_oi,
+            short_oi = excluded.short_oi,
+            net_oi = excluded.net_oi,
+            fetched_at = excluded.fetched_at
+        """,
+        [
+            (row.date, row.institution, row.contract, row.long_oi, row.short_oi, row.net_oi, fetched_at)
+            for row in rows
+        ],
+    )
+    conn.commit()
+
+
+def upsert_daily_chips(conn: sqlite3.Connection, code: str, rows: list[DailyChips]) -> None:
+    fetched_at = datetime.now(UTC).isoformat()
+    conn.executemany(
+        """
+        INSERT INTO chips_daily (
+            code, date, concentration_pct, foreign_holding_pct, big_holder_pct, insider_holding_pct, fetched_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(code, date) DO UPDATE SET
+            concentration_pct = excluded.concentration_pct,
+            foreign_holding_pct = excluded.foreign_holding_pct,
+            big_holder_pct = excluded.big_holder_pct,
+            insider_holding_pct = excluded.insider_holding_pct,
+            fetched_at = excluded.fetched_at
+        """,
+        [
+            (
+                code,
+                row.date,
+                row.concentration_pct,
+                row.foreign_holding_pct,
+                row.big_holder_pct,
+                row.insider_holding_pct,
+                fetched_at,
+            )
             for row in rows
         ],
     )

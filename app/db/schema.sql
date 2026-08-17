@@ -119,13 +119,15 @@ CREATE TABLE IF NOT EXISTS cashflow_quarterly (
     PRIMARY KEY (code, quarter)
 );
 
+-- histock 大戶籌碼頁沒有投信持股/融資融券餘額，先留給之後的 Fubon zcl/zcn 頁補；
+-- 現況欄位對應該頁實際的四個數字。
 CREATE TABLE IF NOT EXISTS chips_daily (
     code TEXT NOT NULL REFERENCES stocks(code),
     date TEXT NOT NULL,
-    foreign_holding_pct REAL,
-    trust_holding_pct REAL,
-    margin_balance REAL,
-    short_balance REAL,
+    concentration_pct REAL,      -- 籌碼集中度
+    foreign_holding_pct REAL,    -- 外資籌碼
+    big_holder_pct REAL,         -- 大戶籌碼
+    insider_holding_pct REAL,    -- 董監持股
     fetched_at TEXT NOT NULL,
     PRIMARY KEY (code, date)
 );
