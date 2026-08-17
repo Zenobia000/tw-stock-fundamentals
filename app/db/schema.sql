@@ -68,6 +68,17 @@ CREATE TABLE IF NOT EXISTS eps_quarterly (
     PRIMARY KEY (code, quarter)
 );
 
+-- 季底收盤價（TWSE STOCK_DAY 官方），給每股盈餘(EPS)頁的
+-- 本益比高中低分位→目標價矩陣用。只存季底那一天，不存整月。
+CREATE TABLE IF NOT EXISTS stock_prices_quarterly (
+    code TEXT NOT NULL REFERENCES stocks(code),
+    quarter TEXT NOT NULL,       -- e.g. 2026Q2
+    close_price REAL,
+    price_date TEXT,             -- 實際交易日（季底可能是假日，會往前找）
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (code, quarter)
+);
+
 -- 官方 TWSE OpenAPI 財報快照（app/scrapers/twse_financials.py）。
 -- 該 API 沒有現金/應收帳款/存貨細項，也沒有現金流量表 dataset，
 -- 對應數字改由 cashflow_quarterly（股息&現金流 scraper 來源）補。

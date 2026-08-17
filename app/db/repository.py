@@ -334,3 +334,27 @@ def get_quarterly_eps(conn: sqlite3.Connection, code: str) -> list[sqlite3.Row]:
         "SELECT quarter, eps FROM eps_quarterly WHERE code = ? ORDER BY quarter DESC",
         (code,),
     ).fetchall()
+
+
+def upsert_quarterly_close_price(
+    conn: sqlite3.Connection, code: str, quarter: str, close_price: float, price_date: str
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO stock_prices_quarterly (code, quarter, close_price, price_date, fetched_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(code, quarter) DO UPDATE SET
+            close_price = excluded.close_price,
+            price_date = excluded.price_date,
+            fetched_at = excluded.fetched_at
+        """,
+        (code, quarter, close_price, price_date, datetime.now(UTC).isoformat()),
+    )
+    conn.commit()
+
+
+def get_quarterly_close_prices(conn: sqlite3.Connection, code: str) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT quarter, close_price FROM stock_prices_quarterly WHERE code = ? ORDER BY quarter DESC",
+        (code,),
+    ).fetchall()
