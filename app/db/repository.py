@@ -2,6 +2,7 @@ import sqlite3
 from datetime import UTC, datetime
 
 from app.scrapers.fubon_stock_info import StockInfo
+from app.scrapers.histock_dividend import DividendEvent
 from app.scrapers.histock_revenue import MonthlyRevenue
 from app.scrapers.twse_isin import StockIsinInfo
 
@@ -75,3 +76,41 @@ def get_monthly_revenue(conn: sqlite3.Connection, code: str) -> list[sqlite3.Row
         "SELECT month, revenue FROM revenue_monthly WHERE code = ? ORDER BY month DESC",
         (code,),
     ).fetchall()
+
+
+def upsert_dividends(conn: sqlite3.Connection, code: str, rows: list[DividendEvent]) -> None:
+    fetched_at = datetime.now(UTC).isoformat()
+    conn.executemany(
+        """
+        INSERT INTO dividends (
+            code, fiscal_year, ex_dividend_date, payout_year,
+            cash_dividend, stock_dividend, eps, payout_ratio_pct, yield_pct, fetched_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(code, fiscal_year, ex_dividend_date) DO UPDATE SET
+            payout_year = excluded.payout_year,
+            cash_dividend = excluded.cash_dividend,
+            stock_dividend = excluded.stock_dividend,
+            eps = excluded.eps,
+            payout_ratio_pct = excluded.payout_ratio_pct,
+            yield_pct = excluded.yield_pct,
+            fetched_at = excluded.fetched_at
+        """,
+        [
+            (
+                code,
+                row.fiscal_year,
+                row.ex_dividend_date,
+                row.payout_year,
+                row.cash_dividend,
+                row.stock_dividend,
+                row.eps,
+                row.payout_ratio_pct,
+                row.cash_yield_pct,
+                fetched_at,
+            )
+            for row in rows
+            if row.ex_dividend_date is not None
+        ],
+    )
+    conn.commit()

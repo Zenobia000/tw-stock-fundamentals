@@ -83,13 +83,17 @@ CREATE TABLE IF NOT EXISTS financial_health_quarterly (
 
 CREATE TABLE IF NOT EXISTS dividends (
     code TEXT NOT NULL REFERENCES stocks(code),
-    year TEXT NOT NULL,
+    fiscal_year INTEGER NOT NULL,       -- 所屬年度
+    ex_dividend_date TEXT NOT NULL,     -- 除息日 MM/DD；同一年度可能多筆（半年配/季配）
+    payout_year INTEGER,                -- 發放年度
     cash_dividend REAL,
     stock_dividend REAL,
+    eps REAL,
+    payout_ratio_pct REAL,
     yield_pct REAL,
-    fill_dividend_days INTEGER,
+    fill_dividend_days INTEGER,         -- 目前無穩定來源，先留空
     fetched_at TEXT NOT NULL,
-    PRIMARY KEY (code, year)
+    PRIMARY KEY (code, fiscal_year, ex_dividend_date)
 );
 
 CREATE TABLE IF NOT EXISTS cashflow_quarterly (
