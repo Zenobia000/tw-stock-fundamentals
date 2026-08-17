@@ -28,6 +28,7 @@ from app.calc.valuation import (
     estimate_income_statement,
     estimate_quarterly_revenue,
 )
+from app.db.capital_reductions import get_capital_reduction_by_code
 from app.db.repository import get_quarterly_close_prices
 
 
@@ -44,6 +45,7 @@ class ValuationSnapshot:
     target_price_high: float | None
     sample_size: int
     note: str | None = None
+    capital_reduction_applied: bool = False
 
 
 def _empty_snapshot(note: str) -> ValuationSnapshot:
@@ -100,6 +102,19 @@ def build_valuation_snapshot(conn: sqlite3.Connection, code: str) -> ValuationSn
     )
     estimated_eps_value = estimate_eps(estimated.estimated_net_income, capital_thousands)
 
+    # 股價預估!E25「減資後季EPS」分支：估EPS / (1 - 減資一覽表校正值)。
+    # 個股沒有減資紀錄時 capital_reductions 查無資料，維持原估 EPS 不變。
+    capital_reduction_applied = False
+    reduction = get_capital_reduction_by_code(conn, code)
+    if (
+        estimated_eps_value is not None
+        and reduction is not None
+        and reduction.adjust_factor is not None
+        and reduction.adjust_factor != 1
+    ):
+        estimated_eps_value = estimated_eps_value / (1 - reduction.adjust_factor)
+        capital_reduction_applied = True
+
     eps_rows = conn.execute(
         "SELECT quarter, eps FROM eps_quarterly WHERE code = ? ORDER BY quarter DESC", (code,)
     ).fetchall()
@@ -139,6 +154,7 @@ def build_valuation_snapshot(conn: sqlite3.Connection, code: str) -> ValuationSn
             target_price_high=None,
             sample_size=len(pe_ratios),
             note="歷史本益比樣本不足，或近 3 季實際 EPS 不足（需要至少 3 個有季底收盤價可配對的 TTM EPS 點，以及近 3 季實際 EPS）",
+            capital_reduction_applied=capital_reduction_applied,
         )
 
     bands = pe_percentile_bands(pe_ratios)
@@ -155,4 +171,5 @@ def build_valuation_snapshot(conn: sqlite3.Connection, code: str) -> ValuationSn
         target_price_mid=targets.mid,
         target_price_high=targets.high,
         sample_size=len(pe_ratios),
+        capital_reduction_applied=capital_reduction_applied,
     )

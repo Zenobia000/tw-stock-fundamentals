@@ -42,3 +42,15 @@ def get_capital_reduction(conn: sqlite3.Connection, name: str) -> CapitalReducti
     return CapitalReduction(
         name=row["name"], code=row["code"], resume_date=row["resume_date"], adjust_factor=row["adjust_factor"]
     )
+
+
+def get_capital_reduction_by_code(conn: sqlite3.Connection, code: str) -> CapitalReduction | None:
+    row = conn.execute(
+        "SELECT name, code, resume_date, adjust_factor FROM capital_reductions WHERE code = ?",
+        (code,),
+    ).fetchone()
+    if row is None:
+        return None
+    return CapitalReduction(
+        name=row["name"], code=row["code"], resume_date=row["resume_date"], adjust_factor=row["adjust_factor"]
+    )

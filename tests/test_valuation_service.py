@@ -1,3 +1,4 @@
+from app.db.capital_reductions import CapitalReduction, upsert_capital_reduction
 from app.db.connection import get_connection
 from app.db.repository import upsert_stock
 from app.scrapers.twse_isin import StockIsinInfo
@@ -63,6 +64,25 @@ def test_build_valuation_snapshot_matches_hand_calculation(tmp_path):
     assert round(snapshot.target_price_mid, 2) == round(105.2 * 11.5, 2)
     assert round(snapshot.target_price_high, 2) == round(105.2 * 12.4, 2)
     assert snapshot.note is None
+    conn.close()
+
+
+def test_build_valuation_snapshot_applies_capital_reduction_adjustment(tmp_path):
+    conn = get_connection(tmp_path / "test.db")
+    _seed(conn)
+    upsert_capital_reduction(
+        conn,
+        CapitalReduction(name="測試公司", code="TEST", resume_date="2026-05-01", adjust_factor=0.2),
+    )
+
+    snapshot = build_valuation_snapshot(conn, "TEST")
+
+    # 減資校正公式（股價預估!E25 減資後季EPS 分支）：估EPS / (1 - 校正值)
+    assert round(snapshot.estimated_eps, 2) == round(99.2 / (1 - 0.2), 2)
+    assert round(snapshot.estimated_eps, 2) == 124.0
+    assert snapshot.capital_reduction_applied is True
+    # TTM EPS 也要跟著用校正後的估 EPS 重算
+    assert round(snapshot.estimated_ttm_eps, 2) == round(6.0 + 124.0, 2)
     conn.close()
 
 
