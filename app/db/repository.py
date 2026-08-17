@@ -5,6 +5,7 @@ from app.scrapers.fubon_stock_info import StockInfo
 from app.scrapers.histock_cashflow import QuarterlyCashflow
 from app.scrapers.histock_dividend import DividendEvent
 from app.scrapers.histock_revenue import MonthlyRevenue
+from app.scrapers.histock_turnover import QuarterlyTurnover
 from app.scrapers.twse_financials import FinancialHealthQuarter
 from app.scrapers.twse_isin import StockIsinInfo
 
@@ -187,6 +188,26 @@ def upsert_financial_health(conn: sqlite3.Connection, rows: list[FinancialHealth
                 row.net_margin_pct,
                 fetched_at,
             )
+            for row in rows
+        ],
+    )
+    conn.commit()
+
+
+def upsert_quarterly_turnover(conn: sqlite3.Connection, code: str, rows: list[QuarterlyTurnover]) -> None:
+    fetched_at = datetime.now(UTC).isoformat()
+    conn.executemany(
+        """
+        INSERT INTO opex_quarterly (code, quarter, ar_days, inventory_days, operating_cycle_days, fetched_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(code, quarter) DO UPDATE SET
+            ar_days = excluded.ar_days,
+            inventory_days = excluded.inventory_days,
+            operating_cycle_days = excluded.operating_cycle_days,
+            fetched_at = excluded.fetched_at
+        """,
+        [
+            (code, row.quarter, row.ar_days, row.inventory_days, row.operating_cycle_days, fetched_at)
             for row in rows
         ],
     )

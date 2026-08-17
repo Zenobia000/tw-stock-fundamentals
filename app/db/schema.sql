@@ -32,12 +32,16 @@ CREATE TABLE IF NOT EXISTS revenue_monthly (
 
 CREATE TABLE IF NOT EXISTS margin_quarterly (
     code TEXT NOT NULL REFERENCES stocks(code),
-    quarter TEXT NOT NULL,         -- e.g. 2026Q2
+    quarter TEXT NOT NULL,         -- 原始格式如 "115.2Q"（民國年.季別，未轉西元）
     revenue REAL,
+    cost_of_goods_sold REAL,
     gross_profit REAL,
-    gross_margin REAL,
+    gross_margin_pct REAL,
     operating_income REAL,
+    operating_margin_pct REAL,
     non_operating_income REAL,
+    pretax_income REAL,
+    net_income REAL,
     eps REAL,
     fetched_at TEXT NOT NULL,
     PRIMARY KEY (code, quarter)
@@ -129,7 +133,7 @@ CREATE TABLE IF NOT EXISTS chips_daily (
 CREATE TABLE IF NOT EXISTS futures_oi_daily (
     date TEXT NOT NULL,
     institution TEXT NOT NULL,     -- 自營商 / 投信 / 外資
-    contract TEXT NOT NULL,        -- e.g. TX 臺股期貨
+    contract TEXT NOT NULL,        -- e.g. 臺股期貨
     long_oi INTEGER,
     short_oi INTEGER,
     net_oi INTEGER,
