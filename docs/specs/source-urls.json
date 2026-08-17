@@ -1,0 +1,352 @@
+[
+  {
+    "sheet": "股票資訊",
+    "cell": "A1",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(SUBSTITUTE(\"\"https://fubon-ebrokerdj.fbs.com.tw/z/zc/zca/zca_股票代碼.djhtm\"\", \"\"股票代碼\"\",'股價預估'!E1),\"\"table\"\",0)\"),\"\")"
+  },
+  {
+    "sheet": "股票資訊",
+    "cell": "A28",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(SUBSTITUTE(\"\"https://www.cmoney.tw/forum/stock/股票代碼?s=fund-holdings\"\", \"\"股票代碼\"\",'股價預估'!E1),\"\"table\"\",0)\"),\"\")"
+  },
+  {
+    "sheet": "營收",
+    "cell": "A1",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(SUBSTITUTE(\"\"https://histock.tw/stock/股票代碼/%E8%B2%A1%E5%8B%99%E5%A0%B1%E8%A1%A8\"\", \"\"股票代碼\"\",'股價預估'!E1),\"\"table\"\",0)\"),\"年度/月份\")"
+  },
+  {
+    "sheet": "營收",
+    "cell": "A43",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(SUBSTITUTE(\"\"https://histock.tw/stock/financial.aspx?no=股票代碼&t=5&st=4&q=2\"\", \"\"股票代碼\"\",'股價預估'!E1),\"\"table\"\",0)\"),\"年度/季別\")"
+  },
+  {
+    "sheet": "營收",
+    "cell": "A85",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(SUBSTITUTE(\"\"https://fubon-ebrokerdj.fbs.com.tw/z/zc/zch/zch_股票代碼.djhtm\"\", \"\"股票代碼\"\",'股價預估'!E1),\"\"table\"\",0)\"),\"台積電(2330) 月營收季盈餘\")"
+  },
+  {
+    "sheet": "毛利率&業外",
+    "cell": "A1",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(SUBSTITUTE(\"\"https://fubon-ebrokerdj.fbs.com.tw/z/zc/zce/zce_股票代碼.djhtm\"\", \"\"股票代碼\"\",'股價預估'!E1),\"\"table\"\",0)\"),\"台積電(2330)獲利能力分析 季報 \n單位：百萬\")"
+  },
+  {
+    "sheet": "毛利率&業外",
+    "cell": "A101",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(SUBSTITUTE(\"\"https://histock.tw/stock/股票代碼/%E5%88%A9%E6%BD%A4%E6%AF%94%E7%8E%87\"\", \"\"股票代碼\"\",'股價預估'!E1),\"\"table\"\",0)\"),\"年度/季別\")"
+  },
+  {
+    "sheet": "營業費用",
+    "cell": "A25",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(SUBSTITUTE(\"\"https://histock.tw/stock/股票代碼/%E7%87%9F%E9%81%8B%E9%80%B1%E8%BD%89%E5%A4%A9%E6%95%B8\"\", \"\"股票代碼\"\",'股價預估'!E1),\"\"table\"\",1)\"),\"年度/季別\")"
+  },
+  {
+    "sheet": "營業費用",
+    "cell": "G25",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(SUBSTITUTE(\"\"https://ww2.money-link.com.tw/TWStock/StockBasic.aspx?TWMId=Basic_IIAM4&SymId=股票代碼\"\",\"\"股票代碼\"\",'股價預估'!E1),\"\"table\"\",0)\"),\"單位::新台幣仟元\")"
+  },
+  {
+    "sheet": "每股盈餘(EPS)",
+    "cell": "A1",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(SUBSTITUTE(\"\"https://fubon-ebrokerdj.fbs.com.tw/z/zc/zcd/zcd_股票代碼.djhtm\"\", \"\"股票代碼\"\",'股價預估'!E1),\"\"table\"\",0)\"),\"台積電(2330)之經營績效 季報年報\n單位：千股 / 百萬元\")"
+  },
+  {
+    "sheet": "每股盈餘(EPS)",
+    "cell": "B75",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(SUBSTITUTE(\"\"https://histock.tw/stock/financial.aspx?no=股票代碼&t=6\"\", \"\"股票代碼\"\",'股價預估'!E1),\"\"table\"\",0)\"),\"年度/月份\")"
+  },
+  {
+    "sheet": "每股盈餘(EPS)",
+    "cell": "B106",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(SUBSTITUTE(\"\"https://histock.tw/stock/股票代碼/股價淨值比\"\", \"\"股票代碼\"\",'股價預估'!E1),\"\"table\"\",0)\"),\"年度/月份\")"
+  },
+  {
+    "sheet": "股息&現金流",
+    "cell": "N1",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(SUBSTITUTE(\"\"https://www.cmoney.tw/forum/stock/股票代碼?s=dividend\"\", \"\"股票代碼\"\",'股價預估'!E1),\"\"table\"\",0)\"),\"除權息年度\")"
+  },
+  {
+    "sheet": "股息&現金流",
+    "cell": "A6",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(SUBSTITUTE(\"\"https://histock.tw/stock/股票代碼/%E9%99%A4%E6%AC%8A%E9%99%A4%E6%81%AF\"\", \"\"股票代碼\"\",'股價預估'!E1),\"\"table\"\",0)\"),\"所屬年度\")"
+  },
+  {
+    "sheet": "股息&現金流",
+    "cell": "A45",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(SUBSTITUTE(\"\"https://histock.tw/stock/股票代碼/%E7%8F%BE%E9%87%91%E6%B5%81%E9%87%8F%E8%A1%A8\"\", \"\"股票代碼\"\",'股價預估'!E1),\"\"table\"\",0)\"),\"年度/季別\")"
+  },
+  {
+    "sheet": "股息&現金流",
+    "cell": "A80",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(SUBSTITUTE(\"\"https://histock.tw/stock/股票代碼/%E7%8F%BE%E9%87%91%E6%AE%96%E5%88%A9%E7%8E%87\"\", \"\"股票代碼\"\",'股價預估'!E1),\"\"table\"\",0)\"),\"年度/月份\")"
+  },
+  {
+    "sheet": "籌碼",
+    "cell": "A1",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(SUBSTITUTE(\"\"https://histock.tw/stock/large.aspx?no=股票代碼\"\", \"\"股票代碼\"\",'股價預估'!E1),\"\"table\"\",0)\"),\"日期\")"
+  },
+  {
+    "sheet": "籌碼",
+    "cell": "G1",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(SUBSTITUTE(\"\"https://fubon-ebrokerdj.fbs.com.tw/z/zc/zcl/zcl.djhtm?a=股票代碼&b=4\n\"\", \"\"股票代碼\"\",'股價預估'!E1),\"\"table\"\",0)\"),\"台積電(2330)法人持股走勢圖\")"
+  },
+  {
+    "sheet": "籌碼",
+    "cell": "T1",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(SUBSTITUTE(\"\"https://fubon-ebrokerdj.fbs.com.tw/z/zc/zcn/zcn.djhtm?a=股票代碼&b=4\n\"\", \"\"股票代碼\"\",'股價預估'!E1),\"\"table\"\",0)\"),\"台積電(2330)融資融券走勢圖\")"
+  },
+  {
+    "sheet": "籌碼",
+    "cell": "A51",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(SUBSTITUTE(\"\"https://histock.tw/stock/branch.aspx?no=股票代碼\n\"\", \"\"股票代碼\"\",'股價預估'!E1),\"\"table\"\",0)\"),\"券商名稱\")"
+  },
+  {
+    "sheet": "籌碼",
+    "cell": "O51",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(SUBSTITUTE(\"\"https://histock.tw/stock/股票代碼\n\"\", \"\"股票代碼\"\",'股價預估'!E1),\"\"table\"\",4)\"),\"項目\")"
+  },
+  {
+    "sheet": "期貨籌碼",
+    "cell": "A2",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(\"\"https://www.taifex.com.tw/cht/3/futContractsDateExcel\"\",\"\"table\"\",1)\"),\"期貨契約\")"
+  },
+  {
+    "sheet": "期貨籌碼",
+    "cell": "P2",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(\"\"https://www.taifex.com.tw/cht/3/futContractsDateAhExcel\"\",\"\"table\"\",1)\"),\"期貨契約\")"
+  },
+  {
+    "sheet": "期貨籌碼",
+    "cell": "A4",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(\"\"https://www.taifex.com.tw/cht/3/futContractsDate\"\",\"\"table\"\",0)\"),\"\")"
+  },
+  {
+    "sheet": "期貨籌碼",
+    "cell": "P4",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(\"\"https://www.taifex.com.tw/cht/3/futContractsDateAh\"\",\"\"table\"\",0)\"),\"\")"
+  },
+  {
+    "sheet": "排行榜",
+    "cell": "A2",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(\"\"https://fubon-ebrokerdj.fbs.com.tw/z/zg/zg.djhtm?a=CD&b=0&c=1\"\",\"\"table\"\",0)\"),\"\")"
+  },
+  {
+    "sheet": "排行榜",
+    "cell": "H2",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(\"\"https://fubon-ebrokerdj.fbs.com.tw/z/zg/zg.djhtm?a=CD&b=1&c=1\"\",\"\"table\"\",0)\"),\"\")"
+  },
+  {
+    "sheet": "排行榜",
+    "cell": "O2",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(\"\"https://fubon-ebrokerdj.fbs.com.tw/z/zg/zg.djhtm?a=EH&b=0\"\",\"\"table\"\",0)\"),\"\")"
+  },
+  {
+    "sheet": "排行榜",
+    "cell": "X2",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(\"\"https://fubon-ebrokerdj.fbs.com.tw/z/zg/zg.djhtm?a=EH&b=1\"\",\"\"table\"\",0)\"),\"\")"
+  },
+  {
+    "sheet": "排行榜",
+    "cell": "A55",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(\"\"https://fubon-ebrokerdj.fbs.com.tw/z/zg/zg.djhtm?a=BD&b=0\"\",\"\"table\"\",0)\"),\"\")"
+  },
+  {
+    "sheet": "排行榜",
+    "cell": "I55",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(\"\"https://fubon-ebrokerdj.fbs.com.tw/z/zg/zg.djhtm?a=BD&b=1\"\",\"\"table\"\",0)\"),\"\")"
+  },
+  {
+    "sheet": "市值排行",
+    "cell": "A1",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(\"\"https://www.taifex.com.tw/cht/9/futuresQADetail\"\",\"\"table\"\",0)\"),\"排行\")"
+  },
+  {
+    "sheet": "證券編碼查詢",
+    "cell": "A1",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(SUBSTITUTE(\"\"https://isin.twse.com.tw/isin/single_main.jsp?owncode=股票代碼&stockname=\"\", \"\"股票代碼\"\",'股價預估'!E1),\"\"table\"\",0)\"),\"頁面編號\")"
+  },
+  {
+    "sheet": "證券編碼查詢",
+    "cell": "A35",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(SUBSTITUTE(\"\"https://concords.moneydj.com/z/zc/zci/zci_股票代碼.djhtm\"\", \"\"股票代碼\"\",'股價預估'!E1),\"\"table\"\",0)\"),\"台積電(2330)重大行事曆\")"
+  },
+  {
+    "sheet": "證券編碼查詢",
+    "cell": "A47",
+    "formula": "=IFERROR(__xludf.DUMMYFUNCTION(\"IMPORTHTML(SUBSTITUTE(\"\"https://ww2.money-link.com.tw/TWStock/StockChart.aspx?SymId=股票代碼\"\", \"\"股票代碼\"\",'股價預估'!E1),\"\"table\"\",0)\"),\"產業關係\")"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C11",
+    "formula": "=IMPORTHTML(SUBSTITUTE(\"https://fubon-ebrokerdj.fbs.com.tw/z/zc/zca/zca_股票代碼.djhtm\", \"股票代碼\",'股價預估'!E1),\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C12",
+    "formula": "=IMPORTHTML(SUBSTITUTE(\"https://www.cmoney.tw/forum/stock/股票代碼?s=fund-holdings\", \"股票代碼\",'股價預估'!E1),\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C13",
+    "formula": "=IMPORTHTML(SUBSTITUTE(\"https://histock.tw/stock/股票代碼/%E8%B2%A1%E5%8B%99%E5%A0%B1%E8%A1%A8\", \"股票代碼\",'股價預估'!E1),\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C14",
+    "formula": "=IMPORTHTML(SUBSTITUTE(\"https://histock.tw/stock/financial.aspx?no=股票代碼&t=5&st=4&q=2\", \"股票代碼\",'股價預估'!E1),\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C15",
+    "formula": "=IMPORTHTML(SUBSTITUTE(\"https://fubon-ebrokerdj.fbs.com.tw/z/zc/zch/zch_股票代碼.djhtm\", \"股票代碼\",'股價預估'!E1),\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C16",
+    "formula": "=IMPORTHTML(SUBSTITUTE(\"https://fubon-ebrokerdj.fbs.com.tw/z/zc/zce/zce_股票代碼.djhtm\", \"股票代碼\",'股價預估'!E1),\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C17",
+    "formula": "=IMPORTHTML(SUBSTITUTE(\"https://histock.tw/stock/股票代碼/%E5%88%A9%E6%BD%A4%E6%AF%94%E7%8E%87\", \"股票代碼\",'股價預估'!E1),\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C18",
+    "formula": "=IMPORTHTML(SUBSTITUTE(\"https://histock.tw/stock/股票代碼/%E7%87%9F%E9%81%8B%E9%80%B1%E8%BD%89%E5%A4%A9%E6%95%B8\", \"股票代碼\",'股價預估'!E1),\"table\",1)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C19",
+    "formula": "=IMPORTHTML(SUBSTITUTE(\"https://ww2.money-link.com.tw/TWStock/StockBasic.aspx?TWMId=Basic_IIAM4&SymId=股票代碼\",\"股票代碼\",'股價預估'!E1),\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C20",
+    "formula": "=IMPORTHTML(SUBSTITUTE(\"https://fubon-ebrokerdj.fbs.com.tw/z/zc/zcd/zcd_股票代碼.djhtm\", \"股票代碼\",'股價預估'!E1),\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C21",
+    "formula": "=IMPORTHTML(SUBSTITUTE(\"https://histock.tw/stock/financial.aspx?no=股票代碼&t=6\", \"股票代碼\",'股價預估'!E1),\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C22",
+    "formula": "=IMPORTHTML(SUBSTITUTE(\"https://histock.tw/stock/股票代碼/股價淨值比\", \"股票代碼\",'股價預估'!E1),\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C23",
+    "formula": "=IMPORTHTML(SUBSTITUTE(\"https://www.cmoney.tw/forum/stock/股票代碼?s=dividend\", \"股票代碼\",'股價預估'!E1),\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C24",
+    "formula": "=IMPORTHTML(SUBSTITUTE(\"https://histock.tw/stock/股票代碼/%E9%99%A4%E6%AC%8A%E9%99%A4%E6%81%AF\", \"股票代碼\",'股價預估'!E1),\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C25",
+    "formula": "=IMPORTHTML(SUBSTITUTE(\"https://histock.tw/stock/股票代碼/%E7%8F%BE%E9%87%91%E6%B5%81%E9%87%8F%E8%A1%A8\", \"股票代碼\",'股價預估'!E1),\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C26",
+    "formula": "=IMPORTHTML(SUBSTITUTE(\"https://histock.tw/stock/股票代碼/%E7%8F%BE%E9%87%91%E6%AE%96%E5%88%A9%E7%8E%87\", \"股票代碼\",'股價預估'!E1),\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C27",
+    "formula": "=IMPORTHTML(SUBSTITUTE(\"https://histock.tw/stock/large.aspx?no=股票代碼\", \"股票代碼\",'股價預估'!E1),\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C28",
+    "formula": "=IMPORTHTML(SUBSTITUTE(\"https://fubon-ebrokerdj.fbs.com.tw/z/zc/zcl/zcl.djhtm?a=股票代碼&b=4\", \"股票代碼\",'股價預估'!E1),\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C29",
+    "formula": "=IMPORTHTML(SUBSTITUTE(\"https://fubon-ebrokerdj.fbs.com.tw/z/zc/zcn/zcn.djhtm?a=股票代碼&b=4\", \"股票代碼\",'股價預估'!E1),\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C30",
+    "formula": "=IMPORTHTML(SUBSTITUTE(\"https://histock.tw/stock/branch.aspx?no=股票代碼\", \"股票代碼\",'股價預估'!E1),\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C31",
+    "formula": "=IMPORTHTML(SUBSTITUTE(\"https://histock.tw/stock/股票代碼\", \"股票代碼\",'股價預估'!E1),\"table\",4)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C32",
+    "formula": "=IMPORTHTML(\"https://www.taifex.com.tw/cht/3/futContractsDateExcel\",\"table\",1)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C33",
+    "formula": "=IMPORTHTML(\"https://www.taifex.com.tw/cht/3/futContractsDateAhExcel\",\"table\",1)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C34",
+    "formula": "=IMPORTHTML(\"https://www.taifex.com.tw/cht/3/futContractsDate\",\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C35",
+    "formula": "=IMPORTHTML(\"https://www.taifex.com.tw/cht/3/futContractsDateAh\",\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C36",
+    "formula": "=IMPORTHTML(\"https://www.taifex.com.tw/cht/9/futuresQADetail\",\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C37",
+    "formula": "=IMPORTHTML(SUBSTITUTE(\"https://isin.twse.com.tw/isin/single_main.jsp?owncode=股票代碼&stockname=\", \"股票代碼\",'股價預估'!E1),\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C38",
+    "formula": "=IMPORTHTML(SUBSTITUTE(\"https://concords.moneydj.com/z/zc/zci/zci_股票代碼.djhtm\", \"股票代碼\",'股價預估'!E1),\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C39",
+    "formula": "=IMPORTHTML(SUBSTITUTE(\"https://ww2.money-link.com.tw/TWStock/StockChart.aspx?SymId=股票代碼\", \"股票代碼\",'股價預估'!E1),\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C40",
+    "formula": "=IMPORTHTML(\"https://fubon-ebrokerdj.fbs.com.tw/z/zg/zg.djhtm?a=CD&b=0&c=1\",\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C41",
+    "formula": "=IMPORTHTML(\"https://fubon-ebrokerdj.fbs.com.tw/z/zg/zg.djhtm?a=CD&b=1&c=1\",\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C42",
+    "formula": "=IMPORTHTML(\"https://fubon-ebrokerdj.fbs.com.tw/z/zg/zg.djhtm?a=EH&b=0\",\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C43",
+    "formula": "=IMPORTHTML(\"https://fubon-ebrokerdj.fbs.com.tw/z/zg/zg.djhtm?a=EH&b=1\",\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C44",
+    "formula": "=IMPORTHTML(\"https://fubon-ebrokerdj.fbs.com.tw/z/zg/zg.djhtm?a=BD&b=0\",\"table\",0)"
+  },
+  {
+    "sheet": "Google還原指南",
+    "cell": "C45",
+    "formula": "=IMPORTHTML(\"https://fubon-ebrokerdj.fbs.com.tw/z/zg/zg.djhtm?a=BD&b=1\",\"table\",0)"
+  }
+]
