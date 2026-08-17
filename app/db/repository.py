@@ -12,6 +12,7 @@ from app.scrapers.histock_turnover import QuarterlyTurnover
 from app.scrapers.taifex_futures import FuturesOI
 from app.scrapers.twse_financials import FinancialHealthQuarter
 from app.scrapers.twse_isin import StockIsinInfo
+from app.scrapers.twse_rankings import RankingEntry
 
 
 def upsert_stock(conn: sqlite3.Connection, info: StockIsinInfo) -> None:
@@ -278,6 +279,28 @@ def upsert_futures_oi(conn: sqlite3.Connection, rows: list[FuturesOI]) -> None:
         [
             (row.date, row.institution, row.contract, row.long_oi, row.short_oi, row.net_oi, fetched_at)
             for row in rows
+        ],
+    )
+    conn.commit()
+
+
+def upsert_rankings(conn: sqlite3.Connection, category: str, rows: list[RankingEntry]) -> None:
+    """rows 需已附帶各自的交易日（RankingEntry.date），查無日期的列直接跳過。"""
+    fetched_at = datetime.now(UTC).isoformat()
+    conn.executemany(
+        """
+        INSERT INTO rankings_daily (date, category, rank, code, name, value, fetched_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(date, category, rank) DO UPDATE SET
+            code = excluded.code,
+            name = excluded.name,
+            value = excluded.value,
+            fetched_at = excluded.fetched_at
+        """,
+        [
+            (row.date, category, row.rank, row.code, row.name, row.trade_value, fetched_at)
+            for row in rows
+            if row.date is not None
         ],
     )
     conn.commit()

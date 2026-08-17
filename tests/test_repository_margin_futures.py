@@ -1,8 +1,9 @@
 from app.db.connection import get_connection
-from app.db.repository import upsert_futures_oi, upsert_margin_quarters, upsert_stock
+from app.db.repository import upsert_futures_oi, upsert_margin_quarters, upsert_rankings, upsert_stock
 from app.scrapers.fubon_margin import MarginQuarter
 from app.scrapers.taifex_futures import FuturesOI
 from app.scrapers.twse_isin import StockIsinInfo
+from app.scrapers.twse_rankings import RankingEntry
 
 
 def test_upsert_margin_quarters_roundtrip(tmp_path):
@@ -39,4 +40,20 @@ def test_upsert_futures_oi_roundtrip(tmp_path):
         "SELECT * FROM futures_oi_daily WHERE date='2026-08-17' AND institution='外資'"
     ).fetchone()
     assert row["net_oi"] == 60
+    conn.close()
+
+
+def test_upsert_rankings_roundtrip(tmp_path):
+    conn = get_connection(tmp_path / "test.db")
+    rows = [
+        RankingEntry(rank=1, code="2408", name="南亞科", trade_value=54418832121, closing_price=512.0, date="2026-08-14"),
+        RankingEntry(rank=2, code="2330", name="台積電", trade_value=51159731253, closing_price=2395.0, date="2026-08-14"),
+    ]
+    upsert_rankings(conn, "turnover_listed", rows)
+    top = conn.execute(
+        "SELECT * FROM rankings_daily WHERE category='turnover_listed' AND date='2026-08-14' ORDER BY rank"
+    ).fetchall()
+    assert len(top) == 2
+    assert top[0]["code"] == "2408"
+    assert top[0]["value"] == 54418832121
     conn.close()

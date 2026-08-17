@@ -19,6 +19,8 @@ def test_parse_rankings_sorts_by_trade_value_descending():
     assert rankings[0].rank == 1
     assert rankings[1].code == "2330"
     assert rankings[0].trade_value > rankings[1].trade_value > rankings[2].trade_value
+    # 民國 1150814 → 西元 2026-08-14
+    assert rankings[0].date == "2026-08-14"
 
 
 def test_parse_rankings_handles_empty_input():

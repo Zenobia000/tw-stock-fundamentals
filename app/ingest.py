@@ -17,11 +17,13 @@ from app.db.repository import (
     upsert_daily_chips,
     upsert_dividends,
     upsert_financial_health,
+    upsert_futures_oi,
     upsert_margin_quarters,
     upsert_monthly_revenue,
     upsert_quarterly_cashflow,
     upsert_quarterly_eps,
     upsert_quarterly_turnover,
+    upsert_rankings,
     upsert_stock,
     upsert_stock_info,
 )
@@ -34,8 +36,10 @@ from app.scrapers.histock_dividend import fetch_dividend_history
 from app.scrapers.histock_revenue import fetch_monthly_revenue
 from app.scrapers.histock_turnover import fetch_quarterly_turnover
 from app.pricing import fetch_missing_quarterly_close_prices
+from app.scrapers.taifex_futures import fetch_futures_oi
 from app.scrapers.twse_financials import fetch_financial_health
 from app.scrapers.twse_isin import fetch_stock_isin
+from app.scrapers.twse_rankings import fetch_turnover_rankings
 
 # Fubon eBroker DJ 的 WAF 會擋掉沒有瀏覽器 UA 的請求（httpx.Client() 預設 UA
 # 是 "python-httpx/x.y.z"，會直接 403）。個別 scraper 單獨測試時各自建立
@@ -107,6 +111,38 @@ def refresh_stock(
     return results
 
 
+_MARKET_STEPS = (
+    ("期貨籌碼", lambda conn, client: upsert_futures_oi(conn, fetch_futures_oi(client))),
+    ("排行榜", lambda conn, client: upsert_rankings(conn, "turnover_listed", fetch_turnover_rankings(client=client))),
+)
+
+
+def refresh_market(
+    conn: sqlite3.Connection | None = None, client: httpx.Client | None = None
+) -> dict[str, str | None]:
+    """全市場（非個股）來源：期貨籌碼、排行榜。跟 refresh_stock 一樣單一來源失敗不互相影響。"""
+    owns_conn = conn is None
+    conn = conn or get_connection()
+    owns_client = client is None
+    client = client or httpx.Client(timeout=30, headers={"User-Agent": _SHARED_USER_AGENT})
+
+    results: dict[str, str | None] = {}
+    try:
+        for name, step in _MARKET_STEPS:
+            try:
+                step(conn, client)
+                results[name] = None
+            except Exception as exc:  # noqa: BLE001 — 單一來源失敗不能中斷整批
+                results[name] = f"{type(exc).__name__}: {exc}"
+    finally:
+        if owns_client:
+            client.close()
+        if owns_conn:
+            conn.close()
+
+    return results
+
+
 def main(argv: list[str]) -> int:
     if not argv:
         print("用法: python -m app.ingest <股票代碼> [股票代碼...]")
@@ -115,6 +151,11 @@ def main(argv: list[str]) -> int:
     conn = get_connection()
     try:
         with httpx.Client(timeout=30, headers={"User-Agent": _SHARED_USER_AGENT}) as client:
+            print("=== 刷新全市場（期貨籌碼／排行榜） ===")
+            market_results = refresh_market(conn=conn, client=client)
+            for name, error in market_results.items():
+                print(f"  {'OK' if error is None else 'FAIL'} {name}" + (f" — {error}" if error else ""))
+
             for code in argv:
                 print(f"=== 刷新 {code} ===")
                 results = refresh_stock(code, conn=conn, client=client)

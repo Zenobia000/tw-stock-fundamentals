@@ -1,7 +1,7 @@
 from unittest.mock import patch
 
 from app.db.connection import get_connection
-from app.ingest import refresh_stock
+from app.ingest import refresh_market, refresh_stock
 from app.scrapers.fubon_eps import QuarterlyEps
 from app.scrapers.fubon_margin import MarginQuarter
 from app.scrapers.fubon_stock_info import StockInfo
@@ -10,8 +10,10 @@ from app.scrapers.histock_chips import DailyChips
 from app.scrapers.histock_dividend import DividendEvent
 from app.scrapers.histock_revenue import MonthlyRevenue
 from app.scrapers.histock_turnover import QuarterlyTurnover
+from app.scrapers.taifex_futures import FuturesOI
 from app.scrapers.twse_financials import FinancialHealthQuarter
 from app.scrapers.twse_isin import StockIsinInfo
+from app.scrapers.twse_rankings import RankingEntry
 
 ISIN_INFO = StockIsinInfo(
     code="2330", name="台積電", market="上市", security_type="股票",
@@ -123,4 +125,65 @@ def test_refresh_stock_one_source_failing_does_not_block_others(tmp_path):
     assert results["股票資訊"] is None
     assert conn.execute("SELECT COUNT(*) c FROM revenue_monthly").fetchone()["c"] == 0
     assert conn.execute("SELECT COUNT(*) c FROM stock_info").fetchone()["c"] == 1
+    conn.close()
+
+
+def test_refresh_market_populates_futures_and_rankings(tmp_path):
+    conn = get_connection(tmp_path / "test.db")
+    patches = [
+        patch(
+            "app.ingest.fetch_futures_oi",
+            side_effect=lambda client: [
+                FuturesOI(date="2026-08-14", contract="臺股期貨", institution="外資", long_oi=100, short_oi=40, net_oi=60)
+            ],
+        ),
+        patch(
+            "app.ingest.fetch_turnover_rankings",
+            side_effect=lambda client=None, top_n=20: [
+                RankingEntry(rank=1, code="2330", name="台積電", trade_value=100.0, closing_price=2395.0, date="2026-08-14")
+            ],
+        ),
+    ]
+    for p in patches:
+        p.start()
+    try:
+        results = refresh_market(conn=conn)
+    finally:
+        for p in patches:
+            p.stop()
+
+    assert all(error is None for error in results.values()), results
+    assert conn.execute("SELECT COUNT(*) c FROM futures_oi_daily").fetchone()["c"] == 1
+    assert conn.execute("SELECT COUNT(*) c FROM rankings_daily").fetchone()["c"] == 1
+    conn.close()
+
+
+def test_refresh_market_one_source_failing_does_not_block_others(tmp_path):
+    conn = get_connection(tmp_path / "test.db")
+
+    def broken_futures(client):
+        raise RuntimeError("taifex 掛了")
+
+    patches = [
+        patch("app.ingest.fetch_futures_oi", side_effect=broken_futures),
+        patch(
+            "app.ingest.fetch_turnover_rankings",
+            side_effect=lambda client=None, top_n=20: [
+                RankingEntry(rank=1, code="2330", name="台積電", trade_value=100.0, closing_price=2395.0, date="2026-08-14")
+            ],
+        ),
+    ]
+    for p in patches:
+        p.start()
+    try:
+        results = refresh_market(conn=conn)
+    finally:
+        for p in patches:
+            p.stop()
+
+    assert results["期貨籌碼"] is not None
+    assert "taifex 掛了" in results["期貨籌碼"]
+    assert results["排行榜"] is None
+    assert conn.execute("SELECT COUNT(*) c FROM futures_oi_daily").fetchone()["c"] == 0
+    assert conn.execute("SELECT COUNT(*) c FROM rankings_daily").fetchone()["c"] == 1
     conn.close()

@@ -23,6 +23,7 @@ class RankingEntry:
     name: str
     trade_value: float
     closing_price: float | None
+    date: str | None = None  # YYYY-MM-DD，換算自 TWSE 民國年 Date 欄位
 
 
 def _to_float(text) -> float | None:
@@ -37,6 +38,15 @@ def _to_float(text) -> float | None:
         return None
 
 
+def _roc_date_to_iso(text) -> str | None:
+    """TWSE OpenAPI 的 Date 欄位是民國年 YYYMMDD（例：1150814 → 2026-08-14）。"""
+    cleaned = str(text).strip() if text is not None else ""
+    if len(cleaned) != 7 or not cleaned.isdigit():
+        return None
+    roc_year, month, day = int(cleaned[:3]), cleaned[3:5], cleaned[5:7]
+    return f"{roc_year + 1911}-{month}-{day}"
+
+
 def _parse_rankings_json(records: list[dict], top_n: int = 20) -> list[RankingEntry]:
     parsed = []
     for row in records:
@@ -44,13 +54,19 @@ def _parse_rankings_json(records: list[dict], top_n: int = 20) -> list[RankingEn
         if trade_value is None:
             continue
         parsed.append(
-            (trade_value, row.get("Code"), row.get("Name"), _to_float(row.get("ClosingPrice")))
+            (
+                trade_value,
+                row.get("Code"),
+                row.get("Name"),
+                _to_float(row.get("ClosingPrice")),
+                _roc_date_to_iso(row.get("Date")),
+            )
         )
 
     parsed.sort(key=lambda item: item[0], reverse=True)
     return [
-        RankingEntry(rank=i + 1, code=code, name=name, trade_value=value, closing_price=price)
-        for i, (value, code, name, price) in enumerate(parsed[:top_n])
+        RankingEntry(rank=i + 1, code=code, name=name, trade_value=value, closing_price=price, date=date)
+        for i, (value, code, name, price, date) in enumerate(parsed[:top_n])
     ]
 
 
