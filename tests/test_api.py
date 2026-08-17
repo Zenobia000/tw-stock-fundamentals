@@ -1,0 +1,109 @@
+import pytest
+from fastapi.testclient import TestClient
+
+from app.api.routes import get_db
+from app.db.connection import get_connection
+from app.db.repository import upsert_monthly_revenue, upsert_stock, upsert_stock_info
+from app.main import app
+from app.scrapers.fubon_stock_info import StockInfo
+from app.scrapers.histock_revenue import MonthlyRevenue
+from app.scrapers.twse_isin import StockIsinInfo
+
+
+@pytest.fixture
+def client(tmp_path):
+    db_path = tmp_path / "test.db"
+    conn = get_connection(db_path)
+    upsert_stock(
+        conn,
+        StockIsinInfo(
+            code="2330",
+            name="台積電",
+            market="上市",
+            security_type="股票",
+            industry="半導體業",
+            isin="TW0002330008",
+            listed_date="1994/09/05",
+        ),
+    )
+    upsert_stock_info(
+        conn,
+        StockInfo(
+            code="2330",
+            price=2395,
+            market_cap_millions=62108026,
+            beta=1.10,
+            pe_ratio=27.76,
+            dividend_yield_pct=0.92,
+            book_value_per_share=248.05,
+            capital_billion_twd=2593.24,
+        ),
+    )
+    upsert_monthly_revenue(
+        conn,
+        "2330",
+        [MonthlyRevenue(month="2026-07", revenue_thousands=467580544)],
+    )
+
+    conn.close()  # data written; each request opens its own connection below
+
+    def override_get_db():
+        request_conn = get_connection(db_path)
+        try:
+            yield request_conn
+        finally:
+            request_conn.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
+
+def test_health_check(client):
+    resp = client.get("/api/health")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok"}
+
+
+def test_get_stock_returns_joined_info(client):
+    resp = client.get("/api/stocks/2330")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["name"] == "台積電"
+    assert body["price"] == 2395
+    assert body["beta"] == 1.10
+
+
+def test_get_stock_404_for_unknown_code(client):
+    resp = client.get("/api/stocks/9999")
+    assert resp.status_code == 404
+
+
+def test_get_revenue_returns_rows(client):
+    resp = client.get("/api/stocks/2330/revenue")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body[0]["month"] == "2026-07"
+    assert body[0]["revenue"] == 467580544
+
+
+def test_empty_feature_endpoints_return_empty_list_not_error(client):
+    for path in ["margin", "opex", "eps", "financial-health", "dividends", "cashflow", "chips"]:
+        resp = client.get(f"/api/stocks/2330/{path}")
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+
+def test_dashboard_aggregates_all_features(client):
+    resp = client.get("/api/stocks/2330/dashboard")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["stock"]["name"] == "台積電"
+    assert body["revenue"][0]["month"] == "2026-07"
+    assert body["margin"] == []
+
+
+def test_search_stocks_matches_by_code_or_name(client):
+    resp = client.get("/api/stocks/search", params={"q": "台積"})
+    assert resp.status_code == 200
+    assert resp.json()[0]["code"] == "2330"
