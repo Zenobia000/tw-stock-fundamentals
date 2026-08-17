@@ -23,13 +23,14 @@
 | 毛利率&業外 | 毛利率/營益率/業外占比 | Fubon 獲利能力分析、histock 利潤比率 | 券商/入口 |
 | 營業費用 | 損益表季度拆解、稅率、週轉天數 | histock、money-link | 入口 |
 | 每股盈餘(EPS) | EPS成長率、PE分位目標價矩陣 | Fubon 經營績效、histock | 券商/入口 |
-| 財報健檢 | 資產負債表/現金流摘要、安全性指標 | 公開資訊觀測站 MOPS（官方） | 官方，優先 |
-| 股息&現金流 | 股利政策、殖利率、填息天數 | CMoney、histock | 入口 |
+| 財報健檢 | 資產負債表/損益表/獲利率摘要 | TWSE OpenAPI 官方資料集（t187ap06/07_L_ci, t187ap17_L） | 官方，優先 |
+| 股息&現金流 | 除權息歷史、現金流量表 | histock 除權息、現金流量表 | 入口 |
 | 籌碼 | 法人買賣超、大戶比、融資券、分點 | histock、Fubon | 入口/券商 |
 | 期貨籌碼 | 三大法人期貨未平倉 | `taifex.com.tw`（官方） | 官方，優先 |
-| 排行榜 | 成交值/券資比排行 | Fubon | 券商 |
-| 市值排行 | 全市場市值佔比排行 | TWSE/TAIFEX | 官方 |
+| 排行榜 | 全市場成交值排行 | TWSE OpenAPI STOCK_DAY_ALL（官方） | 官方，優先 |
 | 減資一覽表 | 減資股 EPS 校正值 | 手動維護（原資料源已停用） | 手動 |
+
+**已知缺口**：市值排行（個股市值佔大盤比重）需要全市場股本/流通股數，TWSE OpenAPI 目前找不到一次回傳的端點，先不做；單股市值已由 stock_info 涵蓋。財報健檢的現金/應收帳款/存貨明細與現金流量表，TWSE OpenAPI 沒有對應 dataset，改由 cashflow_quarterly（histock 來源）補現金流部分，資產負債表明細維持缺項。營業費用 sheet 原規格（選銷/管理/研發費用、稅率）在任何來源都找不到可爬的頁面（需要 MOPS XBRL 附註），改用 histock 實際可拿的「營運週轉天數」（收款/存貨天數）替代，稅率則由財報健檢的稅前/稅後淨利算出（不另建資料源）。
 
 完整原始公式與每個 sheet 的欄位結構見 `docs/specs/workbook-analysis.md`（從 xlsx 逐格提取，含公式與快照值，可當 golden-value 測試的參考基準）。
 
@@ -37,20 +38,22 @@
 
 每張表都有 `fetched_at` 欄位，作為快取新鮮度判斷依據（同股票同資料源每日最多重抓一次）。核心表：
 
+實際 schema 以 `app/db/schema.sql` 為準（下面是摘要，欄位細節請直接看該檔）：
+
 - `stocks(code PK, name, market, industry, updated_at)`
-- `stock_info(code, price, shares_outstanding, market_cap, beta, next_earnings_date, next_revenue_date, fetched_at)`
+- `stock_info(code, price, market_cap_millions, beta, pe_ratio, dividend_yield_pct, book_value_per_share, capital_billion_twd, fetched_at)`
 - `revenue_monthly(code, month, revenue, fetched_at)`
-- `margin_quarterly(code, quarter, revenue, gross_margin, operating_income, non_op_ratio, eps, fetched_at)`
-- `opex_quarterly(code, quarter, sga, rd, tax_rate, fetched_at)`
+- `margin_quarterly(code, quarter, revenue, cost_of_goods_sold, gross_profit, gross_margin_pct, operating_income, operating_margin_pct, non_operating_income, pretax_income, net_income, eps, fetched_at)`
+- `opex_quarterly(code, quarter, ar_days, inventory_days, operating_cycle_days, fetched_at)` — 實際是週轉天數表，不是費用細目（見上方已知缺口）
 - `eps_quarterly(code, quarter, eps, fetched_at)`
-- `financial_health_quarterly(code, quarter, cash, ar, inventory, total_assets, total_liabilities, equity, operating_cf, capex, fetched_at)`
-- `dividends(code, year, cash_dividend, stock_dividend, yield, fill_days, fetched_at)`
-- `cashflow(code, quarter, operating, investing, financing, fetched_at)`
-- `chips_daily(code, date, foreign_holding_pct, margin_balance, fetched_at)`
-- `futures_oi_daily(date, institution, long_oi, short_oi, fetched_at)`
-- `rankings_daily(date, category, rank, code, value, fetched_at)`
-- `market_cap_daily(date, code, market_cap, pct_of_market, fetched_at)`
-- `capital_reductions(name, code, resume_date, adjust_factor)`
+- `financial_health_quarterly(code, quarter, current_assets, total_assets, current_liabilities, total_liabilities, total_equity, capital, book_value_per_share, revenue, gross_profit, operating_income, pretax_income, net_income, eps, gross_margin_pct, operating_margin_pct, net_margin_pct, fetched_at)`
+- `dividends(code, fiscal_year, ex_dividend_date, payout_year, cash_dividend, stock_dividend, eps, payout_ratio_pct, yield_pct, fill_dividend_days, fetched_at)` — 逐次配息事件，非年度單筆
+- `cashflow_quarterly(code, quarter, operating, investing, financing, fetched_at)`
+- `chips_daily(code, date, foreign_holding_pct, trust_holding_pct, margin_balance, short_balance, fetched_at)`
+- `futures_oi_daily(date, institution, contract, long_oi, short_oi, net_oi, fetched_at)`
+- `rankings_daily(date, category, rank, code, name, value, fetched_at)`
+- `market_cap_daily(date, code, market_cap, pct_of_market, fetched_at)` — 目前無填入來源（見已知缺口）
+- `capital_reductions(name PK, code, resume_date, adjust_factor)`
 
 ## 驗收標準
 
