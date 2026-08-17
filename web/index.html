@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>台股波段股價預估終端</title>
+<link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">TW<span>STOCK</span> TERMINAL</div>
+  <form id="search-form" class="search" autocomplete="off">
+    <input id="code-input" type="text" placeholder="股票代碼 (e.g. 2330)" maxlength="6" />
+    <button type="submit">GO</button>
+    <div id="search-results" class="search-results"></div>
+  </form>
+  <div id="clock" class="clock"></div>
+</header>
+
+<section id="summary" class="summary hidden">
+  <div class="summary-name">
+    <span id="sum-name" class="sum-name-text">—</span>
+    <span id="sum-code" class="sum-code-text">—</span>
+    <span id="sum-market" class="tag">—</span>
+    <span id="sum-industry" class="tag">—</span>
+  </div>
+  <div class="summary-grid">
+    <div class="stat"><label>收盤價</label><span id="stat-price">—</span></div>
+    <div class="stat"><label>市值(百萬)</label><span id="stat-mcap">—</span></div>
+    <div class="stat"><label>本益比</label><span id="stat-pe">—</span></div>
+    <div class="stat"><label>每股淨值</label><span id="stat-bvps">—</span></div>
+    <div class="stat"><label>Beta</label><span id="stat-beta">—</span></div>
+    <div class="stat"><label>殖利率</label><span id="stat-yield">—</span></div>
+    <div class="stat"><label>負債比率</label><span id="stat-debt">—</span></div>
+    <div class="stat"><label>股本(億)</label><span id="stat-capital">—</span></div>
+  </div>
+</section>
+
+<main id="grid" class="nine-grid hidden">
+  <section class="panel" data-panel="revenue">
+    <h2>① 月營收</h2>
+    <canvas id="chart-revenue" width="360" height="140"></canvas>
+    <div class="panel-foot" id="foot-revenue"></div>
+  </section>
+
+  <section class="panel" data-panel="margin">
+    <h2>② 毛利率 / 營益率</h2>
+    <canvas id="chart-margin" width="360" height="140"></canvas>
+    <div class="panel-foot" id="foot-margin"></div>
+  </section>
+
+  <section class="panel" data-panel="opex">
+    <h2>③ 營運天數（收款+存貨）</h2>
+    <canvas id="chart-opex" width="360" height="140"></canvas>
+    <div class="panel-foot" id="foot-opex"></div>
+  </section>
+
+  <section class="panel" data-panel="eps">
+    <h2>④ 每股盈餘 EPS</h2>
+    <canvas id="chart-eps" width="360" height="140"></canvas>
+    <div class="panel-foot" id="foot-eps"></div>
+  </section>
+
+  <section class="panel" data-panel="health">
+    <h2>⑤ 財報健檢</h2>
+    <table class="mini-table" id="table-health"></table>
+  </section>
+
+  <section class="panel" data-panel="cashflow">
+    <h2>⑥ 現金流量</h2>
+    <canvas id="chart-cashflow" width="360" height="140"></canvas>
+    <div class="panel-foot" id="foot-cashflow"></div>
+  </section>
+
+  <section class="panel" data-panel="dividends">
+    <h2>⑦ 股利政策</h2>
+    <table class="mini-table" id="table-dividends"></table>
+  </section>
+
+  <section class="panel" data-panel="chips">
+    <h2>⑧ 籌碼（外資／大戶）</h2>
+    <canvas id="chart-chips" width="360" height="140"></canvas>
+    <div class="panel-foot" id="foot-chips"></div>
+  </section>
+
+  <section class="panel" data-panel="futures">
+    <h2>⑨ 三大法人期貨未平倉</h2>
+    <table class="mini-table" id="table-futures"></table>
+  </section>
+</main>
+
+<section id="empty-state" class="empty-state">
+  <p>輸入股票代碼開始查詢</p>
+  <p class="hint">資料來源：TWSE / TAIFEX 官方 OpenAPI + Fubon eBroker DJ / histock 入口網站（見 docs/agents/project.md）</p>
+</section>
+
+<div id="error-banner" class="error-banner hidden"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
