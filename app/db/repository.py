@@ -2,6 +2,7 @@ import sqlite3
 from datetime import UTC, datetime
 
 from app.scrapers.fubon_stock_info import StockInfo
+from app.scrapers.histock_revenue import MonthlyRevenue
 from app.scrapers.twse_isin import StockIsinInfo
 
 
@@ -52,3 +53,25 @@ def upsert_stock_info(conn: sqlite3.Connection, info: StockInfo) -> None:
         ),
     )
     conn.commit()
+
+
+def upsert_monthly_revenue(conn: sqlite3.Connection, code: str, rows: list[MonthlyRevenue]) -> None:
+    fetched_at = datetime.now(UTC).isoformat()
+    conn.executemany(
+        """
+        INSERT INTO revenue_monthly (code, month, revenue, fetched_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(code, month) DO UPDATE SET
+            revenue = excluded.revenue,
+            fetched_at = excluded.fetched_at
+        """,
+        [(code, row.month, row.revenue_thousands, fetched_at) for row in rows],
+    )
+    conn.commit()
+
+
+def get_monthly_revenue(conn: sqlite3.Connection, code: str) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT month, revenue FROM revenue_monthly WHERE code = ? ORDER BY month DESC",
+        (code,),
+    ).fetchall()
