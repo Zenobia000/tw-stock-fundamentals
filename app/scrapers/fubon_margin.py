@@ -5,6 +5,7 @@
 用 BeautifulSoup 手動解析（表頭不是 <th>，pandas.read_html 不可靠）。
 """
 
+import re
 from dataclasses import dataclass
 
 import httpx
@@ -12,6 +13,8 @@ from bs4 import BeautifulSoup
 
 MARGIN_URL_TEMPLATE = "https://fubon-ebrokerdj.fbs.com.tw/z/zc/zce/zce_{code}.djhtm"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 tw-stock-fundamentals/0.1"
+
+_QUARTER_RE = re.compile(r"^(\d{2,3})\.(\d)Q$")
 
 # 欄位順序對照 zce 頁面的 oScrollMenu 表頭
 _FIELD_ORDER = (
@@ -31,7 +34,7 @@ _FIELD_ORDER = (
 
 @dataclass
 class MarginQuarter:
-    quarter: str  # e.g. "115.2Q" (民國年.季別，原始格式，未轉西元)
+    quarter: str  # e.g. "2026Q2" (西元年+季別，跟其他表如 eps_quarterly/financial_health_quarterly 一致)
     revenue: float | None
     cost_of_goods_sold: float | None
     gross_profit: float | None
@@ -46,6 +49,15 @@ class MarginQuarter:
 
 class MarginNotFoundError(Exception):
     pass
+
+
+def _roc_quarter_to_ad(roc_quarter: str) -> str | None:
+    """把「115.2Q」這種民國年.季別字串轉成「2026Q2」。格式不符時回傳 None。"""
+    match = _QUARTER_RE.match(roc_quarter.strip())
+    if not match:
+        return None
+    roc_year, q = match.groups()
+    return f"{int(roc_year) + 1911}Q{q}"
 
 
 def _to_float(text: str | None) -> float | None:
@@ -74,7 +86,9 @@ def _parse_margin_html(html: str, code: str) -> list[MarginQuarter]:
         if len(cells) != len(_FIELD_ORDER):
             continue
         values = [c.get_text(strip=True) for c in cells]
-        quarter_label = values[0]
+        quarter_label = _roc_quarter_to_ad(values[0])
+        if quarter_label is None:
+            continue
         parsed = {
             field: (value if field == "quarter" else _to_float(value))
             for field, value in zip(_FIELD_ORDER, values, strict=True)

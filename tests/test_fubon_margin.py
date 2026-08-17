@@ -21,7 +21,7 @@ def test_parse_margin_html_extracts_quarterly_rows():
     assert len(quarters) >= 4
 
     latest = quarters[0]
-    assert latest.quarter == "115.2Q"
+    assert latest.quarter == "2026Q2"
     assert latest.revenue == 1270380
     assert latest.cost_of_goods_sold == 410070
     assert latest.gross_profit == 860311
@@ -34,7 +34,7 @@ def test_parse_margin_html_extracts_quarterly_rows():
     assert latest.eps == 27.25
 
     prior = quarters[1]
-    assert prior.quarter == "115.1Q"
+    assert prior.quarter == "2026Q1"
     assert prior.eps == 22.08
 
 
@@ -49,4 +49,4 @@ def test_fetch_margin_quarters_hits_fubon_endpoint_and_parses():
         return_value=httpx.Response(200, text=FIXTURE_2330)
     )
     quarters = fetch_margin_quarters("2330")
-    assert quarters[0].quarter == "115.2Q"
+    assert quarters[0].quarter == "2026Q2"
