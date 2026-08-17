@@ -43,13 +43,15 @@ CREATE TABLE IF NOT EXISTS margin_quarterly (
     PRIMARY KEY (code, quarter)
 );
 
+-- 營業費用 sheet 實際可拿的是週轉天數（histock），不是選銷/管理/研發費用細目
+-- （那要 MOPS 附註 XBRL 才有）。稅率改由 financial_health_quarterly 的
+-- 所得稅費用/稅前淨利算，不在這裡重複存。
 CREATE TABLE IF NOT EXISTS opex_quarterly (
     code TEXT NOT NULL REFERENCES stocks(code),
-    quarter TEXT NOT NULL,
-    selling_expense REAL,
-    admin_expense REAL,
-    rd_expense REAL,
-    tax_rate REAL,
+    quarter TEXT NOT NULL,          -- e.g. 2026Q1
+    ar_days REAL,                   -- 應收帳款收現天數
+    inventory_days REAL,            -- 存貨週轉天數
+    operating_cycle_days REAL,      -- 營運週轉天數 = ar_days + inventory_days
     fetched_at TEXT NOT NULL,
     PRIMARY KEY (code, quarter)
 );
