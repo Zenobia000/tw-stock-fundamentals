@@ -90,13 +90,39 @@ html, body {
 }
 .search-results div:hover { background: var(--amber-dim); color: #000; }
 
-.clock {
+.rankings-toggle {
   margin-left: auto;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--cyan);
+  font-family: var(--mono);
+  padding: 5px 12px;
+  cursor: pointer;
+}
+.rankings-toggle:hover { border-color: var(--cyan); }
+.rankings-toggle.active { background: var(--cyan); color: #000; }
+
+.clock {
   color: var(--grey);
   font-size: 12px;
 }
 
 .hidden { display: none !important; }
+
+.rankings-view {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.rankings-view h2 {
+  font-size: 11px;
+  color: var(--cyan);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 0 8px 0;
+  font-weight: 700;
+}
+.rankings-view .mini-table td:first-child { cursor: pointer; color: var(--amber); }
+.rankings-view .mini-table tr:hover { background: #151005; }
 
 .summary {
   padding: 10px 16px;

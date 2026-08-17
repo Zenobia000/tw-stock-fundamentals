@@ -9,6 +9,8 @@ const els = {
   grid: document.getElementById("grid"),
   emptyState: document.getElementById("empty-state"),
   errorBanner: document.getElementById("error-banner"),
+  rankingsToggle: document.getElementById("rankings-toggle"),
+  rankingsView: document.getElementById("rankings-view"),
 };
 
 // ---- clock ----
@@ -368,13 +370,73 @@ function renderTargetPrice(tp) {
   } else {
     noteEl.textContent = `估TTM EPS ${fmt(tp.estimated_ttm_eps, 2)}　PE分位 ${fmt(tp.pe_low, 1)}/${fmt(tp.pe_mid, 1)}/${fmt(tp.pe_high, 1)}（樣本${tp.sample_size}季）`;
   }
+  if (tp.capital_reduction_applied) {
+    noteEl.textContent += "　⚠ 已套用減資校正";
+  }
 }
 
+// ---- rankings view ----
+function renderRankingsTable(rows) {
+  const table = document.getElementById("table-rankings");
+  if (!rows.length) {
+    table.innerHTML = "<tr><td>尚無資料</td></tr>";
+    return;
+  }
+  const header = "<tr><th>#</th><th>代碼</th><th>名稱</th><th>成交值</th><th>收盤價</th></tr>";
+  const body = rows
+    .map(
+      (r) =>
+        `<tr><td>${r.rank}</td><td data-code="${r.code}">${r.code}</td><td>${r.name}</td><td>${fmt(r.value / 1e8, 2)} 億</td><td>${fmt(r.closing_price ?? r.value, 1)}</td></tr>`
+    )
+    .join("");
+  table.innerHTML = header + body;
+  table.querySelectorAll("td[data-code]").forEach((cell) => {
+    cell.addEventListener("click", () => {
+      hideRankingsView();
+      els.input.value = cell.dataset.code;
+      loadStock(cell.dataset.code);
+    });
+  });
+}
+
+function showRankingsView() {
+  els.rankingsToggle.classList.add("active");
+  els.rankingsView.classList.remove("hidden");
+  els.summary.classList.add("hidden");
+  els.grid.classList.add("hidden");
+  els.emptyState.classList.add("hidden");
+  fetchJson(`${API}/rankings/turnover_listed`)
+    .then(renderRankingsTable)
+    .catch((e) => showError(`排行榜查詢失敗：${e.message}`));
+}
+
+function hideRankingsView() {
+  els.rankingsToggle.classList.remove("active");
+  els.rankingsView.classList.add("hidden");
+  if (lastLoadedCode) {
+    els.summary.classList.remove("hidden");
+    els.grid.classList.remove("hidden");
+  } else {
+    els.emptyState.classList.remove("hidden");
+  }
+}
+
+els.rankingsToggle.addEventListener("click", () => {
+  if (els.rankingsView.classList.contains("hidden")) {
+    showRankingsView();
+  } else {
+    hideRankingsView();
+  }
+});
+
 // ---- main load ----
+let lastLoadedCode = null;
+
 async function loadStock(code) {
   els.emptyState.classList.add("hidden");
   try {
     const dashboard = await fetchJson(`${API}/stocks/${encodeURIComponent(code)}/dashboard`);
+    lastLoadedCode = code;
     els.summary.classList.remove("hidden");
     els.grid.classList.remove("hidden");
 
