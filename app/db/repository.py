@@ -1,6 +1,7 @@
 import sqlite3
 from datetime import UTC, datetime
 
+from app.scrapers.fubon_eps import QuarterlyEps
 from app.scrapers.fubon_margin import MarginQuarter
 from app.scrapers.fubon_stock_info import StockInfo
 from app.scrapers.histock_cashflow import QuarterlyCashflow
@@ -311,3 +312,25 @@ def upsert_daily_chips(conn: sqlite3.Connection, code: str, rows: list[DailyChip
         ],
     )
     conn.commit()
+
+
+def upsert_quarterly_eps(conn: sqlite3.Connection, code: str, rows: list[QuarterlyEps]) -> None:
+    fetched_at = datetime.now(UTC).isoformat()
+    conn.executemany(
+        """
+        INSERT INTO eps_quarterly (code, quarter, eps, fetched_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(code, quarter) DO UPDATE SET
+            eps = excluded.eps,
+            fetched_at = excluded.fetched_at
+        """,
+        [(code, row.quarter, row.eps, fetched_at) for row in rows],
+    )
+    conn.commit()
+
+
+def get_quarterly_eps(conn: sqlite3.Connection, code: str) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT quarter, eps FROM eps_quarterly WHERE code = ? ORDER BY quarter DESC",
+        (code,),
+    ).fetchall()
