@@ -7,6 +7,7 @@ from app.calc.valuation import (
     estimate_income_statement,
     estimate_quarterly_revenue,
     lan_value,
+    quarter_over_quarter_signal,
     split_core_eps,
 )
 
@@ -79,3 +80,20 @@ def test_lan_value_hand_calculation():
 
 def test_lan_value_handles_zero_pb():
     assert lan_value(0.12, 0.9, 0) is None
+
+
+def test_quarter_over_quarter_signal_higher_is_better_default():
+    assert quarter_over_quarter_signal(120, 100) == "red"      # 增=紅
+    assert quarter_over_quarter_signal(80, 100) == "green"     # 減=綠
+
+
+def test_quarter_over_quarter_signal_lower_is_better_reverses_direction():
+    # 天數/負債比類指標：降=紅、增=綠
+    assert quarter_over_quarter_signal(20, 30, lower_is_better=True) == "red"
+    assert quarter_over_quarter_signal(30, 20, lower_is_better=True) == "green"
+
+
+def test_quarter_over_quarter_signal_none_when_data_missing_or_unchanged():
+    assert quarter_over_quarter_signal(None, 100) is None
+    assert quarter_over_quarter_signal(100, None) is None
+    assert quarter_over_quarter_signal(100, 100) is None

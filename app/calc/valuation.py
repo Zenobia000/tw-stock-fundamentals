@@ -9,6 +9,9 @@
 """
 
 from dataclasses import dataclass
+from typing import Literal
+
+Signal = Literal["red", "green"]
 
 
 @dataclass
@@ -95,3 +98,17 @@ def lan_value(roe: float, core_ratio: float, pb: float) -> float | None:
     if not pb:
         return None
     return (roe * core_ratio) / pb
+
+
+def quarter_over_quarter_signal(
+    current: float | None, previous: float | None, *, lower_is_better: bool = False
+) -> Signal | None:
+    """紅綠燈訊號：與前一季比較，紅=改善、綠=轉差（台股紅漲綠跌）。
+
+    多數指標「增=紅」；天數與負債比這類「越低越好」的指標用
+    lower_is_better=True，判斷方向自動反轉。資料不足（None 或相等）時回傳 None。
+    """
+    if current is None or previous is None or current == previous:
+        return None
+    improved = current < previous if lower_is_better else current > previous
+    return "red" if improved else "green"
