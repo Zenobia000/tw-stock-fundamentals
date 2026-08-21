@@ -14,11 +14,21 @@ import httpx
 
 from app.db.connection import get_connection
 from app.db.repository import (
+    upsert_annual_dividends,
+    upsert_broker_branches,
     upsert_daily_chips,
+    upsert_detailed_income,
+    upsert_detailed_balance,
+    upsert_detailed_cashflow,
     upsert_dividends,
+    upsert_etf_holdings,
     upsert_financial_health,
     upsert_futures_oi,
+    upsert_institutional_trading,
     upsert_margin_quarters,
+    upsert_margin_short,
+    upsert_market_cap_weights,
+    upsert_monthly_pe,
     upsert_monthly_revenue,
     upsert_quarterly_cashflow,
     upsert_quarterly_eps,
@@ -27,16 +37,29 @@ from app.db.repository import (
     upsert_stock,
     upsert_stock_info,
 )
+from app.scrapers.cmoney_stock import fetch_annual_dividends, fetch_etf_holdings
 from app.scrapers.fubon_eps import fetch_quarterly_eps
+from app.scrapers.fubon_institutional import fetch_institutional_trading
 from app.scrapers.fubon_margin import fetch_margin_quarters
+from app.scrapers.fubon_margin_short import fetch_margin_short
 from app.scrapers.fubon_stock_info import fetch_stock_info
 from app.scrapers.histock_cashflow import fetch_quarterly_cashflow
+from app.scrapers.histock_brokers import fetch_broker_branches
 from app.scrapers.histock_chips import fetch_daily_chips
 from app.scrapers.histock_dividend import fetch_dividend_history
+from app.scrapers.histock_pe import fetch_monthly_pe
 from app.scrapers.histock_revenue import fetch_monthly_revenue
 from app.scrapers.histock_turnover import fetch_quarterly_turnover
-from app.pricing import fetch_missing_quarterly_close_prices
+from app.scrapers.moneylink_income import fetch_detailed_income
+from app.scrapers.moneylink_balance import fetch_detailed_balance
+from app.scrapers.moneylink_cashflow import fetch_detailed_cashflow
+from app.pricing import (
+    fetch_missing_daily_prices,
+    fetch_missing_quarterly_close_prices,
+    recent_month_first_days,
+)
 from app.scrapers.taifex_futures import fetch_futures_oi
+from app.scrapers.taifex_market_cap import fetch_market_cap_weights
 from app.scrapers.twse_financials import fetch_financial_health
 from app.scrapers.twse_isin import fetch_stock_isin
 from app.scrapers.twse_rankings import fetch_turnover_rankings
@@ -54,12 +77,61 @@ _STEPS = (
     ("股票資訊", lambda conn, code, client: upsert_stock_info(conn, fetch_stock_info(code, client))),
     ("營收", lambda conn, code, client: upsert_monthly_revenue(conn, code, fetch_monthly_revenue(code, client))),
     ("毛利率業外", lambda conn, code, client: upsert_margin_quarters(conn, code, fetch_margin_quarters(code, client))),
+    (
+        "完整單季損益",
+        lambda conn, code, client: upsert_detailed_income(
+            conn, code, fetch_detailed_income(code, client)
+        ),
+    ),
+    (
+        "完整資產負債",
+        lambda conn, code, client: upsert_detailed_balance(
+            conn, code, fetch_detailed_balance(code, client)
+        ),
+    ),
     ("營業費用(週轉天數)", lambda conn, code, client: upsert_quarterly_turnover(conn, code, fetch_quarterly_turnover(code, client))),
     ("EPS", lambda conn, code, client: upsert_quarterly_eps(conn, code, fetch_quarterly_eps(code, client))),
+    ("五年月本益比", lambda conn, code, client: upsert_monthly_pe(conn, code, fetch_monthly_pe(code, client))),
     ("財報健檢", lambda conn, code, client: upsert_financial_health(conn, fetch_financial_health(code, client))),
     ("股息", lambda conn, code, client: upsert_dividends(conn, code, fetch_dividend_history(code, client))),
+    (
+        "年度股利率",
+        lambda conn, code, client: upsert_annual_dividends(
+            conn, code, fetch_annual_dividends(code, client)
+        ),
+    ),
     ("現金流", lambda conn, code, client: upsert_quarterly_cashflow(conn, code, fetch_quarterly_cashflow(code, client))),
+    (
+        "完整現金流與資本支出",
+        lambda conn, code, client: upsert_detailed_cashflow(
+            conn, code, fetch_detailed_cashflow(code, client)
+        ),
+    ),
     ("籌碼", lambda conn, code, client: upsert_daily_chips(conn, code, fetch_daily_chips(code, client))),
+    (
+        "法人買賣超",
+        lambda conn, code, client: upsert_institutional_trading(
+            conn, code, fetch_institutional_trading(code, client)
+        ),
+    ),
+    (
+        "融資融券",
+        lambda conn, code, client: upsert_margin_short(
+            conn, code, fetch_margin_short(code, client)
+        ),
+    ),
+    (
+        "ETF持股",
+        lambda conn, code, client: upsert_etf_holdings(
+            conn, code, fetch_etf_holdings(code, client)
+        ),
+    ),
+    (
+        "券商分點",
+        lambda conn, code, client: upsert_broker_branches(
+            conn, code, fetch_broker_branches(code, client)
+        ),
+    ),
 )
 
 
@@ -102,6 +174,17 @@ def refresh_stock(
             )
         except Exception as exc:  # noqa: BLE001
             results["季底股價(PE分位用)"] = f"{type(exc).__name__}: {exc}"
+
+        try:
+            daily_results = fetch_missing_daily_prices(
+                code, recent_month_first_days(12), conn, client=client
+            )
+            failed = {month: error for month, error in daily_results.items() if error is not None}
+            results["日股價(K線用)"] = (
+                None if not failed else f"{len(failed)}/{len(daily_results)} 月失敗：{failed}"
+            )
+        except Exception as exc:  # noqa: BLE001
+            results["日股價(K線用)"] = f"{type(exc).__name__}: {exc}"
     finally:
         if owns_client:
             client.close()
@@ -114,6 +197,7 @@ def refresh_stock(
 _MARKET_STEPS = (
     ("期貨籌碼", lambda conn, client: upsert_futures_oi(conn, fetch_futures_oi(client))),
     ("排行榜", lambda conn, client: upsert_rankings(conn, "turnover_listed", fetch_turnover_rankings(client=client))),
+    ("市值排行", lambda conn, client: upsert_market_cap_weights(conn, fetch_market_cap_weights(client))),
 )
 
 

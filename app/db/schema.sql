@@ -126,6 +126,10 @@ CREATE TABLE IF NOT EXISTS cashflow_quarterly (
     operating REAL,
     investing REAL,
     financing REAL,
+    capital_expenditure REAL,
+    free_cash_flow REAL,
+    operating_plus_investing REAL,
+    source TEXT,
     fetched_at TEXT NOT NULL,
     PRIMARY KEY (code, quarter)
 );
@@ -168,6 +172,8 @@ CREATE TABLE IF NOT EXISTS rankings_daily (
 CREATE TABLE IF NOT EXISTS market_cap_daily (
     date TEXT NOT NULL,
     code TEXT NOT NULL,
+    rank INTEGER,
+    name TEXT,
     market_cap REAL,
     pct_of_market REAL,
     fetched_at TEXT NOT NULL,
@@ -180,4 +186,158 @@ CREATE TABLE IF NOT EXISTS capital_reductions (
     resume_date TEXT,
     adjust_factor REAL,
     PRIMARY KEY (name)
+);
+
+-- Website v2 domain tables.  These tables preserve the workbook capabilities that
+-- cannot be represented by the original sheet-shaped schema.  Existing tables stay
+-- in place during migration so ingestion remains backwards compatible.
+CREATE TABLE IF NOT EXISTS income_statement_quarterly (
+    code TEXT NOT NULL REFERENCES stocks(code),
+    quarter TEXT NOT NULL,
+    revenue REAL,
+    gross_profit REAL,
+    selling_expense REAL,
+    administrative_expense REAL,
+    research_expense REAL,
+    operating_expense REAL,
+    operating_income REAL,
+    non_operating_income REAL,
+    pretax_income REAL,
+    net_income REAL,                 -- 本期淨利（含非控制權益）
+    parent_net_income REAL,          -- 母公司業主淨利
+    noncontrolling_income REAL,
+    income_tax_expense REAL,
+    eps REAL,
+    source TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (code, quarter)
+);
+
+CREATE TABLE IF NOT EXISTS balance_sheet_quarterly (
+    code TEXT NOT NULL REFERENCES stocks(code),
+    quarter TEXT NOT NULL,
+    cash_and_securities REAL,
+    accounts_receivable REAL,
+    inventory REAL,
+    long_term_investments REAL,
+    property_plant_equipment REAL,
+    current_assets REAL,
+    total_assets REAL,
+    accounts_payable REAL,
+    contract_liabilities REAL,
+    current_liabilities REAL,
+    interest_bearing_debt REAL,
+    total_liabilities REAL,
+    total_equity REAL,
+    capital REAL,
+    book_value_per_share REAL,
+    roe_ratio REAL,
+    source TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (code, quarter)
+);
+
+CREATE TABLE IF NOT EXISTS operating_efficiency_quarterly (
+    code TEXT NOT NULL REFERENCES stocks(code),
+    quarter TEXT NOT NULL,
+    ar_days REAL,
+    inventory_days REAL,
+    payable_days REAL,
+    operating_cycle_days REAL,
+    inventory_turnover REAL,
+    source TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (code, quarter)
+);
+
+CREATE TABLE IF NOT EXISTS pe_monthly (
+    code TEXT NOT NULL REFERENCES stocks(code),
+    month TEXT NOT NULL,
+    pe_ratio REAL,
+    source TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (code, month)
+);
+
+CREATE TABLE IF NOT EXISTS stock_prices_daily (
+    code TEXT NOT NULL REFERENCES stocks(code),
+    date TEXT NOT NULL,
+    open REAL,
+    high REAL,
+    low REAL,
+    close REAL,
+    volume REAL,
+    source TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (code, date)
+);
+
+CREATE TABLE IF NOT EXISTS stock_events (
+    code TEXT NOT NULL REFERENCES stocks(code),
+    event_date TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    detail TEXT,
+    source TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (code, event_date, event_type, title)
+);
+
+CREATE TABLE IF NOT EXISTS etf_holdings (
+    code TEXT NOT NULL REFERENCES stocks(code),
+    as_of_date TEXT NOT NULL,
+    etf_code TEXT NOT NULL,
+    etf_name TEXT,
+    holding_ratio REAL,
+    source TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (code, as_of_date, etf_code)
+);
+
+CREATE TABLE IF NOT EXISTS dividend_annual (
+    code TEXT NOT NULL REFERENCES stocks(code),
+    fiscal_year INTEGER NOT NULL,
+    cash_dividend REAL,
+    payout_ratio REAL,              -- fraction；33.2% 存 0.332
+    yield_ratio REAL,               -- fraction
+    source TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (code, fiscal_year)
+);
+
+CREATE TABLE IF NOT EXISTS institutional_trading_daily (
+    code TEXT NOT NULL REFERENCES stocks(code),
+    date TEXT NOT NULL,
+    institution TEXT NOT NULL,
+    buy REAL,
+    sell REAL,
+    net REAL,
+    source TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (code, date, institution)
+);
+
+CREATE TABLE IF NOT EXISTS margin_short_daily (
+    code TEXT NOT NULL REFERENCES stocks(code),
+    date TEXT NOT NULL,
+    margin_balance REAL,
+    short_balance REAL,
+    margin_utilization_ratio REAL,
+    short_margin_ratio REAL,
+    source TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (code, date)
+);
+
+CREATE TABLE IF NOT EXISTS broker_branches_daily (
+    code TEXT NOT NULL REFERENCES stocks(code),
+    date TEXT NOT NULL,
+    branch TEXT NOT NULL,
+    buy REAL,
+    sell REAL,
+    net REAL,
+    average_price REAL,
+    source TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (code, date, branch)
 );

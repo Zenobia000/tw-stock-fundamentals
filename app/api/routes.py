@@ -11,6 +11,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.db import queries
 from app.db.connection import get_connection
+from app.dashboard_v2_service import (
+    build_chips_market,
+    build_dashboard_v2,
+    build_financial_quality,
+    build_fundamentals,
+    build_market_radar,
+    build_nine_grid,
+)
+from app.calc.workbook_model import WorkbookModelOptions
 from app.valuation_service import build_valuation_snapshot
 
 router = APIRouter(prefix="/api")
@@ -121,3 +130,82 @@ def get_dashboard(code: str, conn: Db):
         "chips": _rows_to_dicts(queries.get_chips_daily(conn, code)),
         "target_price": build_valuation_snapshot(conn, code).__dict__,
     }
+
+
+@router.get("/stocks/{code}/dashboard-v2")
+def get_dashboard_v2(
+    code: str,
+    conn: Db,
+    revenue_basis: str = "latest_month",
+    gross_margin_basis: str = "latest_quarter",
+    operating_expense_basis: str = "four_quarter_average",
+    non_operating_basis: str = "four_quarter_average",
+    after_tax_basis: str = "four_quarter_average",
+    payout_basis: str = "historical_average",
+    growth_basis: str = "projected",
+    eps_mode: str = "standard",
+):
+    """五區網站共用 view model；query parameters 對應 workbook 八個下拉選項。"""
+    allowed = {
+        "revenue_basis": ({"latest_month", "recent_3_months", "trailing_12_months"}, revenue_basis),
+        "gross_margin_basis": ({"latest_quarter", "four_quarter_average"}, gross_margin_basis),
+        "operating_expense_basis": (
+            {"latest_quarter", "four_quarter_average"},
+            operating_expense_basis,
+        ),
+        "non_operating_basis": ({"default_zero", "four_quarter_average"}, non_operating_basis),
+        "after_tax_basis": ({"latest_quarter", "four_quarter_average"}, after_tax_basis),
+        "payout_basis": ({"latest_year", "historical_average"}, payout_basis),
+        "growth_basis": ({"one_year", "projected", "three_year", "four_year"}, growth_basis),
+        "eps_mode": ({"standard", "capital_reduction"}, eps_mode),
+    }
+    invalid = [name for name, (choices, value) in allowed.items() if value not in choices]
+    if invalid:
+        raise HTTPException(status_code=422, detail=f"無效模型選項：{', '.join(invalid)}")
+    stock = queries.get_stock(conn, code)
+    if stock is None:
+        raise HTTPException(status_code=404, detail=f"查無股票代碼 {code}")
+    options = WorkbookModelOptions(
+        revenue_basis=revenue_basis,
+        gross_margin_basis=gross_margin_basis,
+        operating_expense_basis=operating_expense_basis,
+        non_operating_basis=non_operating_basis,
+        after_tax_basis=after_tax_basis,
+        payout_basis=payout_basis,
+        growth_basis=growth_basis,
+        eps_mode=eps_mode,
+    )
+    return build_dashboard_v2(conn, code, options)
+
+
+@router.get("/stocks/{code}/fundamentals")
+def get_fundamentals_v2(code: str, conn: Db):
+    if queries.get_stock(conn, code) is None:
+        raise HTTPException(status_code=404, detail=f"查無股票代碼 {code}")
+    return build_fundamentals(conn, code)
+
+
+@router.get("/stocks/{code}/financial-quality")
+def get_financial_quality_v2(code: str, conn: Db):
+    if queries.get_stock(conn, code) is None:
+        raise HTTPException(status_code=404, detail=f"查無股票代碼 {code}")
+    return build_financial_quality(conn, code)
+
+
+@router.get("/stocks/{code}/nine-grid")
+def get_nine_grid_v2(code: str, conn: Db):
+    if queries.get_stock(conn, code) is None:
+        raise HTTPException(status_code=404, detail=f"查無股票代碼 {code}")
+    return build_nine_grid(conn, code)
+
+
+@router.get("/stocks/{code}/chips-market")
+def get_chips_market_v2(code: str, conn: Db):
+    if queries.get_stock(conn, code) is None:
+        raise HTTPException(status_code=404, detail=f"查無股票代碼 {code}")
+    return build_chips_market(conn, code)
+
+
+@router.get("/market/radar")
+def get_market_radar_v2(conn: Db):
+    return build_market_radar(conn)

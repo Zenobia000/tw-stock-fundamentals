@@ -62,6 +62,13 @@ def get_dividends(conn: sqlite3.Connection, code: str) -> list[sqlite3.Row]:
     ).fetchall()
 
 
+def get_annual_dividends(conn: sqlite3.Connection, code: str) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM dividend_annual WHERE code = ? ORDER BY fiscal_year DESC",
+        (code,),
+    ).fetchall()
+
+
 def get_cashflow_quarterly(conn: sqlite3.Connection, code: str) -> list[sqlite3.Row]:
     return conn.execute(
         "SELECT * FROM cashflow_quarterly WHERE code = ? ORDER BY quarter DESC",
@@ -103,4 +110,80 @@ def list_known_stocks(conn: sqlite3.Connection, query: str = "", limit: int = 20
     return conn.execute(
         "SELECT code, name, market, industry FROM stocks WHERE code LIKE ? OR name LIKE ? LIMIT ?",
         (like, like, limit),
+    ).fetchall()
+
+
+def get_income_statement_quarterly(conn: sqlite3.Connection, code: str) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM income_statement_quarterly WHERE code = ? ORDER BY quarter DESC",
+        (code,),
+    ).fetchall()
+
+
+def get_balance_sheet_quarterly(conn: sqlite3.Connection, code: str) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM balance_sheet_quarterly WHERE code = ? ORDER BY quarter DESC",
+        (code,),
+    ).fetchall()
+
+
+def get_operating_efficiency_quarterly(
+    conn: sqlite3.Connection, code: str
+) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM operating_efficiency_quarterly WHERE code = ? ORDER BY quarter DESC",
+        (code,),
+    ).fetchall()
+
+
+def get_pe_monthly(conn: sqlite3.Connection, code: str, limit: int = 65) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM pe_monthly WHERE code = ? ORDER BY month DESC LIMIT ?",
+        (code, limit),
+    ).fetchall()
+
+
+def get_stock_prices_daily(conn: sqlite3.Connection, code: str, limit: int = 260) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM stock_prices_daily WHERE code = ? ORDER BY date DESC LIMIT ?",
+        (code, limit),
+    ).fetchall()
+
+
+def get_stock_events(conn: sqlite3.Connection, code: str, limit: int = 20) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM stock_events WHERE code = ? ORDER BY event_date DESC LIMIT ?",
+        (code, limit),
+    ).fetchall()
+
+
+def get_etf_holdings(conn: sqlite3.Connection, code: str, limit: int = 20) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM etf_holdings WHERE code = ? ORDER BY as_of_date DESC, holding_ratio DESC LIMIT ?",
+        (code, limit),
+    ).fetchall()
+
+
+def get_institutional_trading_daily(
+    conn: sqlite3.Connection, code: str, limit: int = 180
+) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM institutional_trading_daily WHERE code = ? ORDER BY date DESC LIMIT ?",
+        (code, limit),
+    ).fetchall()
+
+
+def get_margin_short_daily(conn: sqlite3.Connection, code: str, limit: int = 60) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM margin_short_daily WHERE code = ? ORDER BY date DESC LIMIT ?",
+        (code, limit),
+    ).fetchall()
+
+
+def get_broker_branches_daily(
+    conn: sqlite3.Connection, code: str, limit: int = 20
+) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM broker_branches_daily WHERE code = ? ORDER BY date DESC, ABS(net) DESC LIMIT ?",
+        (code, limit),
     ).fetchall()

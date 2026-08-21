@@ -73,6 +73,17 @@ def _patch_all_sources(**overrides):
                 big_holder_pct=80.1, insider_holding_pct=5.3,
             )
         ],
+        "app.ingest.fetch_detailed_income": lambda code, client: [],
+        "app.ingest.fetch_detailed_balance": lambda code, client: [],
+        "app.ingest.fetch_detailed_cashflow": lambda code, client: [],
+        "app.ingest.fetch_annual_dividends": lambda code, client: [],
+        "app.ingest.fetch_monthly_pe": lambda code, client: [],
+        "app.ingest.fetch_institutional_trading": lambda code, client: [],
+        "app.ingest.fetch_margin_short": lambda code, client: [],
+        "app.ingest.fetch_etf_holdings": lambda code, client: [],
+        "app.ingest.fetch_broker_branches": lambda code, client: [],
+        "app.ingest.fetch_missing_quarterly_close_prices": lambda *args, **kwargs: {},
+        "app.ingest.fetch_missing_daily_prices": lambda *args, **kwargs: {},
     }
     defaults.update(overrides)
     return defaults
@@ -143,6 +154,7 @@ def test_refresh_market_populates_futures_and_rankings(tmp_path):
                 RankingEntry(rank=1, code="2330", name="台積電", trade_value=100.0, closing_price=2395.0, date="2026-08-14")
             ],
         ),
+        patch("app.ingest.fetch_market_cap_weights", side_effect=lambda client: []),
     ]
     for p in patches:
         p.start()
@@ -172,6 +184,7 @@ def test_refresh_market_one_source_failing_does_not_block_others(tmp_path):
                 RankingEntry(rank=1, code="2330", name="台積電", trade_value=100.0, closing_price=2395.0, date="2026-08-14")
             ],
         ),
+        patch("app.ingest.fetch_market_cap_weights", side_effect=lambda client: []),
     ]
     for p in patches:
         p.start()

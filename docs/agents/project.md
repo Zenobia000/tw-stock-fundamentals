@@ -4,12 +4,18 @@
 
 來源：`reference/波段股價預估試算_sunny_v2.xlsx`（18 個 sheet 的 Google Sheets 匯出檔）。原本用 `IMPORTHTML` 從多個網站即時抓資料，存成 Excel 後 `IMPORTHTML` 已失效，各頁資料是 2026/08/14 的快照。本專案要用 Python 爬蟲＋SQLite 重建這個即時抓取能力，並做成網站。
 
+產品功能與呈現以根目錄 `★★★★★★ 波段股價預估試算_sunny.xlsx` 為基準；
+`reference/..._sunny_v2.xlsx` 是 Google Sheets 公式還原模板，不作為本機快取數值基準。
+Sheet 能力重整、網站去向及 API 邊界見 `docs/specs/site-information-architecture.md`；
+估值與 PE 河流的逐步公式見 `docs/specs/workbook-formula-contract.md`。
+
 估值方法論代號「蘭氏」（見 `工作表1`），核心邏輯：
 
-- **估值鏈**（`總覽`!B5）：近月營收×3 → 預估季營收 → ×毛利率 −營業費用 +業外 → ×(1−稅率) → 預估稅後淨利 ÷股本 → 預估EPS × 高/中/低本益比 → 目標價
+- **估值鏈**（以 `股價預估` 實際公式為準）：營收基準 → ×毛利率 −營業費用 +業外 → ×稅後保留率 → 扣非控制權益 → 依最新季「EPS／母公司淨利」換算預估 EPS → TTM EPS × PE 河流 → 目標價
+- **本益比河流**：近五年月 PE 的 `AVERAGE ± 1/2/3 × STDEVP`；Excel 標籤雖寫「中位數」，公式實際是平均數，網站沿用公式而不沿用錯誤名稱
 - **弦值**（蘭氏 ROE 選股指標，全市場排名用）：`(ROE × 本業比率) / PB`，越高代表用越低股價買到越高品質的本業 ROE
 - **本業 EPS**：`EPS × 本業比率`，本業比率 = `1 − 業外損益佔比`，先剔除業外雜訊再評價
-- **自由現金流**：`營運現金 − 資本支出`
+- **自由現金流**：完整資料時為 `營運現金 − 資本支出`；舊來源只有投資現金流時，網站僅顯示 `營業＋投資` 近似值並明確標示，不稱為正式 FCF
 - **營運天數**：`收款天數 + 存貨天數`（蘭氏核心效率指標，越低越好）
 - 紅綠判讀：與前一季比較，多數指標「增=紅」，天數與負債比「降=紅」（方向自動反轉）
 
@@ -30,7 +36,7 @@
 | 排行榜 | 全市場成交值排行 | TWSE OpenAPI STOCK_DAY_ALL（官方） | 官方，優先 |
 | 減資一覽表 | 減資股 EPS 校正值 | 手動維護（原資料源已停用） | 手動 |
 
-**已知缺口**：市值排行（個股市值佔大盤比重）需要全市場股本/流通股數，TWSE OpenAPI 目前找不到一次回傳的端點，先不做；單股市值已由 stock_info 涵蓋。財報健檢的現金/應收帳款/存貨明細與現金流量表，TWSE OpenAPI 沒有對應 dataset，改由 cashflow_quarterly（histock 來源）補現金流部分，資產負債表明細維持缺項。營業費用 sheet 原規格（選銷/管理/研發費用、稅率）在任何來源都找不到可爬的頁面（需要 MOPS XBRL 附註），改用 histock 實際可拿的「營運週轉天數」（收款/存貨天數）替代，稅率則由財報健檢的稅前/稅後淨利算出（不另建資料源）。
+**資料遷移缺口**：網站能力與資料表已保留市值排行、完整損益、資產負債細目、日股價、法人、融資券、券商分點與 ETF 持股；尚未接妥來源時 API 回傳空陣列，前端顯示「待補資料源」。估值在缺少 `income_statement_quarterly` 時可用舊 `margin_quarterly` 推回營業費用，但會附警告；缺少 65 個月 `pe_monthly` 時可用季底股價／TTM EPS 暫代，也會明確標示不等同 Excel。這兩種 fallback 不得視為正式驗收完成。
 
 完整原始公式與每個 sheet 的欄位結構見 `docs/specs/workbook-analysis.md`（從 xlsx 逐格提取，含公式與快照值，可當 golden-value 測試的參考基準）。
 
@@ -48,12 +54,15 @@
 - `eps_quarterly(code, quarter, eps, fetched_at)`
 - `financial_health_quarterly(code, quarter, current_assets, total_assets, current_liabilities, total_liabilities, total_equity, capital, book_value_per_share, revenue, gross_profit, operating_income, pretax_income, net_income, eps, gross_margin_pct, operating_margin_pct, net_margin_pct, fetched_at)`
 - `dividends(code, fiscal_year, ex_dividend_date, payout_year, cash_dividend, stock_dividend, eps, payout_ratio_pct, yield_pct, fill_dividend_days, fetched_at)` — 逐次配息事件，非年度單筆
-- `cashflow_quarterly(code, quarter, operating, investing, financing, fetched_at)`
+- `cashflow_quarterly(code, quarter, operating, investing, financing, capital_expenditure, free_cash_flow, operating_plus_investing, source, fetched_at)`
 - `chips_daily(code, date, foreign_holding_pct, trust_holding_pct, margin_balance, short_balance, fetched_at)`
 - `futures_oi_daily(date, institution, contract, long_oi, short_oi, net_oi, fetched_at)`
 - `rankings_daily(date, category, rank, code, name, value, fetched_at)`
 - `market_cap_daily(date, code, market_cap, pct_of_market, fetched_at)` — 目前無填入來源（見已知缺口）
 - `capital_reductions(name PK, code, resume_date, adjust_factor)`
+- `income_statement_quarterly`、`balance_sheet_quarterly`、`operating_efficiency_quarterly` — 完整季度領域
+- `pe_monthly`、`stock_prices_daily` — PE 河流與 K 線歷史
+- `stock_events`、`dividend_annual`、`etf_holdings`、`institutional_trading_daily`、`margin_short_daily`、`broker_branches_daily` — 事件、年度股利與籌碼領域
 
 ## 驗收標準
 

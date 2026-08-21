@@ -107,3 +107,55 @@ def test_search_stocks_matches_by_code_or_name(client):
     resp = client.get("/api/stocks/search", params={"q": "台積"})
     assert resp.status_code == 200
     assert resp.json()[0]["code"] == "2330"
+
+
+def test_dashboard_v2_exposes_five_integrated_areas(client):
+    resp = client.get("/api/stocks/2330/dashboard-v2")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert set(body) == {
+        "stock",
+        "decision",
+        "fundamentals",
+        "financial_quality",
+        "nine_grid",
+        "chips_market",
+    }
+    assert body["decision"]["available"] is False
+    assert body["decision"]["coverage"]["revenue_months"] == 1
+    assert body["nine_grid"]["daily_prices"] == []
+    assert body["financial_quality"]["capital_reduction"] is None
+
+
+def test_dashboard_v2_rejects_invalid_workbook_option(client):
+    resp = client.get("/api/stocks/2330/dashboard-v2", params={"growth_basis": "guess"})
+    assert resp.status_code == 422
+    assert "growth_basis" in resp.json()["detail"]
+
+
+def test_integrated_area_endpoints_have_stable_shapes(client):
+    expected_keys = {
+        "fundamentals": {"revenue", "profitability", "income_statement", "eps"},
+        "financial-quality": {
+            "financial_health",
+            "balance_sheet",
+            "efficiency",
+            "cashflow",
+            "dividends",
+            "annual_dividends",
+            "events",
+            "capital_reduction",
+        },
+        "nine-grid": {"quarterly", "monthly_revenue", "daily_prices", "signals", "coverage"},
+        "chips-market": {
+            "holdings",
+            "institutional_trading",
+            "margin_short",
+            "broker_branches",
+            "etf_holdings",
+        },
+    }
+    for endpoint, keys in expected_keys.items():
+        resp = client.get(f"/api/stocks/2330/{endpoint}")
+        assert resp.status_code == 200
+        assert set(resp.json()) == keys
