@@ -124,7 +124,9 @@ def _parse_balance_html(html: str, code: str) -> list[DetailedBalanceQuarter]:
             "current_assets": value("流動資產", quarter),
             "total_assets": value("資產", quarter),
             "accounts_payable": total(("應付帳款", "應付帳款-關係人"), quarter),
-            "contract_liabilities": None,
+            "contract_liabilities": total(
+                ("合約負債-流動", "合約負債-非流動"), quarter
+            ),
             "current_liabilities": value("流動負債", quarter),
             "interest_bearing_debt": total(
                 (

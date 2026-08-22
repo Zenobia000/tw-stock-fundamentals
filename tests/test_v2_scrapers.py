@@ -1,3 +1,5 @@
+import pytest
+
 from app.db.connection import get_connection
 from app.db.repository import (
     upsert_annual_dividends,
@@ -231,6 +233,48 @@ def test_parse_moneylink_balance_normalizes_snapshot_values_and_book_value():
     assert rows[0].accounts_payable == 620
     assert rows[0].total_assets == 10000
     assert rows[0].book_value_per_share == 280
+
+
+def test_parse_moneylink_balance_extracts_contract_liabilities():
+    """合約負債-流動／合約負債-非流動 是 MoneyLink 資產負債表真實會出現的科目
+    （已用 3037 的真實頁面驗證過標籤文字），先前 parser 寫死回傳 None，
+    翁氏九宮格的「合約負債」欄位因此永遠是空的。"""
+    labels = {
+        "科目佔位": [0, 0],  # 讓下面的合約負債列不是表格第一列
+        "合約負債-流動": [120000, 100000],
+        "合約負債-非流動": [30000, 25000],
+    }
+    body = "".join(
+        f"<tr><td>{label}</td>{''.join(f'<td>{value}</td>' for value in values)}</tr>"
+        for label, values in labels.items()
+    )
+    html = f"""
+    <table class="NormalTable">
+      <tr><td>科目</td><td>115 2026 .Q2</td><td>115 2026 .Q1</td></tr>
+      {body}
+    </table>
+    """
+    rows = _parse_balance_html(html, "3037")
+    assert rows[0].contract_liabilities == pytest.approx(150.0)  # (120000+30000)/1000
+    assert rows[1].contract_liabilities == pytest.approx(125.0)
+
+
+def test_parse_moneylink_balance_contract_liabilities_none_when_absent():
+    """TSMC(2330) 的資產負債表沒有拆分合約負債科目，應該回傳 None，
+    不是誤報成 0。"""
+    labels = {"應付帳款": [600000, 550000]}
+    body = "".join(
+        f"<tr><td>{label}</td>{''.join(f'<td>{value}</td>' for value in values)}</tr>"
+        for label, values in labels.items()
+    )
+    html = f"""
+    <table class="NormalTable">
+      <tr><td>科目</td><td>115 2026 .Q2</td><td>115 2026 .Q1</td></tr>
+      {body}
+    </table>
+    """
+    rows = _parse_balance_html(html, "2330")
+    assert rows[0].contract_liabilities is None
 
 
 def test_parse_moneylink_cashflow_produces_formal_fcf_from_capex():
