@@ -51,7 +51,10 @@ def _parse_annual_dividend_html(html: str, code: str) -> list[AnnualDividend]:
     results: list[AnnualDividend] = []
     active: dict | None = None
     for row in table.find_all("tr"):
-        values = [cell.get_text(" ", strip=True) for cell in row.find_all(["th", "td"], recursive=False)]
+        values = [
+            cell.get_text(" ", strip=True)
+            for cell in row.find_all(["th", "td"], recursive=False)
+        ]
         if not values:
             continue
         if len(values) == 15 and values[0].isdigit() and len(values[0]) == 4:
@@ -85,7 +88,10 @@ def _parse_etf_holdings_html(
     as_of_date = as_of_date or datetime.now(UTC).date().isoformat()
     results: list[EtfHolding] = []
     for row in table.find_all("tr"):
-        values = [cell.get_text(" ", strip=True) for cell in row.find_all(["th", "td"], recursive=False)]
+        values = [
+            cell.get_text(" ", strip=True)
+            for cell in row.find_all(["th", "td"], recursive=False)
+        ]
         if len(values) != 5:
             continue
         match = _ETF_NAME.match(values[0])
@@ -120,7 +126,9 @@ def fetch_etf_holdings(
     return _fetch_and_parse(
         code,
         "fund-holdings",
-        lambda html, stock_code: _parse_etf_holdings_html(html, stock_code, resolved_date),
+        lambda html, stock_code: _parse_etf_holdings_html(
+            html, stock_code, resolved_date
+        ),
         client,
     )
 

@@ -48,7 +48,9 @@ def get_eps_quarterly(conn: sqlite3.Connection, code: str) -> list[sqlite3.Row]:
     ).fetchall()
 
 
-def get_financial_health_quarterly(conn: sqlite3.Connection, code: str) -> list[sqlite3.Row]:
+def get_financial_health_quarterly(
+    conn: sqlite3.Connection, code: str
+) -> list[sqlite3.Row]:
     return conn.execute(
         "SELECT * FROM financial_health_quarterly WHERE code = ? ORDER BY quarter DESC",
         (code,),
@@ -76,7 +78,9 @@ def get_cashflow_quarterly(conn: sqlite3.Connection, code: str) -> list[sqlite3.
     ).fetchall()
 
 
-def get_chips_daily(conn: sqlite3.Connection, code: str, limit: int = 60) -> list[sqlite3.Row]:
+def get_chips_daily(
+    conn: sqlite3.Connection, code: str, limit: int = 60
+) -> list[sqlite3.Row]:
     return conn.execute(
         "SELECT * FROM chips_daily WHERE code = ? ORDER BY date DESC LIMIT ?",
         (code, limit),
@@ -93,18 +97,46 @@ def get_futures_oi_latest(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     ).fetchall()
 
 
-def get_rankings(conn: sqlite3.Connection, category: str, limit: int = 20) -> list[sqlite3.Row]:
+def get_rankings(
+    conn: sqlite3.Connection, category: str, limit: int = 20
+) -> list[sqlite3.Row]:
     return conn.execute(
         """
-        SELECT * FROM rankings_daily
-        WHERE category = ? AND date = (SELECT MAX(date) FROM rankings_daily WHERE category = ?)
-        ORDER BY rank ASC LIMIT ?
+        SELECT r.*, s.market, s.industry
+        FROM rankings_daily r
+        LEFT JOIN stocks s ON s.code = r.code
+        WHERE r.category = ?
+          AND r.date = (
+              SELECT MAX(date) FROM rankings_daily WHERE category = ?
+          )
+        ORDER BY r.rank ASC LIMIT ?
         """,
         (category, category, limit),
     ).fetchall()
 
 
-def list_known_stocks(conn: sqlite3.Connection, query: str = "", limit: int = 20) -> list[sqlite3.Row]:
+def get_sector_index_names(conn: sqlite3.Connection) -> list[str]:
+    rows = conn.execute("SELECT DISTINCT index_name FROM sector_index_daily").fetchall()
+    return [row["index_name"] for row in rows]
+
+
+def get_sector_index_series(
+    conn: sqlite3.Connection, index_name: str
+) -> list[sqlite3.Row]:
+    return conn.execute(
+        """
+        SELECT date, close_index, change_pct
+        FROM sector_index_daily
+        WHERE index_name = ?
+        ORDER BY date ASC
+        """,
+        (index_name,),
+    ).fetchall()
+
+
+def list_known_stocks(
+    conn: sqlite3.Connection, query: str = "", limit: int = 20
+) -> list[sqlite3.Row]:
     """給前端股票代碼/名稱搜尋自動完成用。"""
     like = f"%{query}%"
     return conn.execute(
@@ -113,14 +145,18 @@ def list_known_stocks(conn: sqlite3.Connection, query: str = "", limit: int = 20
     ).fetchall()
 
 
-def get_income_statement_quarterly(conn: sqlite3.Connection, code: str) -> list[sqlite3.Row]:
+def get_income_statement_quarterly(
+    conn: sqlite3.Connection, code: str
+) -> list[sqlite3.Row]:
     return conn.execute(
         "SELECT * FROM income_statement_quarterly WHERE code = ? ORDER BY quarter DESC",
         (code,),
     ).fetchall()
 
 
-def get_balance_sheet_quarterly(conn: sqlite3.Connection, code: str) -> list[sqlite3.Row]:
+def get_balance_sheet_quarterly(
+    conn: sqlite3.Connection, code: str
+) -> list[sqlite3.Row]:
     return conn.execute(
         "SELECT * FROM balance_sheet_quarterly WHERE code = ? ORDER BY quarter DESC",
         (code,),
@@ -136,28 +172,36 @@ def get_operating_efficiency_quarterly(
     ).fetchall()
 
 
-def get_pe_monthly(conn: sqlite3.Connection, code: str, limit: int = 65) -> list[sqlite3.Row]:
+def get_pe_monthly(
+    conn: sqlite3.Connection, code: str, limit: int = 65
+) -> list[sqlite3.Row]:
     return conn.execute(
         "SELECT * FROM pe_monthly WHERE code = ? ORDER BY month DESC LIMIT ?",
         (code, limit),
     ).fetchall()
 
 
-def get_stock_prices_daily(conn: sqlite3.Connection, code: str, limit: int = 260) -> list[sqlite3.Row]:
+def get_stock_prices_daily(
+    conn: sqlite3.Connection, code: str, limit: int = 260
+) -> list[sqlite3.Row]:
     return conn.execute(
         "SELECT * FROM stock_prices_daily WHERE code = ? ORDER BY date DESC LIMIT ?",
         (code, limit),
     ).fetchall()
 
 
-def get_stock_events(conn: sqlite3.Connection, code: str, limit: int = 20) -> list[sqlite3.Row]:
+def get_stock_events(
+    conn: sqlite3.Connection, code: str, limit: int = 20
+) -> list[sqlite3.Row]:
     return conn.execute(
         "SELECT * FROM stock_events WHERE code = ? ORDER BY event_date DESC LIMIT ?",
         (code, limit),
     ).fetchall()
 
 
-def get_etf_holdings(conn: sqlite3.Connection, code: str, limit: int = 20) -> list[sqlite3.Row]:
+def get_etf_holdings(
+    conn: sqlite3.Connection, code: str, limit: int = 20
+) -> list[sqlite3.Row]:
     return conn.execute(
         "SELECT * FROM etf_holdings WHERE code = ? ORDER BY as_of_date DESC, holding_ratio DESC LIMIT ?",
         (code, limit),
@@ -173,7 +217,9 @@ def get_institutional_trading_daily(
     ).fetchall()
 
 
-def get_margin_short_daily(conn: sqlite3.Connection, code: str, limit: int = 60) -> list[sqlite3.Row]:
+def get_margin_short_daily(
+    conn: sqlite3.Connection, code: str, limit: int = 60
+) -> list[sqlite3.Row]:
     return conn.execute(
         "SELECT * FROM margin_short_daily WHERE code = ? ORDER BY date DESC LIMIT ?",
         (code, limit),

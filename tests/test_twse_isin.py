@@ -4,9 +4,16 @@ import httpx
 import pytest
 import respx
 
-from app.scrapers.twse_isin import ISIN_URL, StockNotFoundError, _parse_isin_html, fetch_stock_isin
+from app.scrapers.twse_isin import (
+    ISIN_URL,
+    StockNotFoundError,
+    _parse_isin_html,
+    fetch_stock_isin,
+)
 
-FIXTURE_2330 = (Path(__file__).parent / "fixtures" / "isin_2330.html").read_text(encoding="utf-8")
+FIXTURE_2330 = (Path(__file__).parent / "fixtures" / "isin_2330.html").read_text(
+    encoding="utf-8"
+)
 
 
 def test_parse_isin_html_extracts_known_fields():
@@ -20,7 +27,9 @@ def test_parse_isin_html_extracts_known_fields():
 
 
 def test_parse_isin_html_raises_for_empty_result():
-    empty_html = "<html><body><table class='h4'><tr><td>頁面編號</td></tr></table></body></html>"
+    empty_html = (
+        "<html><body><table class='h4'><tr><td>頁面編號</td></tr></table></body></html>"
+    )
     with pytest.raises(StockNotFoundError):
         _parse_isin_html(empty_html, "9999")
 

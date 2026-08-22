@@ -11,9 +11,9 @@ from app.scrapers.histock_dividend import (
     fetch_dividend_history,
 )
 
-FIXTURE_2330 = (Path(__file__).parent / "fixtures" / "histock_dividend_2330.html").read_text(
-    encoding="utf-8"
-)
+FIXTURE_2330 = (
+    Path(__file__).parent / "fixtures" / "histock_dividend_2330.html"
+).read_text(encoding="utf-8")
 
 
 def test_parse_dividend_html_extracts_known_rows():

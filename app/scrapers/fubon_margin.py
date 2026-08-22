@@ -101,7 +101,9 @@ def _parse_margin_html(html: str, code: str) -> list[MarginQuarter]:
     return quarters
 
 
-def fetch_margin_quarters(code: str, client: httpx.Client | None = None) -> list[MarginQuarter]:
+def fetch_margin_quarters(
+    code: str, client: httpx.Client | None = None
+) -> list[MarginQuarter]:
     owns_client = client is None
     client = client or httpx.Client(headers={"User-Agent": USER_AGENT}, timeout=15)
     try:

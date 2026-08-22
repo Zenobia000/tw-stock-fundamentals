@@ -88,7 +88,15 @@ def test_get_revenue_returns_rows(client):
 
 
 def test_empty_feature_endpoints_return_empty_list_not_error(client):
-    for path in ["margin", "opex", "eps", "financial-health", "dividends", "cashflow", "chips"]:
+    for path in [
+        "margin",
+        "opex",
+        "eps",
+        "financial-health",
+        "dividends",
+        "cashflow",
+        "chips",
+    ]:
         resp = client.get(f"/api/stocks/2330/{path}")
         assert resp.status_code == 200
         assert resp.json() == []
@@ -120,11 +128,48 @@ def test_dashboard_v2_exposes_five_integrated_areas(client):
         "financial_quality",
         "nine_grid",
         "chips_market",
+        "freshness",
     }
     assert body["decision"]["available"] is False
     assert body["decision"]["coverage"]["revenue_months"] == 1
     assert body["nine_grid"]["daily_prices"] == []
     assert body["financial_quality"]["capital_reduction"] is None
+    assert body["freshness"]["revenue_month"] == "2026-07"
+    assert body["freshness"]["market_date"] is None
+
+
+def test_refresh_endpoints_start_and_report_background_job(client, monkeypatch):
+    monkeypatch.setattr(
+        "app.api.routes.refresh_jobs.start",
+        lambda code: {"code": code, "status": "running"},
+    )
+    monkeypatch.setattr(
+        "app.api.routes.refresh_jobs.status",
+        lambda code: {"code": code, "status": "completed", "message": "資料更新完成"},
+    )
+
+    started = client.post("/api/stocks/2330/refresh")
+    assert started.status_code == 202
+    assert started.json()["status"] == "running"
+
+    status = client.get("/api/stocks/2330/refresh-status")
+    assert status.status_code == 200
+    assert status.json()["status"] == "completed"
+
+
+def test_refresh_allows_first_time_stock_code_and_rejects_bad_format(
+    client, monkeypatch
+):
+    monkeypatch.setattr(
+        "app.api.routes.refresh_jobs.start",
+        lambda code: {"code": code, "status": "running"},
+    )
+    response = client.post("/api/stocks/2454/refresh")
+    assert response.status_code == 202
+    assert response.json()["code"] == "2454"
+
+    invalid = client.post("/api/stocks/not-a-code/refresh")
+    assert invalid.status_code == 422
 
 
 def test_dashboard_v2_rejects_invalid_workbook_option(client):
@@ -146,7 +191,13 @@ def test_integrated_area_endpoints_have_stable_shapes(client):
             "events",
             "capital_reduction",
         },
-        "nine-grid": {"quarterly", "monthly_revenue", "daily_prices", "signals", "coverage"},
+        "nine-grid": {
+            "quarterly",
+            "monthly_revenue",
+            "daily_prices",
+            "signals",
+            "coverage",
+        },
         "chips-market": {
             "holdings",
             "institutional_trading",

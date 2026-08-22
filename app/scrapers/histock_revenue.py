@@ -11,7 +11,9 @@ from io import StringIO
 import httpx
 import pandas as pd
 
-REVENUE_URL_TEMPLATE = "https://histock.tw/stock/{code}/%E8%B2%A1%E5%8B%99%E5%A0%B1%E8%A1%A8"
+REVENUE_URL_TEMPLATE = (
+    "https://histock.tw/stock/{code}/%E8%B2%A1%E5%8B%99%E5%A0%B1%E8%A1%A8"
+)
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 tw-stock-fundamentals/0.1"
 
 
@@ -58,11 +60,15 @@ def _parse_revenue_html(html: str, code: str) -> list[MonthlyRevenue]:
         revenue = _to_float(row["單月營收"])
         if revenue is None:
             continue
-        results.append(MonthlyRevenue(month=raw_month.replace("/", "-"), revenue_thousands=revenue))
+        results.append(
+            MonthlyRevenue(month=raw_month.replace("/", "-"), revenue_thousands=revenue)
+        )
     return results
 
 
-def fetch_monthly_revenue(code: str, client: httpx.Client | None = None) -> list[MonthlyRevenue]:
+def fetch_monthly_revenue(
+    code: str, client: httpx.Client | None = None
+) -> list[MonthlyRevenue]:
     owns_client = client is None
     client = client or httpx.Client(headers={"User-Agent": USER_AGENT}, timeout=15)
     try:

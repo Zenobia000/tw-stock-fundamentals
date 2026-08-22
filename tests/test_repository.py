@@ -127,5 +127,10 @@ def test_upsert_dividends_inserts_then_updates(tmp_path):
         "SELECT * FROM dividends WHERE code='2330' AND ex_dividend_date='06/11'"
     ).fetchone()
     assert row["yield_pct"] == 0.5
-    assert conn.execute("SELECT COUNT(*) c FROM dividends WHERE code='2330'").fetchone()["c"] == 2
+    assert (
+        conn.execute("SELECT COUNT(*) c FROM dividends WHERE code='2330'").fetchone()[
+            "c"
+        ]
+        == 2
+    )
     conn.close()

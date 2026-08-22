@@ -11,6 +11,15 @@ import httpx
 
 STOCK_DAY_URL = "https://www.twse.com.tw/exchangeReport/STOCK_DAY"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 tw-stock-fundamentals/0.1"
+REQUEST_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
+    "Referer": "https://www.twse.com.tw/zh/trading/historical/stock-day.html",
+}
 
 
 @dataclass
@@ -45,7 +54,9 @@ def _roc_date_to_ad(roc_date: str) -> str:
 
 def _parse_stock_day_json(payload: dict, code: str) -> list[DailyPrice]:
     if payload.get("stat") != "OK":
-        raise StockDayNotFoundError(f"查無股票代碼 {code} 該月份的日成交資料：{payload.get('stat')}")
+        raise StockDayNotFoundError(
+            f"查無股票代碼 {code} 該月份的日成交資料：{payload.get('stat')}"
+        )
 
     fields = payload.get("fields", [])
     try:
@@ -73,7 +84,9 @@ def _parse_stock_day_json(payload: dict, code: str) -> list[DailyPrice]:
     return results
 
 
-def fetch_stock_day(code: str, year_month_first_day: str, client: httpx.Client | None = None) -> list[DailyPrice]:
+def fetch_stock_day(
+    code: str, year_month_first_day: str, client: httpx.Client | None = None
+) -> list[DailyPrice]:
     """year_month_first_day: 該月任一天皆可，格式 YYYYMMDD（西元），例如 "20260701"。"""
     owns_client = client is None
     client = client or httpx.Client(headers={"User-Agent": USER_AGENT}, timeout=20)
@@ -81,6 +94,7 @@ def fetch_stock_day(code: str, year_month_first_day: str, client: httpx.Client |
         resp = client.get(
             STOCK_DAY_URL,
             params={"response": "json", "date": year_month_first_day, "stockNo": code},
+            headers=REQUEST_HEADERS,
         )
         resp.raise_for_status()
     finally:

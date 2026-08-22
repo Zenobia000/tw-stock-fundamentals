@@ -2,26 +2,27 @@ import sqlite3
 from datetime import UTC, datetime
 
 from app.scrapers.cmoney_stock import AnnualDividend, EtfHolding
-from app.scrapers.fubon_institutional import InstitutionalTrade
-from app.scrapers.fubon_margin_short import MarginShort
 from app.scrapers.fubon_eps import QuarterlyEps
+from app.scrapers.fubon_institutional import InstitutionalTrade
 from app.scrapers.fubon_margin import MarginQuarter
+from app.scrapers.fubon_margin_short import MarginShort
 from app.scrapers.fubon_stock_info import StockInfo
-from app.scrapers.histock_cashflow import QuarterlyCashflow
 from app.scrapers.histock_brokers import BrokerBranch
+from app.scrapers.histock_cashflow import QuarterlyCashflow
 from app.scrapers.histock_chips import DailyChips
 from app.scrapers.histock_dividend import DividendEvent
 from app.scrapers.histock_pe import MonthlyPe
 from app.scrapers.histock_revenue import MonthlyRevenue
 from app.scrapers.histock_turnover import QuarterlyTurnover
-from app.scrapers.moneylink_income import DetailedIncomeQuarter
 from app.scrapers.moneylink_balance import DetailedBalanceQuarter
 from app.scrapers.moneylink_cashflow import DetailedCashflowQuarter
+from app.scrapers.moneylink_income import DetailedIncomeQuarter
 from app.scrapers.taifex_futures import FuturesOI
 from app.scrapers.taifex_market_cap import MarketCapWeight
 from app.scrapers.twse_financials import FinancialHealthQuarter
 from app.scrapers.twse_isin import StockIsinInfo
 from app.scrapers.twse_rankings import RankingEntry
+from app.scrapers.twse_sector_index import SectorIndex
 from app.scrapers.twse_stock_day import DailyPrice
 
 
@@ -36,7 +37,13 @@ def upsert_stock(conn: sqlite3.Connection, info: StockIsinInfo) -> None:
             industry = excluded.industry,
             updated_at = excluded.updated_at
         """,
-        (info.code, info.name, info.market, info.industry, datetime.now(UTC).isoformat()),
+        (
+            info.code,
+            info.name,
+            info.market,
+            info.industry,
+            datetime.now(UTC).isoformat(),
+        ),
     )
     conn.commit()
 
@@ -74,7 +81,9 @@ def upsert_stock_info(conn: sqlite3.Connection, info: StockInfo) -> None:
     conn.commit()
 
 
-def upsert_monthly_revenue(conn: sqlite3.Connection, code: str, rows: list[MonthlyRevenue]) -> None:
+def upsert_monthly_revenue(
+    conn: sqlite3.Connection, code: str, rows: list[MonthlyRevenue]
+) -> None:
     fetched_at = datetime.now(UTC).isoformat()
     conn.executemany(
         """
@@ -96,7 +105,9 @@ def get_monthly_revenue(conn: sqlite3.Connection, code: str) -> list[sqlite3.Row
     ).fetchall()
 
 
-def upsert_dividends(conn: sqlite3.Connection, code: str, rows: list[DividendEvent]) -> None:
+def upsert_dividends(
+    conn: sqlite3.Connection, code: str, rows: list[DividendEvent]
+) -> None:
     fetched_at = datetime.now(UTC).isoformat()
     conn.executemany(
         """
@@ -134,7 +145,9 @@ def upsert_dividends(conn: sqlite3.Connection, code: str, rows: list[DividendEve
     conn.commit()
 
 
-def upsert_quarterly_cashflow(conn: sqlite3.Connection, code: str, rows: list[QuarterlyCashflow]) -> None:
+def upsert_quarterly_cashflow(
+    conn: sqlite3.Connection, code: str, rows: list[QuarterlyCashflow]
+) -> None:
     fetched_at = datetime.now(UTC).isoformat()
     conn.executemany(
         """
@@ -206,7 +219,9 @@ def upsert_detailed_cashflow(
     conn.commit()
 
 
-def upsert_financial_health(conn: sqlite3.Connection, rows: list[FinancialHealthQuarter]) -> None:
+def upsert_financial_health(
+    conn: sqlite3.Connection, rows: list[FinancialHealthQuarter]
+) -> None:
     fetched_at = datetime.now(UTC).isoformat()
     conn.executemany(
         """
@@ -264,7 +279,9 @@ def upsert_financial_health(conn: sqlite3.Connection, rows: list[FinancialHealth
     conn.commit()
 
 
-def upsert_quarterly_turnover(conn: sqlite3.Connection, code: str, rows: list[QuarterlyTurnover]) -> None:
+def upsert_quarterly_turnover(
+    conn: sqlite3.Connection, code: str, rows: list[QuarterlyTurnover]
+) -> None:
     fetched_at = datetime.now(UTC).isoformat()
     conn.executemany(
         """
@@ -277,14 +294,23 @@ def upsert_quarterly_turnover(conn: sqlite3.Connection, code: str, rows: list[Qu
             fetched_at = excluded.fetched_at
         """,
         [
-            (code, row.quarter, row.ar_days, row.inventory_days, row.operating_cycle_days, fetched_at)
+            (
+                code,
+                row.quarter,
+                row.ar_days,
+                row.inventory_days,
+                row.operating_cycle_days,
+                fetched_at,
+            )
             for row in rows
         ],
     )
     conn.commit()
 
 
-def upsert_margin_quarters(conn: sqlite3.Connection, code: str, rows: list[MarginQuarter]) -> None:
+def upsert_margin_quarters(
+    conn: sqlite3.Connection, code: str, rows: list[MarginQuarter]
+) -> None:
     fetched_at = datetime.now(UTC).isoformat()
     conn.executemany(
         """
@@ -342,14 +368,24 @@ def upsert_futures_oi(conn: sqlite3.Connection, rows: list[FuturesOI]) -> None:
             fetched_at = excluded.fetched_at
         """,
         [
-            (row.date, row.institution, row.contract, row.long_oi, row.short_oi, row.net_oi, fetched_at)
+            (
+                row.date,
+                row.institution,
+                row.contract,
+                row.long_oi,
+                row.short_oi,
+                row.net_oi,
+                fetched_at,
+            )
             for row in rows
         ],
     )
     conn.commit()
 
 
-def upsert_rankings(conn: sqlite3.Connection, category: str, rows: list[RankingEntry]) -> None:
+def upsert_rankings(
+    conn: sqlite3.Connection, category: str, rows: list[RankingEntry]
+) -> None:
     """rows 需已附帶各自的交易日（RankingEntry.date），查無日期的列直接跳過。"""
     fetched_at = datetime.now(UTC).isoformat()
     conn.executemany(
@@ -363,7 +399,15 @@ def upsert_rankings(conn: sqlite3.Connection, category: str, rows: list[RankingE
             fetched_at = excluded.fetched_at
         """,
         [
-            (row.date, category, row.rank, row.code, row.name, row.trade_value, fetched_at)
+            (
+                row.date,
+                category,
+                row.rank,
+                row.code,
+                row.name,
+                row.trade_value,
+                fetched_at,
+            )
             for row in rows
             if row.date is not None
         ],
@@ -371,7 +415,45 @@ def upsert_rankings(conn: sqlite3.Connection, category: str, rows: list[RankingE
     conn.commit()
 
 
-def upsert_daily_chips(conn: sqlite3.Connection, code: str, rows: list[DailyChips]) -> None:
+def upsert_sector_indices(conn: sqlite3.Connection, rows: list[SectorIndex]) -> None:
+    fetched_at = datetime.now(UTC).isoformat()
+    conn.executemany(
+        """
+        INSERT INTO sector_index_daily (
+            date, index_name, close_index, change_direction, change_points,
+            change_pct, remark, source, fetched_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(date, index_name) DO UPDATE SET
+            close_index = excluded.close_index,
+            change_direction = excluded.change_direction,
+            change_points = excluded.change_points,
+            change_pct = excluded.change_pct,
+            remark = excluded.remark,
+            source = excluded.source,
+            fetched_at = excluded.fetched_at
+        """,
+        [
+            (
+                row.date,
+                row.index_name,
+                row.close_index,
+                row.change_direction,
+                row.change_points,
+                row.change_pct,
+                row.remark,
+                "twse-mi-index",
+                fetched_at,
+            )
+            for row in rows
+        ],
+    )
+    conn.commit()
+
+
+def upsert_daily_chips(
+    conn: sqlite3.Connection, code: str, rows: list[DailyChips]
+) -> None:
     fetched_at = datetime.now(UTC).isoformat()
     conn.executemany(
         """
@@ -402,7 +484,9 @@ def upsert_daily_chips(conn: sqlite3.Connection, code: str, rows: list[DailyChip
     conn.commit()
 
 
-def upsert_quarterly_eps(conn: sqlite3.Connection, code: str, rows: list[QuarterlyEps]) -> None:
+def upsert_quarterly_eps(
+    conn: sqlite3.Connection, code: str, rows: list[QuarterlyEps]
+) -> None:
     fetched_at = datetime.now(UTC).isoformat()
     conn.executemany(
         """
@@ -425,7 +509,11 @@ def get_quarterly_eps(conn: sqlite3.Connection, code: str) -> list[sqlite3.Row]:
 
 
 def upsert_quarterly_close_price(
-    conn: sqlite3.Connection, code: str, quarter: str, close_price: float, price_date: str
+    conn: sqlite3.Connection,
+    code: str,
+    quarter: str,
+    close_price: float,
+    price_date: str,
 ) -> None:
     conn.execute(
         """
@@ -441,14 +529,18 @@ def upsert_quarterly_close_price(
     conn.commit()
 
 
-def get_quarterly_close_prices(conn: sqlite3.Connection, code: str) -> list[sqlite3.Row]:
+def get_quarterly_close_prices(
+    conn: sqlite3.Connection, code: str
+) -> list[sqlite3.Row]:
     return conn.execute(
         "SELECT quarter, close_price FROM stock_prices_quarterly WHERE code = ? ORDER BY quarter DESC",
         (code,),
     ).fetchall()
 
 
-def upsert_monthly_pe(conn: sqlite3.Connection, code: str, rows: list[MonthlyPe]) -> None:
+def upsert_monthly_pe(
+    conn: sqlite3.Connection, code: str, rows: list[MonthlyPe]
+) -> None:
     fetched_at = datetime.now(UTC).isoformat()
     conn.executemany(
         """
@@ -484,7 +576,9 @@ def upsert_institutional_trading(
     conn.commit()
 
 
-def upsert_margin_short(conn: sqlite3.Connection, code: str, rows: list[MarginShort]) -> None:
+def upsert_margin_short(
+    conn: sqlite3.Connection, code: str, rows: list[MarginShort]
+) -> None:
     fetched_at = datetime.now(UTC).isoformat()
     conn.executemany(
         """
@@ -517,7 +611,9 @@ def upsert_margin_short(conn: sqlite3.Connection, code: str, rows: list[MarginSh
     conn.commit()
 
 
-def upsert_daily_prices(conn: sqlite3.Connection, code: str, rows: list[DailyPrice]) -> None:
+def upsert_daily_prices(
+    conn: sqlite3.Connection, code: str, rows: list[DailyPrice]
+) -> None:
     fetched_at = datetime.now(UTC).isoformat()
     conn.executemany(
         """
@@ -535,7 +631,16 @@ def upsert_daily_prices(conn: sqlite3.Connection, code: str, rows: list[DailyPri
             fetched_at = excluded.fetched_at
         """,
         [
-            (code, row.date, row.open, row.high, row.low, row.close, row.volume, fetched_at)
+            (
+                code,
+                row.date,
+                row.open,
+                row.high,
+                row.low,
+                row.close,
+                row.volume,
+                fetched_at,
+            )
             for row in rows
         ],
     )
@@ -632,7 +737,9 @@ def upsert_annual_dividends(
     conn.commit()
 
 
-def upsert_etf_holdings(conn: sqlite3.Connection, code: str, rows: list[EtfHolding]) -> None:
+def upsert_etf_holdings(
+    conn: sqlite3.Connection, code: str, rows: list[EtfHolding]
+) -> None:
     fetched_at = datetime.now(UTC).isoformat()
     conn.executemany(
         """

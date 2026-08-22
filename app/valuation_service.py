@@ -35,8 +35,8 @@ from app.db.repository import get_quarterly_close_prices
 @dataclass
 class ValuationSnapshot:
     estimated_quarterly_revenue: float | None
-    estimated_eps: float | None          # 下一季單季預估 EPS（估值鏈直接產出）
-    estimated_ttm_eps: float | None      # 近3季實際 + 下一季預估，跟歷史本益比同基準
+    estimated_eps: float | None  # 下一季單季預估 EPS（估值鏈直接產出）
+    estimated_ttm_eps: float | None  # 近3季實際 + 下一季預估，跟歷史本益比同基準
     pe_low: float | None
     pe_mid: float | None
     pe_high: float | None
@@ -66,10 +66,12 @@ def _empty_snapshot(note: str) -> ValuationSnapshot:
 
 def build_valuation_snapshot(conn: sqlite3.Connection, code: str) -> ValuationSnapshot:
     latest_revenue_row = conn.execute(
-        "SELECT revenue FROM revenue_monthly WHERE code = ? ORDER BY month DESC LIMIT 1", (code,)
+        "SELECT revenue FROM revenue_monthly WHERE code = ? ORDER BY month DESC LIMIT 1",
+        (code,),
     ).fetchone()
     latest_margin_row = conn.execute(
-        "SELECT * FROM margin_quarterly WHERE code = ? ORDER BY quarter DESC LIMIT 1", (code,)
+        "SELECT * FROM margin_quarterly WHERE code = ? ORDER BY quarter DESC LIMIT 1",
+        (code,),
     ).fetchone()
     latest_health_row = conn.execute(
         "SELECT capital FROM financial_health_quarterly WHERE code = ? ORDER BY quarter DESC LIMIT 1",
@@ -89,7 +91,9 @@ def build_valuation_snapshot(conn: sqlite3.Connection, code: str) -> ValuationSn
     operating_margin_fraction = latest_margin_row["operating_margin_pct"] / 100
     operating_expense_ratio = gross_margin_fraction - operating_margin_fraction
     non_operating_thousands = (latest_margin_row["non_operating_income"] or 0) * 1000
-    tax_rate = effective_tax_rate(latest_margin_row["pretax_income"], latest_margin_row["net_income"])
+    tax_rate = effective_tax_rate(
+        latest_margin_row["pretax_income"], latest_margin_row["net_income"]
+    )
     if tax_rate is None:
         tax_rate = 0.0
 
@@ -100,7 +104,9 @@ def build_valuation_snapshot(conn: sqlite3.Connection, code: str) -> ValuationSn
         latest_non_operating_income=non_operating_thousands,
         tax_rate=tax_rate,
     )
-    estimated_eps_value = estimate_eps(estimated.estimated_net_income, capital_thousands)
+    estimated_eps_value = estimate_eps(
+        estimated.estimated_net_income, capital_thousands
+    )
 
     # 股價預估!E25「減資後季EPS」分支：估EPS / (1 - 減資一覽表校正值)。
     # 個股沒有減資紀錄時 capital_reductions 查無資料，維持原估 EPS 不變。
@@ -116,9 +122,13 @@ def build_valuation_snapshot(conn: sqlite3.Connection, code: str) -> ValuationSn
         capital_reduction_applied = True
 
     eps_rows = conn.execute(
-        "SELECT quarter, eps FROM eps_quarterly WHERE code = ? ORDER BY quarter DESC", (code,)
+        "SELECT quarter, eps FROM eps_quarterly WHERE code = ? ORDER BY quarter DESC",
+        (code,),
     ).fetchall()
-    price_rows = {row["quarter"]: row["close_price"] for row in get_quarterly_close_prices(conn, code)}
+    price_rows = {
+        row["quarter"]: row["close_price"]
+        for row in get_quarterly_close_prices(conn, code)
+    }
 
     eps_by_quarter = {row["quarter"]: row["eps"] for row in eps_rows}
     quarters_sorted = sorted(eps_by_quarter.keys())
@@ -134,7 +144,11 @@ def build_valuation_snapshot(conn: sqlite3.Connection, code: str) -> ValuationSn
 
     pe_ratios = compute_historical_pe_ratios(ttm_pairs)
 
-    trailing_3_actual = sum(eps_by_quarter[q] for q in quarters_sorted[-3:]) if len(quarters_sorted) >= 3 else None
+    trailing_3_actual = (
+        sum(eps_by_quarter[q] for q in quarters_sorted[-3:])
+        if len(quarters_sorted) >= 3
+        else None
+    )
     estimated_ttm_eps = (
         trailing_3_actual + estimated_eps_value
         if trailing_3_actual is not None and estimated_eps_value is not None

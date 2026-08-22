@@ -11,7 +11,9 @@ from app.scrapers.taifex_futures import (
     fetch_futures_oi,
 )
 
-FIXTURE = (Path(__file__).parent / "fixtures" / "taifex_futures.html").read_text(encoding="utf-8")
+FIXTURE = (Path(__file__).parent / "fixtures" / "taifex_futures.html").read_text(
+    encoding="utf-8"
+)
 
 
 def test_parse_futures_oi_extracts_known_first_row():

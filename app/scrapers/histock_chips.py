@@ -49,7 +49,8 @@ def _parse_chips_html(html: str, code: str) -> list[DailyChips]:
 
     df = tables[0]
     df.columns = [
-        "".join(str(col[-1] if isinstance(col, tuple) else col).split()) for col in df.columns
+        "".join(str(col[-1] if isinstance(col, tuple) else col).split())
+        for col in df.columns
     ]
     required = {"日期", "籌碼集中度", "外資籌碼", "大戶籌碼", "董監持股"}
     if not required.issubset(df.columns):
@@ -64,7 +65,12 @@ def _parse_chips_html(html: str, code: str) -> list[DailyChips]:
         foreign = _to_float(row["外資籌碼"])
         big_holder = _to_float(row["大戶籌碼"])
         insider = _to_float(row["董監持股"])
-        if concentration is None or foreign is None or big_holder is None or insider is None:
+        if (
+            concentration is None
+            or foreign is None
+            or big_holder is None
+            or insider is None
+        ):
             continue
         results.append(
             DailyChips(
@@ -78,7 +84,9 @@ def _parse_chips_html(html: str, code: str) -> list[DailyChips]:
     return results
 
 
-def fetch_daily_chips(code: str, client: httpx.Client | None = None) -> list[DailyChips]:
+def fetch_daily_chips(
+    code: str, client: httpx.Client | None = None
+) -> list[DailyChips]:
     owns_client = client is None
     client = client or httpx.Client(headers={"User-Agent": USER_AGENT}, timeout=15)
     try:

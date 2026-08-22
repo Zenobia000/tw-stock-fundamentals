@@ -1,7 +1,6 @@
 """五年月本益比 — HiStock 財報分析頁。
 
-原 workbook 的「每股盈餘(EPS)」Sheet 以 IMPORTHTML 讀取相同表格，
-網站將年月與 PE 正規化後寫入 pe_monthly，供 AVERAGE ± STDEVP 河流使用。
+網站將年月與 PE 正規化後寫入 pe_monthly，供平均值 ± 母體標準差河流使用。
 """
 
 from dataclasses import dataclass

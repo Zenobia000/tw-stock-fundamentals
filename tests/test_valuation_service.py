@@ -9,8 +9,13 @@ def _seed(conn):
     upsert_stock(
         conn,
         StockIsinInfo(
-            code="TEST", name="測試公司", market="上市", security_type="股票",
-            industry="測試業", isin="TW0000000000", listed_date="2000/01/01",
+            code="TEST",
+            name="測試公司",
+            market="上市",
+            security_type="股票",
+            industry="測試業",
+            isin="TW0000000000",
+            listed_date="2000/01/01",
         ),
     )
     conn.execute(
@@ -72,7 +77,9 @@ def test_build_valuation_snapshot_applies_capital_reduction_adjustment(tmp_path)
     _seed(conn)
     upsert_capital_reduction(
         conn,
-        CapitalReduction(name="測試公司", code="TEST", resume_date="2026-05-01", adjust_factor=0.2),
+        CapitalReduction(
+            name="測試公司", code="TEST", resume_date="2026-05-01", adjust_factor=0.2
+        ),
     )
 
     snapshot = build_valuation_snapshot(conn, "TEST")
@@ -91,8 +98,13 @@ def test_build_valuation_snapshot_reports_missing_inputs(tmp_path):
     upsert_stock(
         conn,
         StockIsinInfo(
-            code="EMPTY", name="空股", market="上市", security_type="股票",
-            industry="測試業", isin="TW0000000001", listed_date="2000/01/01",
+            code="EMPTY",
+            name="空股",
+            market="上市",
+            security_type="股票",
+            industry="測試業",
+            isin="TW0000000001",
+            listed_date="2000/01/01",
         ),
     )
     snapshot = build_valuation_snapshot(conn, "EMPTY")

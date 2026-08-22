@@ -64,8 +64,12 @@ def _parse_futures_oi_html(html: str) -> list[FuturesOI]:
 
     results: list[FuturesOI] = []
     for _, row in df.iterrows():
-        contract = str(row[("Unnamed: 1_level_0", "Unnamed: 1_level_1", "商品 名稱")]).strip()
-        institution = str(row[("Unnamed: 2_level_0", "Unnamed: 2_level_1", "身份別")]).strip()
+        contract = str(
+            row[("Unnamed: 1_level_0", "Unnamed: 1_level_1", "商品 名稱")]
+        ).strip()
+        institution = str(
+            row[("Unnamed: 2_level_0", "Unnamed: 2_level_1", "身份別")]
+        ).strip()
         long_oi = _to_int(row[("未平倉餘額", "多方", "口數")])
         short_oi = _to_int(row[("未平倉餘額", "空方", "口數")])
         net_oi = _to_int(row[("未平倉餘額", "多空淨額", "口數")])

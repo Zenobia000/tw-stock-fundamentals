@@ -9,10 +9,10 @@ from dataclasses import dataclass
 
 @dataclass
 class FinancialHealthRatios:
-    debt_ratio: float                # 負債比率 = 負債總計 / 資產總計
-    current_ratio: float | None      # 流動比率 = 流動資產 / 流動負債
+    debt_ratio: float  # 負債比率 = 負債總計 / 資產總計
+    current_ratio: float | None  # 流動比率 = 流動資產 / 流動負債
     book_value_per_share: float | None
-    price_to_book: float | None      # 股價淨值比 = 現價 / 每股淨值
+    price_to_book: float | None  # 股價淨值比 = 現價 / 每股淨值
 
 
 def compute_financial_health_ratios(
@@ -24,7 +24,9 @@ def compute_financial_health_ratios(
     price: float | None = None,
 ) -> FinancialHealthRatios:
     debt_ratio = total_liabilities / total_assets if total_assets else 0.0
-    current_ratio = current_assets / current_liabilities if current_liabilities else None
+    current_ratio = (
+        current_assets / current_liabilities if current_liabilities else None
+    )
     price_to_book = (
         price / book_value_per_share if price and book_value_per_share else None
     )

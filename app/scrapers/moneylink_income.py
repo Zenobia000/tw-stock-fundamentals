@@ -91,15 +91,21 @@ def _parse_income_html(html: str, code: str) -> list[DetailedIncomeQuarter]:
         (
             index
             for index, row in enumerate(rows)
-            if row.find(["th", "td"]) and row.find(["th", "td"]).get_text(strip=True) == "科目"
+            if row.find(["th", "td"])
+            and row.find(["th", "td"]).get_text(strip=True) == "科目"
         ),
         None,
     )
     if header_index is None:
         raise DetailedIncomeNotFoundError("完整損益表缺少季度表頭")
-    headers = [cell.get_text(" ", strip=True) for cell in rows[header_index].find_all(["th", "td"])]
+    headers = [
+        cell.get_text(" ", strip=True)
+        for cell in rows[header_index].find_all(["th", "td"])
+    ]
     quarters = [_quarter_from_header(value) for value in headers[1:]]
-    valid_columns = [(index + 1, quarter) for index, quarter in enumerate(quarters) if quarter]
+    valid_columns = [
+        (index + 1, quarter) for index, quarter in enumerate(quarters) if quarter
+    ]
 
     cumulative_by_label: dict[str, dict[str, float | None]] = {}
     for row in rows[header_index + 1 :]:
@@ -155,9 +161,9 @@ def _parse_income_html(html: str, code: str) -> list[DetailedIncomeQuarter]:
         )
         if any(fields[field] is None for field in required):
             continue
-        for field in fields:
-            if field != "eps" and fields[field] is not None:
-                fields[field] /= 1000
+        for field, value in fields.items():
+            if field != "eps" and value is not None:
+                fields[field] = value / 1000
         results.append(DetailedIncomeQuarter(quarter=quarter, **fields))
 
     if not results:

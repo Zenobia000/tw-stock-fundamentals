@@ -72,16 +72,22 @@ def test_connection_migrates_old_market_cap_table_without_dropping_data(tmp_path
     legacy.close()
 
     conn = get_connection(path)
-    columns = {row["name"] for row in conn.execute("PRAGMA table_info(market_cap_daily)")}
+    columns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(market_cap_daily)")
+    }
     assert {"rank", "name"} <= columns
-    assert conn.execute("SELECT pct_of_market FROM market_cap_daily").fetchone()[0] == 0.44
+    assert (
+        conn.execute("SELECT pct_of_market FROM market_cap_daily").fetchone()[0] == 0.44
+    )
     conn.close()
 
 
 def test_connection_migrates_old_cashflow_table_without_dropping_data(tmp_path):
     path = tmp_path / "legacy-cashflow.db"
     legacy = sqlite3.connect(path)
-    legacy.execute("CREATE TABLE stocks (code TEXT PRIMARY KEY, name TEXT, updated_at TEXT)")
+    legacy.execute(
+        "CREATE TABLE stocks (code TEXT PRIMARY KEY, name TEXT, updated_at TEXT)"
+    )
     legacy.execute(
         """CREATE TABLE cashflow_quarterly (
         code TEXT NOT NULL, quarter TEXT NOT NULL, operating REAL, investing REAL,
@@ -95,7 +101,14 @@ def test_connection_migrates_old_cashflow_table_without_dropping_data(tmp_path):
     legacy.close()
 
     conn = get_connection(path)
-    columns = {row["name"] for row in conn.execute("PRAGMA table_info(cashflow_quarterly)")}
-    assert {"capital_expenditure", "free_cash_flow", "operating_plus_investing", "source"} <= columns
+    columns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(cashflow_quarterly)")
+    }
+    assert {
+        "capital_expenditure",
+        "free_cash_flow",
+        "operating_plus_investing",
+        "source",
+    } <= columns
     assert conn.execute("SELECT operating FROM cashflow_quarterly").fetchone()[0] == 10
     conn.close()

@@ -83,8 +83,8 @@ def test_lan_value_handles_zero_pb():
 
 
 def test_quarter_over_quarter_signal_higher_is_better_default():
-    assert quarter_over_quarter_signal(120, 100) == "red"      # 增=紅
-    assert quarter_over_quarter_signal(80, 100) == "green"     # 減=綠
+    assert quarter_over_quarter_signal(120, 100) == "red"  # 增=紅
+    assert quarter_over_quarter_signal(80, 100) == "green"  # 減=綠
 
 
 def test_quarter_over_quarter_signal_lower_is_better_reverses_direction():

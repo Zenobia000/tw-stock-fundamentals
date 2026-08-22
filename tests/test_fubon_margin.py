@@ -11,9 +11,9 @@ from app.scrapers.fubon_margin import (
     fetch_margin_quarters,
 )
 
-FIXTURE_2330 = (Path(__file__).parent / "fixtures" / "fubon_margin_2330.html").read_text(
-    encoding="utf-8"
-)
+FIXTURE_2330 = (
+    Path(__file__).parent / "fixtures" / "fubon_margin_2330.html"
+).read_text(encoding="utf-8")
 
 
 def test_parse_margin_html_extracts_quarterly_rows():
@@ -40,7 +40,9 @@ def test_parse_margin_html_extracts_quarterly_rows():
 
 def test_parse_margin_html_raises_for_unrelated_page():
     with pytest.raises(MarginNotFoundError):
-        _parse_margin_html("<html><body><table><tr><td>404</td></tr></table></body></html>", "9999")
+        _parse_margin_html(
+            "<html><body><table><tr><td>404</td></tr></table></body></html>", "9999"
+        )
 
 
 @respx.mock

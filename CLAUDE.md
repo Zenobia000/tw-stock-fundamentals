@@ -2,7 +2,7 @@
 
 ## 專案是什麼
 
-台股波段股價預估網站：把使用者原本在 Google Sheets／Excel（`reference/波段股價預估試算_sunny_v2.xlsx`）手動維護的「蘭氏」基本面選股模型，轉成一個可爬蟲自動更新、SQLite 儲存歷史快照、彭博終端風格 UI 的網站。
+個人使用的台股研究平台：以公開資料、可追溯估值模型、SQLite 歷史資料與終端風格 UI，整合個股估值、營運品質、蘭氏九宮格及市場籌碼。
 
 輸入股票代碼 → 抓回基本面／籌碼面資料 → 跑估值鏈算出預估 EPS 與目標價 → 九宮格圖表呈現。
 
@@ -12,15 +12,17 @@
 
 **Quality commands**
 
-- Focused test: `poetry run pytest tests/<path> -k <name>`
-- Full test: `poetry run pytest`
-- Lint: `poetry run ruff check .`
-- Run dev server: `poetry run uvicorn app.main:app --reload`
+- Install/sync: `uv sync`
+- Focused test: `uv run pytest tests/<path> -k <name>`
+- Full test: `uv run pytest`
+- Lint: `uv run ruff check .`
+- Refresh data: `uv run python -m app.ingest 2330 3037`
+- Run dev server: `uv run uvicorn app.main:app --reload`
 
 **Git workflow**
 
 - Remote：`app-origin` → `https://github.com/Zenobia000/tw-stock-fundamentals`（新 repo，與這個資料夾原本的教材 repo `origin` 無關，不要 push 到 `origin`）
-- Branch：`product`（目前開發分支，push 到 app-origin 的 `main`）
+- Branch：`product`（目前開發分支，push 到 `app-origin/product`）
 - Commit style：Conventional Commits，body 說明 WHY
 
 **Risk boundary**
@@ -31,11 +33,11 @@
 
 ## 開發方式
 
-每個 sheet = 一個功能，任務清單見 session 內的 TaskList。每個功能落地前：
+每個研究功能落地前：
 
-1. 用瀏覽器或 `httpx` 打一次真實來源，確認實際 HTML 結構（不要假設跟 Excel 裡記錄的一致，來源網站會變）
+1. 用瀏覽器或 `httpx` 打一次真實來源，確認實際 HTML 結構與資料單位（來源網站會變）
 2. 寫最小 scraper，正規化成 SQLite schema
-3. 對照 `reference/` 工作表裡的快照值（尤其「財報健檢」頁已有 TSMC 2Q26 官方數字）寫 golden-value 測試，紅燈證據保留
+3. 以已核對的官方資料或固定基準案例寫 golden-value 測試，紅燈證據保留
 4. 轉綠後才接進 API／前端
 
 不確定的官方資料端點，先用 WebFetch/瀏覽器確認回應格式，不要憑猜測寫 parser。

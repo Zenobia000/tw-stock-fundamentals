@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS margin_quarterly (
     PRIMARY KEY (code, quarter)
 );
 
--- 營業費用 sheet 實際可拿的是週轉天數（histock），不是選銷/管理/研發費用細目
+-- 舊的營運效率來源只有週轉天數（histock），不是推銷/管理/研發費用細目
 -- （那要 MOPS 附註 XBRL 才有）。稅率改由 financial_health_quarterly 的
 -- 所得稅費用/稅前淨利算，不在這裡重複存。
 CREATE TABLE IF NOT EXISTS opex_quarterly (
@@ -169,6 +169,19 @@ CREATE TABLE IF NOT EXISTS rankings_daily (
     PRIMARY KEY (date, category, rank)
 );
 
+CREATE TABLE IF NOT EXISTS sector_index_daily (
+    date TEXT NOT NULL,
+    index_name TEXT NOT NULL,      -- TWSE 官方指數中文名稱，例如「半導體類指數」「發行量加權股價指數」
+    close_index REAL,
+    change_direction TEXT,         -- '+' / '-' / NULL
+    change_points REAL,
+    change_pct REAL,
+    remark TEXT,
+    source TEXT NOT NULL,          -- 'twse-mi-index'
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (date, index_name)
+);
+
 CREATE TABLE IF NOT EXISTS market_cap_daily (
     date TEXT NOT NULL,
     code TEXT NOT NULL,
@@ -183,13 +196,17 @@ CREATE TABLE IF NOT EXISTS market_cap_daily (
 CREATE TABLE IF NOT EXISTS capital_reductions (
     name TEXT NOT NULL,
     code TEXT,
+    stop_date TEXT,
     resume_date TEXT,
+    exchange_ratio REAL,
     adjust_factor REAL,
+    reason TEXT,
+    source TEXT,
     PRIMARY KEY (name)
 );
 
--- Website v2 domain tables.  These tables preserve the workbook capabilities that
--- cannot be represented by the original sheet-shaped schema.  Existing tables stay
+-- Website v2 domain tables. These normalized tables cover the research capabilities
+-- that cannot be represented by the earlier compact schema. Existing tables stay
 -- in place during migration so ingestion remains backwards compatible.
 CREATE TABLE IF NOT EXISTS income_statement_quarterly (
     code TEXT NOT NULL REFERENCES stocks(code),

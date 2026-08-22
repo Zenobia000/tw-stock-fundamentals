@@ -11,9 +11,9 @@ from app.scrapers.fubon_stock_info import (
     fetch_stock_info,
 )
 
-FIXTURE_2330 = (Path(__file__).parent / "fixtures" / "fubon_stock_info_2330.html").read_text(
-    encoding="utf-8"
-)
+FIXTURE_2330 = (
+    Path(__file__).parent / "fixtures" / "fubon_stock_info_2330.html"
+).read_text(encoding="utf-8")
 
 
 def test_parse_stock_info_extracts_known_fields():
@@ -29,7 +29,9 @@ def test_parse_stock_info_extracts_known_fields():
 
 def test_parse_stock_info_raises_for_unrelated_page():
     with pytest.raises(StockInfoNotFoundError):
-        _parse_stock_info_html("<html><body><table><tr><td>404</td></tr></table></body></html>", "9999")
+        _parse_stock_info_html(
+            "<html><body><table><tr><td>404</td></tr></table></body></html>", "9999"
+        )
 
 
 def test_fetch_stock_info_rejects_malformed_code():

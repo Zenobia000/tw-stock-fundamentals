@@ -34,7 +34,10 @@ def _parse_market_cap_html(html: str) -> list[MarketCapWeight]:
     report_date = f"{year}-{int(month):02d}-{int(day):02d}"
     results: list[MarketCapWeight] = []
     for row in table.find_all("tr"):
-        values = [cell.get_text(" ", strip=True) for cell in row.find_all(["th", "td"], recursive=False)]
+        values = [
+            cell.get_text(" ", strip=True)
+            for cell in row.find_all(["th", "td"], recursive=False)
+        ]
         for offset in (0, 4):
             group = values[offset : offset + 4]
             if len(group) != 4 or not group[0].isdigit() or not group[1].isdigit():
@@ -57,7 +60,9 @@ def _parse_market_cap_html(html: str) -> list[MarketCapWeight]:
     return sorted(results, key=lambda row: row.rank)
 
 
-def fetch_market_cap_weights(client: httpx.Client | None = None) -> list[MarketCapWeight]:
+def fetch_market_cap_weights(
+    client: httpx.Client | None = None,
+) -> list[MarketCapWeight]:
     owns_client = client is None
     client = client or httpx.Client(headers={"User-Agent": USER_AGENT}, timeout=30)
     try:

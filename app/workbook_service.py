@@ -1,13 +1,13 @@
-"""把 SQLite 正規化資料組裝成 sunny workbook 等價估值輸入。"""
+"""把 SQLite 正規化資料組裝成估值模型輸入。"""
 
 import sqlite3
 from statistics import fmean
 
 from app.calc.workbook_model import (
     GrowthBasis,
-    WorkbookModelOptions,
-    WorkbookQuarterInput,
-    calculate_workbook_valuation,
+    ValuationModelOptions,
+    ValuationQuarterInput,
+    calculate_valuation,
 )
 from app.db.capital_reductions import get_capital_reduction_by_code
 
@@ -38,12 +38,14 @@ def _historical_growth_rates(eps_latest_first: list[float]) -> dict[GrowthBasis,
 
 def _quarterly_pe_fallback(conn: sqlite3.Connection, code: str) -> list[float]:
     eps_rows = conn.execute(
-        "SELECT quarter, eps FROM eps_quarterly WHERE code = ? ORDER BY quarter ASC", (code,)
+        "SELECT quarter, eps FROM eps_quarterly WHERE code = ? ORDER BY quarter ASC",
+        (code,),
     ).fetchall()
     prices = {
         row["quarter"]: row["close_price"]
         for row in conn.execute(
-            "SELECT quarter, close_price FROM stock_prices_quarterly WHERE code = ?", (code,)
+            "SELECT quarter, close_price FROM stock_prices_quarterly WHERE code = ?",
+            (code,),
         ).fetchall()
     }
     values: list[float] = []
@@ -83,7 +85,7 @@ def _payout_ratios(conn: sqlite3.Connection, code: str) -> list[float]:
 
 def _detailed_quarters(
     conn: sqlite3.Connection, code: str
-) -> tuple[list[WorkbookQuarterInput], list[str]]:
+) -> tuple[list[ValuationQuarterInput], list[str]]:
     rows = conn.execute(
         """
         SELECT * FROM income_statement_quarterly
@@ -101,21 +103,23 @@ def _detailed_quarters(
             ).fetchall()
         }
         quarters = [
-            WorkbookQuarterInput(
+            ValuationQuarterInput(
                 quarter=row["quarter"],
-                # Sunny 的毛利率與業外來自 Fubon zce（顯示到小數二位／百萬元），
+                # 毛利率與業外來自 Fubon zce（顯示到小數二位／百萬元），
                 # 費用、稅後保留率與非控制權益才來自 MoneyLink 詳細損益。
                 gross_margin_ratio=(
                     margin_by_quarter[row["quarter"]]["gross_margin_pct"] / 100
                     if row["quarter"] in margin_by_quarter
-                    and margin_by_quarter[row["quarter"]]["gross_margin_pct"] is not None
+                    and margin_by_quarter[row["quarter"]]["gross_margin_pct"]
+                    is not None
                     else row["gross_profit"] / row["revenue"]
                 ),
                 operating_expense=row["operating_expense"],
                 non_operating_income=(
                     margin_by_quarter[row["quarter"]]["non_operating_income"]
                     if row["quarter"] in margin_by_quarter
-                    and margin_by_quarter[row["quarter"]]["non_operating_income"] is not None
+                    and margin_by_quarter[row["quarter"]]["non_operating_income"]
+                    is not None
                     else row["non_operating_income"] or 0.0
                 ),
                 pretax_income=row["pretax_income"],
@@ -138,14 +142,21 @@ def _detailed_quarters(
     # 遷移期 fallback：margin_quarterly 沒有詳細費用與非控制權益，只能用
     # 毛利－營業利益推回費用，並把 net_income 視為母公司淨利。
     rows = conn.execute(
-        "SELECT * FROM margin_quarterly WHERE code = ? ORDER BY quarter DESC LIMIT 4", (code,)
+        "SELECT * FROM margin_quarterly WHERE code = ? ORDER BY quarter DESC LIMIT 4",
+        (code,),
     ).fetchall()
     warnings.append("缺少詳細損益表；營業費用以毛利減營業利益推估，非控制權益暫按 0")
     quarters = []
     for row in rows:
         if any(
             row[key] is None
-            for key in ("gross_profit", "operating_income", "pretax_income", "net_income", "eps")
+            for key in (
+                "gross_profit",
+                "operating_income",
+                "pretax_income",
+                "net_income",
+                "eps",
+            )
         ):
             continue
         revenue = row["revenue"]
@@ -155,7 +166,7 @@ def _detailed_quarters(
             else row["gross_profit"] / revenue
         )
         quarters.append(
-            WorkbookQuarterInput(
+            ValuationQuarterInput(
                 quarter=row["quarter"],
                 gross_margin_ratio=gross_margin_ratio,
                 operating_expense=row["gross_profit"] - row["operating_income"],
@@ -169,10 +180,10 @@ def _detailed_quarters(
     return quarters, warnings
 
 
-def build_workbook_valuation_snapshot(
+def build_valuation_snapshot(
     conn: sqlite3.Connection,
     code: str,
-    options: WorkbookModelOptions | None = None,
+    options: ValuationModelOptions | None = None,
 ) -> dict:
     """回傳決策總覽 view model；資料不足時保留 coverage/warnings，不以 0 代替。"""
     warnings: list[str] = []
@@ -195,7 +206,9 @@ def build_workbook_valuation_snapshot(
     if not pe_values:
         pe_values = _quarterly_pe_fallback(conn, code)
         pe_method = "quarterly_reconstructed_fallback"
-        warnings.append("缺少五年月 PE；暫以季底股價/TTM EPS 重建樣本，河流不等同 Excel")
+        warnings.append(
+            "缺少五年月 PE；暫以季底股價/TTM EPS 重建樣本，非正式月 PE 河流口徑"
+        )
 
     coverage = {
         "revenue_months": len(revenue_rows),
@@ -205,7 +218,12 @@ def build_workbook_valuation_snapshot(
         "detailed_income_statement": not quarter_warnings,
     }
     if stock is None or stock["price"] is None:
-        return {"available": False, "warnings": [*warnings, "缺少現價"], "coverage": coverage, "result": None}
+        return {
+            "available": False,
+            "warnings": [*warnings, "缺少現價"],
+            "coverage": coverage,
+            "result": None,
+        }
     if len(revenue_rows) < 12 or len(quarters) < 4:
         return {
             "available": False,
@@ -219,14 +237,16 @@ def build_workbook_valuation_snapshot(
     ).fetchall()
     historical_growth_rates = _historical_growth_rates([row["eps"] for row in eps_rows])
     reduction = get_capital_reduction_by_code(conn, code)
-    result = calculate_workbook_valuation(
+    result = calculate_valuation(
         monthly_revenues_latest_first=[row["revenue"] / 1000 for row in revenue_rows],
         quarters_latest_first=quarters,
         current_price=stock["price"],
         historical_monthly_pe=pe_values,
         payout_ratios_latest_first=_payout_ratios(conn, code),
         options=options,
-        capital_reduction_adjust_factor=(reduction.adjust_factor if reduction else None),
+        capital_reduction_adjust_factor=(
+            reduction.adjust_factor if reduction else None
+        ),
         historical_growth_rates=historical_growth_rates,
     )
     return {

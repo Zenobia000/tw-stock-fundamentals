@@ -65,12 +65,21 @@ def _parse_rankings_json(records: list[dict], top_n: int = 20) -> list[RankingEn
 
     parsed.sort(key=lambda item: item[0], reverse=True)
     return [
-        RankingEntry(rank=i + 1, code=code, name=name, trade_value=value, closing_price=price, date=date)
+        RankingEntry(
+            rank=i + 1,
+            code=code,
+            name=name,
+            trade_value=value,
+            closing_price=price,
+            date=date,
+        )
         for i, (value, code, name, price, date) in enumerate(parsed[:top_n])
     ]
 
 
-def fetch_turnover_rankings(top_n: int = 20, client: httpx.Client | None = None) -> list[RankingEntry]:
+def fetch_turnover_rankings(
+    top_n: int = 20, client: httpx.Client | None = None
+) -> list[RankingEntry]:
     owns_client = client is None
     client = client or httpx.Client(headers={"User-Agent": USER_AGENT}, timeout=30)
     try:

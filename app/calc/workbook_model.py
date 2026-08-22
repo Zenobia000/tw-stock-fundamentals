@@ -1,11 +1,11 @@
-"""Excel『股價預估』頁的等價純計算模型。
+"""個股估值與目標價的純計算模型。
 
 這個模組只接收已正規化的數字，不知道資料來自爬蟲、SQLite 或 fixture。
 百分比一律使用 fraction（67.72% 傳入 0.6772），金額只要求所有輸入同單位。
 """
 
 from dataclasses import asdict, dataclass
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from statistics import fmean, pstdev
 from typing import Literal
 
@@ -18,8 +18,8 @@ EpsMode = Literal["standard", "capital_reduction"]
 
 
 @dataclass(frozen=True)
-class WorkbookModelOptions:
-    """預設值對應 sunny workbook 目前八個下拉選項。"""
+class ValuationModelOptions:
+    """估值模型的八項可切換假設。"""
 
     revenue_basis: RevenueBasis = "latest_month"
     gross_margin_basis: QuarterBasis = "latest_quarter"
@@ -32,7 +32,7 @@ class WorkbookModelOptions:
 
 
 @dataclass(frozen=True)
-class WorkbookQuarterInput:
+class ValuationQuarterInput:
     quarter: str
     gross_margin_ratio: float
     operating_expense: float
@@ -61,9 +61,9 @@ class PeRiver:
 
 
 @dataclass(frozen=True)
-class WorkbookValuationResult:
+class ValuationResult:
     formula_version: str
-    options: WorkbookModelOptions
+    options: ValuationModelOptions
     estimated_quarterly_revenue: float
     selected_gross_margin_ratio: float
     estimated_gross_profit: float
@@ -98,9 +98,9 @@ class WorkbookValuationResult:
         return asdict(self)
 
 
-def excel_round(value: float, digits: int = 0) -> float:
-    """Excel ROUND 的 half-away-from-zero 行為。"""
-    quantum = Decimal("1").scaleb(-digits)
+def round_half_away_from_zero(value: float, digits: int = 0) -> float:
+    """財務模型採用的 half-away-from-zero 四捨五入。"""
+    quantum = Decimal(1).scaleb(-digits)
     return float(Decimal(str(value)).quantize(quantum, rounding=ROUND_HALF_UP))
 
 
@@ -123,28 +123,28 @@ def compute_pe_river(pe_values: list[float]) -> PeRiver | None:
 
 
 def _selected_quarter_value(
-    quarters: list[WorkbookQuarterInput], attribute: str, basis: QuarterBasis
+    quarters: list[ValuationQuarterInput], attribute: str, basis: QuarterBasis
 ) -> float:
     values = [getattr(quarter, attribute) for quarter in quarters[:4]]
     return values[0] if basis == "latest_quarter" else _mean(values)
 
 
-def calculate_workbook_valuation(
+def calculate_valuation(
     *,
     monthly_revenues_latest_first: list[float],
-    quarters_latest_first: list[WorkbookQuarterInput],
+    quarters_latest_first: list[ValuationQuarterInput],
     current_price: float,
     historical_monthly_pe: list[float] | None = None,
     payout_ratios_latest_first: list[float | None] | None = None,
-    options: WorkbookModelOptions | None = None,
+    options: ValuationModelOptions | None = None,
     capital_reduction_adjust_factor: float | None = None,
     historical_growth_rates: dict[GrowthBasis, float] | None = None,
-) -> WorkbookValuationResult:
-    """依 workbook 選項執行完整估值鏈。
+) -> ValuationResult:
+    """依模型選項執行完整估值鏈。
 
     至少需要 12 個月營收與四個季度，讓八個選項任意切換時都有足夠資料。
     """
-    options = options or WorkbookModelOptions()
+    options = options or ValuationModelOptions()
     historical_monthly_pe = historical_monthly_pe or []
     payout_ratios_latest_first = payout_ratios_latest_first or []
     historical_growth_rates = historical_growth_rates or {}
@@ -169,8 +169,8 @@ def calculate_workbook_valuation(
     operating_expense = _selected_quarter_value(
         quarters_latest_first, "operating_expense", options.operating_expense_basis
     )
-    # 股價預估!C17 引用營業費用!F7/H7；兩者在來源 sheet 已 ROUND 到百萬元整數。
-    operating_expense = excel_round(operating_expense)
+    # 費用選項統一四捨五入到百萬元整數，維持跨來源的一致計算口徑。
+    operating_expense = round_half_away_from_zero(operating_expense)
     estimated_operating_income = estimated_gross_profit - operating_expense
 
     if options.non_operating_basis == "default_zero":
@@ -193,13 +193,13 @@ def calculate_workbook_valuation(
         raise ValueError("最新季缺少有效稅後保留率")
     estimated_net_income = estimated_pretax_income * after_tax_retention_ratio
 
-    noncontrolling_income = excel_round(
+    noncontrolling_income = round_half_away_from_zero(
         _mean([quarter.noncontrolling_income for quarter in quarters_latest_first[:4]])
     )
     estimated_parent_net_income = estimated_net_income - noncontrolling_income
 
     latest = quarters_latest_first[0]
-    latest_parent_net_income = excel_round(latest.parent_net_income, 1)
+    latest_parent_net_income = round_half_away_from_zero(latest.parent_net_income, 1)
     if latest_parent_net_income == 0:
         raise ValueError("最新季母公司淨利不可為 0")
     estimated_quarterly_eps = (
@@ -207,7 +207,10 @@ def calculate_workbook_valuation(
     )
 
     capital_reduction_applied = False
-    if options.eps_mode == "capital_reduction" and capital_reduction_adjust_factor is not None:
+    if (
+        options.eps_mode == "capital_reduction"
+        and capital_reduction_adjust_factor is not None
+    ):
         denominator = 1 - capital_reduction_adjust_factor
         if denominator == 0:
             raise ValueError("減資校正值不可為 1")
@@ -220,9 +223,13 @@ def calculate_workbook_valuation(
     annualized_estimated_eps = estimated_quarterly_eps * 4
 
     current_ttm_pe = current_price / current_ttm_eps if current_ttm_eps > 0 else None
-    estimated_ttm_pe = current_price / estimated_ttm_eps if estimated_ttm_eps > 0 else None
+    estimated_ttm_pe = (
+        current_price / estimated_ttm_eps if estimated_ttm_eps > 0 else None
+    )
     annualized_estimated_pe = (
-        current_price / annualized_estimated_eps if annualized_estimated_eps > 0 else None
+        current_price / annualized_estimated_eps
+        if annualized_estimated_eps > 0
+        else None
     )
 
     pe_river = compute_pe_river(historical_monthly_pe)
@@ -235,7 +242,11 @@ def calculate_workbook_valuation(
         current_ttm_pe * estimated_ttm_eps if current_ttm_pe is not None else None
     )
 
-    valid_payouts = [ratio for ratio in payout_ratios_latest_first if ratio is not None and ratio >= 0]
+    valid_payouts = [
+        ratio
+        for ratio in payout_ratios_latest_first
+        if ratio is not None and ratio >= 0
+    ]
     payout_ratio = None
     if valid_payouts:
         payout_ratio = (
@@ -243,7 +254,9 @@ def calculate_workbook_valuation(
             if options.payout_basis == "latest_year"
             else fmean(valid_payouts)
         )
-    estimated_cash_dividend = estimated_ttm_eps * payout_ratio if payout_ratio is not None else None
+    estimated_cash_dividend = (
+        estimated_ttm_eps * payout_ratio if payout_ratio is not None else None
+    )
     estimated_dividend_yield = (
         estimated_cash_dividend / current_price
         if estimated_cash_dividend is not None and current_price
@@ -283,8 +296,8 @@ def calculate_workbook_valuation(
         else None
     )
 
-    return WorkbookValuationResult(
-        formula_version="sunny-2026-08-v1",
+    return ValuationResult(
+        formula_version="fortune-model-2026.08-v1",
         options=options,
         estimated_quarterly_revenue=estimated_revenue,
         selected_gross_margin_ratio=gross_margin_ratio,

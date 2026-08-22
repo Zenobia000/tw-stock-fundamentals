@@ -11,9 +11,9 @@ from app.scrapers.histock_turnover import (
     fetch_quarterly_turnover,
 )
 
-FIXTURE_2330 = (Path(__file__).parent / "fixtures" / "histock_turnover_days_2330.html").read_text(
-    encoding="utf-8"
-)
+FIXTURE_2330 = (
+    Path(__file__).parent / "fixtures" / "histock_turnover_days_2330.html"
+).read_text(encoding="utf-8")
 
 
 def test_parse_turnover_html_extracts_known_rows():

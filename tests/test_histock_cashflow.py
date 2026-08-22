@@ -11,9 +11,9 @@ from app.scrapers.histock_cashflow import (
     fetch_quarterly_cashflow,
 )
 
-FIXTURE_2330 = (Path(__file__).parent / "fixtures" / "histock_cashflow_2330.html").read_text(
-    encoding="utf-8"
-)
+FIXTURE_2330 = (
+    Path(__file__).parent / "fixtures" / "histock_cashflow_2330.html"
+).read_text(encoding="utf-8")
 
 
 def test_parse_cashflow_html_extracts_known_rows():

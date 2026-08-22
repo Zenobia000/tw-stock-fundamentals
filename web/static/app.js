@@ -5,6 +5,8 @@ const state = {
   dashboard: null,
   radar: null,
   view: "overview",
+  rankingTopic: "turnover",
+  rankingMarket: "listed",
   options: {
     revenue_basis: "latest_month",
     gross_margin_basis: "latest_quarter",
@@ -43,11 +45,13 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
-async function fetchJson(url) {
-  const response = await fetch(url);
+async function fetchJson(url, options = {}) {
+  const response = await fetch(url, options);
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail || `${response.status} ${response.statusText}`);
+    const error = new Error(body.detail || `${response.status} ${response.statusText}`);
+    error.status = response.status;
+    throw error;
   }
   return response.json();
 }
@@ -73,13 +77,97 @@ function emptyTable(table, columns, message = "待補資料源") {
   table.innerHTML = `<tr><td colspan="${columns}"><div class="table-empty">${escapeHtml(message)}</div></td></tr>`;
 }
 
-// Canvas charts are intentionally dependency-free so the research screen works offline.
+// Canvas charts are dependency-free and share one interaction/legend layer.
 const COLORS = ["#ffb547", "#51d6d9", "#aa8bff", "#f56c88", "#8fd16a"];
+const chartTooltip = document.createElement("div");
+chartTooltip.className = "chart-tooltip hidden";
+document.body.appendChild(chartTooltip);
+
+function chartValue(item, value) {
+  if (!isValue(value)) return "—";
+  if (item.format) return item.format(Number(value));
+  return fmt(value, item.digits ?? 2, item.suffix || "");
+}
+
+function updateChartLegend(canvas, series) {
+  const named = series.filter((item) => item.name);
+  let legend = canvas.parentElement.querySelector(`[data-chart-legend="${canvas.id}"]`);
+  if (!named.length) {
+    if (legend) legend.remove();
+    return;
+  }
+  if (!legend) {
+    legend = document.createElement("div");
+    legend.className = "chart-legend";
+    legend.dataset.chartLegend = canvas.id;
+    canvas.insertAdjacentElement("afterend", legend);
+  }
+  legend.innerHTML = named.map((item, index) => {
+    const color = item.color || COLORS[series.indexOf(item) % COLORS.length];
+    return `<span><i style="--legend-color:${color}"></i>${escapeHtml(item.name)}</span>`;
+  }).join("");
+}
+
+function installChartInteraction(canvas, meta) {
+  canvas._chartMeta = meta;
+  if (canvas.dataset.chartInteractive) return;
+  canvas.dataset.chartInteractive = "true";
+  const crosshair = document.createElement("i");
+  crosshair.className = "chart-crosshair hidden";
+  canvas.insertAdjacentElement("afterend", crosshair);
+  const show = (event) => {
+    const current = canvas._chartMeta;
+    if (!current?.labels?.length) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const { left, right } = current.padding;
+    if (x < left || x > rect.width - right) {
+      chartTooltip.classList.add("hidden");
+      crosshair.classList.add("hidden");
+      return;
+    }
+    const plotWidth = Math.max(rect.width - left - right, 1);
+    const index = Math.max(0, Math.min(
+      current.labels.length - 1,
+      Math.round(((x - left) / plotWidth) * Math.max(current.labels.length - 1, 1)),
+    ));
+    const nearestX = left + (plotWidth * index) / Math.max(current.labels.length - 1, 1);
+    crosshair.style.left = `${canvas.offsetLeft + nearestX}px`;
+    crosshair.style.top = `${canvas.offsetTop + current.padding.top}px`;
+    crosshair.style.height = `${canvas.clientHeight - current.padding.top - current.padding.bottom}px`;
+    crosshair.classList.remove("hidden");
+    const values = current.series
+      .map((item, seriesIndex) => ({ item, seriesIndex, value: item.values[index] }))
+      .filter(({ value }) => isValue(value));
+    if (!values.length) {
+      chartTooltip.classList.add("hidden");
+      return;
+    }
+    chartTooltip.innerHTML = `<b>${escapeHtml(current.labels[index])}</b>${values.map(({ item, seriesIndex, value }) => {
+      const color = item.color || COLORS[seriesIndex % COLORS.length];
+      return `<span><i style="--tooltip-color:${color}"></i><em>${escapeHtml(item.name || `數列 ${seriesIndex + 1}`)}</em><strong>${escapeHtml(chartValue(item, value))}</strong></span>`;
+    }).join("")}`;
+    chartTooltip.classList.remove("hidden");
+    const tooltipRect = chartTooltip.getBoundingClientRect();
+    chartTooltip.style.left = `${Math.min(event.clientX + 14, window.innerWidth - tooltipRect.width - 10)}px`;
+    chartTooltip.style.top = `${Math.max(10, Math.min(event.clientY + 14, window.innerHeight - tooltipRect.height - 10))}px`;
+  };
+  canvas.addEventListener("pointermove", show);
+  canvas.addEventListener("pointerdown", show);
+  canvas.addEventListener("pointerleave", () => {
+    chartTooltip.classList.add("hidden");
+    crosshair.classList.add("hidden");
+  });
+}
 
 function canvasFrame(canvas) {
   const ratio = window.devicePixelRatio || 1;
   const width = Math.max(canvas.clientWidth || 320, 240);
-  const height = Number(canvas.getAttribute("height")) || 200;
+  if (!canvas.dataset.chartHeight) {
+    canvas.dataset.chartHeight = String(Number(canvas.getAttribute("height")) || 200);
+  }
+  const height = Number(canvas.dataset.chartHeight);
+  canvas.style.height = `${height}px`;
   canvas.width = Math.round(width * ratio);
   canvas.height = Math.round(height * ratio);
   const ctx = canvas.getContext("2d");
@@ -106,24 +194,55 @@ function chartDomain(series) {
   return { min, max };
 }
 
-function drawAxes(ctx, width, height, domain, labels, padding) {
+function shortAxisLabel(value) {
+  const text = String(value ?? "");
+  const month = text.match(/^(\d{4})-(\d{2})$/);
+  if (month) return `${month[1].slice(2)}/${month[2]}`;
+  const quarter = text.match(/^(\d{4})Q([1-4])$/);
+  if (quarter) return `${quarter[1].slice(2)}Q${quarter[2]}`;
+  const date = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (date) return `${date[2]}/${date[3]}`;
+  return text.replace(/^20/, "");
+}
+
+function axisValue(value) {
+  const absolute = Math.abs(value);
+  if (absolute >= 1e9) return `${nf(1).format(value / 1e9)}B`;
+  if (absolute >= 1e6) return `${nf(1).format(value / 1e6)}M`;
+  if (absolute >= 1e3) return `${nf(1).format(value / 1e3)}K`;
+  return nf(absolute < 10 ? 1 : 0).format(value);
+}
+
+function drawAxes(ctx, width, height, domain, labels, padding, showEveryLabel = false) {
   const { left, right, top, bottom } = padding;
-  ctx.strokeStyle = "#26303a";
+  ctx.strokeStyle = "#d6dee6";
   ctx.lineWidth = 1;
   for (let i = 0; i <= 3; i += 1) {
     const y = top + ((height - top - bottom) * i) / 3;
     ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(width - right, y); ctx.stroke();
     const value = domain.max - ((domain.max - domain.min) * i) / 3;
-    ctx.fillStyle = "#66717c"; ctx.font = "10px system-ui"; ctx.textAlign = "right";
-    ctx.fillText(nf(Math.abs(value) < 10 ? 1 : 0).format(value), left - 6, y + 3);
+    ctx.fillStyle = "#506276"; ctx.font = "600 11px ui-monospace, monospace"; ctx.textAlign = "right";
+    ctx.fillText(axisValue(value), left - 6, y + 3);
   }
   const count = labels.length;
-  const labelIndexes = [...new Set([0, Math.floor((count - 1) / 2), count - 1])];
-  ctx.textAlign = "center"; ctx.fillStyle = "#66717c";
+  const labelIndexes = showEveryLabel
+    ? labels.map((_, index) => index)
+    : [...new Set([0, Math.floor((count - 1) / 2), count - 1])];
+  ctx.textAlign = "center"; ctx.fillStyle = "#506276"; ctx.font = "600 11px ui-monospace, monospace";
   labelIndexes.forEach((index) => {
     if (index < 0 || !labels[index]) return;
     const x = left + ((width - left - right) * index) / Math.max(count - 1, 1);
-    ctx.fillText(String(labels[index]).replace(/^20/, ""), x, height - 5);
+    const label = shortAxisLabel(labels[index]);
+    if (showEveryLabel && count > 8) {
+      ctx.save();
+      ctx.translate(x, height - bottom + 12);
+      ctx.rotate(-Math.PI / 3);
+      ctx.textAlign = "right";
+      ctx.fillText(label, 0, 0);
+      ctx.restore();
+    } else {
+      ctx.fillText(label, x, height - 5);
+    }
   });
 }
 
@@ -135,20 +254,28 @@ function drawChart(canvas, series, labels = [], { bars = [], zeroBased = false, 
   if (!domain) { noChartData(ctx, width, height); return; }
   if (zeroBased && domain.min > 0) domain.min = 0;
   const hasDualAxis = Boolean(leftDomain && rightDomain);
-  const padding = { left: 45, right: hasDualAxis ? 42 : 10, top: 10, bottom: 25 };
-  drawAxes(ctx, width, height, domain, labels, padding);
+  const showEveryLabel = bars.length > 0 || labels.length <= 12;
+  const padding = {
+    left: 56,
+    right: hasDualAxis ? 50 : 14,
+    top: 14,
+    bottom: showEveryLabel && labels.length > 8 ? 48 : 29,
+  };
+  drawAxes(ctx, width, height, domain, labels, padding, showEveryLabel);
   const plotW = width - padding.left - padding.right;
   const plotH = height - padding.top - padding.bottom;
   const yOf = (value, itemDomain = domain) => padding.top + ((itemDomain.max - Number(value)) / (itemDomain.max - itemDomain.min)) * plotH;
   const maxLength = Math.max(...series.map((item) => item.values.length), 1);
   const xOf = (index) => padding.left + (plotW * index) / Math.max(maxLength - 1, 1);
+  const barOrder = new Map(bars.map((seriesIndex, index) => [seriesIndex, index]));
+  const barCount = Math.max(bars.length, 1);
 
   if (hasDualAxis) {
-    ctx.fillStyle = "#66717c"; ctx.font = "10px system-ui"; ctx.textAlign = "left";
+    ctx.fillStyle = "#506276"; ctx.font = "600 11px ui-monospace, monospace"; ctx.textAlign = "left";
     for (let i = 0; i <= 3; i += 1) {
       const y = padding.top + (plotH * i) / 3;
       const value = rightDomain.max - ((rightDomain.max - rightDomain.min) * i) / 3;
-      ctx.fillText(nf(Math.abs(value) < 10 ? 1 : 0).format(value), width - padding.right + 6, y + 3);
+      ctx.fillText(axisValue(value), width - padding.right + 6, y + 3);
     }
   }
 
@@ -157,13 +284,16 @@ function drawChart(canvas, series, labels = [], { bars = [], zeroBased = false, 
     const itemDomain = hasDualAxis && rightAxis.includes(seriesIndex) ? rightDomain : domain;
     const zeroY = yOf(0, itemDomain);
     if (bars.includes(seriesIndex)) {
-      const barWidth = Math.max(2, (plotW / Math.max(maxLength, 1)) * 0.62);
+      const groupWidth = Math.max(3, (plotW / Math.max(maxLength, 1)) * 0.72);
+      const barWidth = Math.max(2, groupWidth / barCount);
+      const position = barOrder.get(seriesIndex);
       item.values.forEach((value, index) => {
         if (!isValue(value)) return;
         const y = yOf(value, itemDomain);
+        const barX = xOf(index) - groupWidth / 2 + barWidth * (position + 0.5);
         ctx.fillStyle = Number(value) >= 0 ? color : "#51d6d9";
         ctx.globalAlpha = 0.78;
-        ctx.fillRect(xOf(index) - barWidth / 2, Math.min(y, zeroY), barWidth, Math.max(Math.abs(zeroY - y), 1));
+        ctx.fillRect(barX - barWidth / 2, Math.min(y, zeroY), Math.max(barWidth - 1, 1), Math.max(Math.abs(zeroY - y), 1));
       });
       ctx.globalAlpha = 1;
       return;
@@ -176,7 +306,19 @@ function drawChart(canvas, series, labels = [], { bars = [], zeroBased = false, 
       if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
     });
     ctx.stroke();
+    item.values.forEach((value, index) => {
+      if (!isValue(value)) return;
+      ctx.beginPath();
+      ctx.arc(xOf(index), yOf(value, itemDomain), maxLength > 36 ? 1.8 : 2.8, 0, Math.PI * 2);
+      ctx.fillStyle = "#ffffff";
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    });
   });
+  updateChartLegend(canvas, series);
+  installChartInteraction(canvas, { labels, series, padding });
 }
 
 function drawCandles(canvas, priceRows) {
@@ -186,7 +328,7 @@ function drawCandles(canvas, priceRows) {
   if (!valid.length) { noChartData(ctx, width, height, "待補歷史日股價資料源"); return; }
   const domain = { min: Math.min(...valid.map((row) => Number(row.low))), max: Math.max(...valid.map((row) => Number(row.high))) };
   if (domain.min === domain.max) { domain.min -= 1; domain.max += 1; }
-  const padding = { left: 45, right: 10, top: 10, bottom: 25 };
+  const padding = { left: 56, right: 14, top: 14, bottom: 29 };
   drawAxes(ctx, width, height, domain, rows.map((row) => row.date), padding);
   const plotW = width - padding.left - padding.right;
   const plotH = height - padding.top - padding.bottom;
@@ -203,13 +345,22 @@ function drawCandles(canvas, priceRows) {
     const yOpen = yOf(row.open); const yClose = yOf(row.close);
     ctx.fillRect(x - bodyWidth / 2, Math.min(yOpen, yClose), bodyWidth, Math.max(Math.abs(yOpen - yClose), 1));
   });
+  const series = [
+    { name: "開盤", values: rows.map((row) => row.open), digits: 2, color: "#ffb547" },
+    { name: "最高", values: rows.map((row) => row.high), digits: 2, color: "#f56c88" },
+    { name: "最低", values: rows.map((row) => row.low), digits: 2, color: "#8fd16a" },
+    { name: "收盤", values: rows.map((row) => row.close), digits: 2, color: "#51d6d9" },
+    { name: "成交量", values: rows.map((row) => row.volume), digits: 0, color: "#aa8bff" },
+  ];
+  updateChartLegend(canvas, series.slice(0, 4));
+  installChartInteraction(canvas, { labels: rows.map((row) => row.date), series, padding });
 }
 
 function chronological(rows, key) {
   return [...(rows || [])].sort((a, b) => String(a[key]).localeCompare(String(b[key])));
 }
 
-function renderStockHeader(stock) {
+function renderStockHeader(stock, freshness = {}) {
   byId("stock-name").textContent = stock.name || stock.code;
   byId("stock-code").textContent = stock.code;
   byId("stock-market").textContent = stock.market || "市場待補";
@@ -219,7 +370,11 @@ function renderStockHeader(stock) {
   byId("stat-yield").textContent = pct(stock.dividend_yield_pct, 2, true);
   byId("stat-bvps").textContent = fmt(stock.book_value_per_share, 2);
   byId("stat-mcap").textContent = fmt(stock.market_cap_millions, 0);
-  byId("stat-time").textContent = (stock.stock_info_fetched_at || stock.updated_at || "—").replace("T", " ").slice(0, 16);
+  byId("stat-time").textContent = freshness.market_date || "待補行情";
+  byId("fresh-market").textContent = freshness.market_date || "待補";
+  byId("fresh-revenue").textContent = freshness.revenue_month || "待補";
+  byId("fresh-financial").textContent = freshness.financial_quarter || "待補";
+  byId("fresh-chips").textContent = freshness.chips_date || "待補";
 }
 
 function renderCoverage(decision) {
@@ -280,22 +435,27 @@ function renderDecision(decision) {
 }
 
 function renderFundamentals(data) {
-  const revenue = chronological(data.revenue, "month").slice(-36);
+  const revenue = chronological(data.revenue, "month").slice(-24);
   drawChart(byId("chart-revenue"), [
-    { values: revenue.map((row) => isValue(row.revenue) ? row.revenue / 1000 : null) },
-    { values: revenue.map((row) => row.signal?.near_3m_avg ? row.signal.near_3m_avg / 1000 : null) },
+    { name: "單月營收", values: revenue.map((row) => isValue(row.revenue) ? row.revenue / 1000 : null), digits: 0, suffix: " 百萬" },
+    { name: "近 3 月平均", values: revenue.map((row) => row.signal?.near_3m ? row.signal.near_3m / 3000 : null), digits: 0, suffix: " 百萬" },
+    { name: "近 12 月平均", values: revenue.map((row) => row.signal?.near_12m ? row.signal.near_12m / 12000 : null), digits: 0, suffix: " 百萬" },
   ], revenue.map((row) => row.month), { bars: [0] });
   const latestRevenue = revenue.at(-1);
   byId("revenue-caption").textContent = latestRevenue ? `${latestRevenue.month}｜${fmt(latestRevenue.revenue / 1000, 0)} 百萬` : "待補資料";
 
   const profits = chronological(data.profitability, "quarter").slice(-12);
   drawChart(byId("chart-profitability"), [
-    { values: profits.map((row) => row.gross_margin_pct) },
-    { values: profits.map((row) => row.operating_margin_pct) },
-    { values: profits.map((row) => row.revenue ? row.net_income / row.revenue * 100 : null) },
+    { name: "毛利率", values: profits.map((row) => row.gross_margin_pct), digits: 2, suffix: "%" },
+    { name: "營益率", values: profits.map((row) => row.operating_margin_pct), digits: 2, suffix: "%" },
+    { name: "淨利率", values: profits.map((row) => row.revenue ? row.net_income / row.revenue * 100 : null), digits: 2, suffix: "%" },
   ], profits.map((row) => row.quarter));
   const epsRows = chronological(data.eps?.length ? data.eps : data.profitability, "quarter").slice(-12);
-  drawChart(byId("chart-eps"), [{ values: epsRows.map((row) => row.eps) }], epsRows.map((row) => row.quarter), { bars: [0] });
+  drawChart(byId("chart-eps"), [{ name: "單季 EPS", values: epsRows.map((row) => row.eps), digits: 2, suffix: " 元" }], epsRows.map((row) => row.quarter), { bars: [0] });
+
+  const revenueTable = byId("revenue-table");
+  const revenueRows = [...revenue].reverse();
+  revenueTable.innerHTML = `<thead><tr><th>月份</th><th>單月營收</th><th>3M 月均</th><th>12M 月均</th><th>3M YoY</th><th>12M YoY</th><th>動能</th></tr></thead><tbody>${revenueRows.map((row) => `<tr><td>${escapeHtml(row.month)}</td><td>${fmt(row.revenue / 1000, 0)}</td><td>${fmt(row.signal?.near_3m ? row.signal.near_3m / 3000 : null, 0)}</td><td>${fmt(row.signal?.near_12m ? row.signal.near_12m / 12000 : null, 0)}</td><td>${pct(row.signal?.near_3m_yoy)}</td><td>${pct(row.signal?.near_12m_yoy)}</td><td>${escapeHtml(row.signal?.yoy_trend || "資料累積中")}</td></tr>`).join("")}</tbody>`;
 
   const tableRows = (data.income_statement?.length ? data.income_statement : data.profitability || []).slice(0, 12);
   const table = byId("income-table");
@@ -306,16 +466,16 @@ function renderFundamentals(data) {
 function renderQuality(data) {
   const efficiency = chronological(data.efficiency, "quarter").slice(-12);
   drawChart(byId("chart-efficiency"), [
-    { values: efficiency.map((row) => row.ar_days) },
-    { values: efficiency.map((row) => row.inventory_days) },
-    { values: efficiency.map((row) => row.operating_cycle_days) },
+    { name: "應收天數", values: efficiency.map((row) => row.ar_days), digits: 1, suffix: " 天" },
+    { name: "存貨天數", values: efficiency.map((row) => row.inventory_days), digits: 1, suffix: " 天" },
+    { name: "營運週期", values: efficiency.map((row) => row.operating_cycle_days), digits: 1, suffix: " 天" },
   ], efficiency.map((row) => row.quarter));
   const cash = chronological(data.cashflow, "quarter").slice(-12);
   drawChart(byId("chart-cashflow"), [
-    { values: cash.map((row) => isValue(row.operating) ? row.operating / 1e6 : null) },
-    { values: cash.map((row) => isValue(row.investing) ? row.investing / 1e6 : null) },
-    { values: cash.map((row) => isValue(row.financing) ? row.financing / 1e6 : null) },
-    { values: cash.map((row) => isValue(row.free_cash_flow) ? row.free_cash_flow / 1e6 : null) },
+    { name: "營業現金流", values: cash.map((row) => isValue(row.operating) ? row.operating / 1e6 : null), digits: 1, suffix: " 十億" },
+    { name: "投資現金流", values: cash.map((row) => isValue(row.investing) ? row.investing / 1e6 : null), digits: 1, suffix: " 十億" },
+    { name: "融資現金流", values: cash.map((row) => isValue(row.financing) ? row.financing / 1e6 : null), digits: 1, suffix: " 十億" },
+    { name: "自由現金流", values: cash.map((row) => isValue(row.free_cash_flow) ? row.free_cash_flow / 1e6 : null), digits: 1, suffix: " 十億" },
   ], cash.map((row) => row.quarter));
 
   const health = data.balance_sheet?.[0] || data.financial_health?.[0];
@@ -344,7 +504,7 @@ function renderQuality(data) {
 
   const events = data.events || [];
   const reduction = data.capital_reduction;
-  const reductionHtml = reduction ? `<article><time>${escapeHtml(reduction.resume_date || "日期待補")}</time><div><b>減資校正：${escapeHtml(reduction.name)}</b><p>EPS 校正因子 ${fmt(reduction.adjust_factor, 6)}；僅在模型選擇「減資校正」時套用。</p></div></article>` : "";
+  const reductionHtml = reduction ? `<article><time>${escapeHtml(reduction.resume_date || "日期待補")}</time><div><b>減資恢復交易：${escapeHtml(reduction.name)}</b><p>${escapeHtml(reduction.reason || "減資公告")}｜停止交易 ${escapeHtml(reduction.stop_date || "待補")}｜換股率 ${pct(reduction.exchange_ratio)}｜EPS 校正值 ${pct(reduction.adjust_factor)}；僅在模型選擇「減資校正」時套用。</p></div></article>` : "";
   const eventHtml = events.map((event) => `<article><time>${escapeHtml(event.event_date)}</time><div><b>${escapeHtml(event.title)}</b><p>${escapeHtml(event.detail || event.event_type)}</p></div></article>`).join("");
   byId("event-list").innerHTML = reductionHtml || eventHtml ? reductionHtml + eventHtml : emptyHtml("待補重大事件與減資歷史");
 }
@@ -377,37 +537,46 @@ function renderNineGrid(data) {
   $$('[data-signal]').forEach((node) => { node.innerHTML = signalLabel(data.signals?.[node.dataset.signal]); });
   byId("nine-signals").innerHTML = Object.entries(data.signals || {}).map(([key, value]) => `<div><span>${escapeHtml(key.replaceAll("_", " "))}</span>${signalLabel(value)}</div>`).join("");
   drawChart(byId("ng-profit"), [
-    { values: rows.map((row) => row.revenue_millions) },
-    { values: rows.map((row) => isValue(row.gross_margin_ratio) ? row.gross_margin_ratio * 100 : null) },
-    { values: rows.map((row) => isValue(row.operating_margin_ratio) ? row.operating_margin_ratio * 100 : null) },
+    { name: "營收", values: rows.map((row) => row.revenue_millions), digits: 0, suffix: " 百萬" },
+    { name: "毛利率", values: rows.map((row) => isValue(row.gross_margin_ratio) ? row.gross_margin_ratio * 100 : null), digits: 1, suffix: "%" },
+    { name: "營益率", values: rows.map((row) => isValue(row.operating_margin_ratio) ? row.operating_margin_ratio * 100 : null), digits: 1, suffix: "%" },
   ], labels, { bars: [0], rightAxis: [1, 2] });
   drawChart(byId("ng-days"), [
-    { values: rows.map((row) => row.ar_days) }, { values: rows.map((row) => row.inventory_days) }, { values: rows.map((row) => row.payable_days) },
+    { name: "應收", values: rows.map((row) => row.ar_days), digits: 1, suffix: " 天" },
+    { name: "存貨", values: rows.map((row) => row.inventory_days), digits: 1, suffix: " 天" },
+    { name: "應付", values: rows.map((row) => row.payable_days), digits: 1, suffix: " 天" },
   ], labels);
   drawChart(byId("ng-debt"), [
-    { values: rows.map((row) => row.cash_and_securities) },
-    { values: rows.map((row) => isValue(row.debt_ratio) ? row.debt_ratio * 100 : null) },
+    { name: "現金與約當現金", values: rows.map((row) => row.cash_and_securities), digits: 0, suffix: " 百萬" },
+    { name: "負債比", values: rows.map((row) => isValue(row.debt_ratio) ? row.debt_ratio * 100 : null), digits: 1, suffix: "%" },
   ], labels, { bars: [0], rightAxis: [1] });
   drawChart(byId("ng-cash-profit"), [
-    { values: rows.map((row) => isValue(row.operating_cashflow_millions) ? row.operating_cashflow_millions / 1000 : null) },
-    { values: rows.map((row) => isValue(row.operating_income_millions) ? row.operating_income_millions / 1000 : null) },
-    { values: rows.map((row) => isValue(row.roe_ratio) ? row.roe_ratio * 100 : null) },
+    { name: "營業現金流", values: rows.map((row) => isValue(row.operating_cashflow_millions) ? row.operating_cashflow_millions / 1000 : null), digits: 1, suffix: " 十億" },
+    { name: "營業利益", values: rows.map((row) => isValue(row.operating_income_millions) ? row.operating_income_millions / 1000 : null), digits: 1, suffix: " 十億" },
+    { name: "ROE", values: rows.map((row) => isValue(row.roe_ratio) ? row.roe_ratio * 100 : null), digits: 1, suffix: "%" },
   ], labels, { rightAxis: [2] });
   drawChart(byId("ng-lan"), [
-    { values: rows.map((row) => isValue(row.capital_expenditure_millions) ? row.capital_expenditure_millions / 1000 : null) },
-    { values: rows.map((row) => row.lan_value) },
+    { name: "資本支出", values: rows.map((row) => isValue(row.capital_expenditure_millions) ? row.capital_expenditure_millions / 1000 : null), digits: 1, suffix: " 十億" },
+    { name: "翁氏價值", values: rows.map((row) => row.lan_value), digits: 4 },
   ], labels, { bars: [0], rightAxis: [1] });
   drawChart(byId("ng-core-eps"), [
-    { values: rows.map((row) => row.core_eps) }, { values: rows.map((row) => row.non_core_eps) },
+    { name: "核心 EPS", values: rows.map((row) => row.core_eps), digits: 2, suffix: " 元" },
+    { name: "非核心 EPS", values: rows.map((row) => row.non_core_eps), digits: 2, suffix: " 元" },
   ], labels, { bars: [0, 1] });
-  const current4 = rows.slice(-4);
-  const prior4 = rows.slice(-8, -4);
+  const years = [...new Set(rows.map((row) => Number(String(row.quarter).slice(0, 4))))].filter(Number.isFinite).sort((a, b) => a - b);
+  const currentYear = years.at(-1);
+  const priorYear = currentYear - 1;
+  const byYearQuarter = new Map(rows.map((row) => [row.quarter, row]));
+  const current4 = [1, 2, 3, 4].map((quarter) => byYearQuarter.get(`${currentYear}Q${quarter}`));
+  const prior4 = [1, 2, 3, 4].map((quarter) => byYearQuarter.get(`${priorYear}Q${quarter}`));
   drawChart(byId("ng-season-revenue"), [
-    { values: current4.map((row) => row.revenue_millions) }, { values: prior4.map((row) => row.revenue_millions) },
-  ], current4.map((_, index) => `Q${index + 1}`));
+    { name: `${currentYear} 本期`, values: current4.map((row) => row?.revenue_millions), digits: 0, suffix: " 百萬" },
+    { name: `${priorYear} 去年同期`, values: prior4.map((row) => row?.revenue_millions), digits: 0, suffix: " 百萬" },
+  ], ["Q1", "Q2", "Q3", "Q4"], { bars: [0, 1] });
   drawChart(byId("ng-season-days"), [
-    { values: current4.map((row) => row.operating_cycle_days) }, { values: prior4.map((row) => row.operating_cycle_days) },
-  ], current4.map((_, index) => `Q${index + 1}`));
+    { name: `${currentYear} 本期`, values: current4.map((row) => row?.operating_cycle_days), digits: 1, suffix: " 天" },
+    { name: `${priorYear} 去年同期`, values: prior4.map((row) => row?.operating_cycle_days), digits: 1, suffix: " 天" },
+  ], ["Q1", "Q2", "Q3", "Q4"]);
 
   byId("ng-cash-class").innerHTML = rows.length ? rows.slice(-4).map((row) => {
     const classification = cashflowClass(row);
@@ -416,10 +585,12 @@ function renderNineGrid(data) {
 
   const monthly = chronological(data.monthly_revenue, "month");
   drawChart(byId("ng-bollinger"), [
-    { values: monthly.map((row) => row.revenue_millions) }, { values: monthly.map((row) => row.near_3m_avg) },
-    { values: monthly.map((row) => row.upper_band) }, { values: monthly.map((row) => row.lower_band) },
+    { name: "月營收", values: monthly.map((row) => row.revenue_millions), digits: 0, suffix: " 百萬" },
+    { name: "3M 均線", values: monthly.map((row) => row.near_3m_avg), digits: 0, suffix: " 百萬" },
+    { name: "上軌", values: monthly.map((row) => row.upper_band), digits: 0, suffix: " 百萬" },
+    { name: "下軌", values: monthly.map((row) => row.lower_band), digits: 0, suffix: " 百萬" },
   ], monthly.map((row) => row.month));
-  drawChart(byId("ng-contract"), [{ values: rows.map((row) => row.contract_liabilities) }], labels, { bars: [0] });
+  drawChart(byId("ng-contract"), [{ name: "合約負債", values: rows.map((row) => row.contract_liabilities), digits: 0, suffix: " 百萬" }], labels, { bars: [0] });
   drawCandles(byId("ng-price"), data.daily_prices || []);
 }
 
@@ -431,18 +602,58 @@ function tableFromRows(table, rows, columns, message) {
 function renderMarket(chips, radar) {
   const holdings = chronological(chips.holdings, "date");
   drawChart(byId("chart-holdings"), [
-    { values: holdings.map((row) => row.foreign_holding_pct) },
-    { values: holdings.map((row) => row.big_holder_pct) },
-    { values: holdings.map((row) => row.concentration_pct) },
+    { name: "外資持股", values: holdings.map((row) => row.foreign_holding_pct), digits: 2, suffix: "%" },
+    { name: "大戶持股", values: holdings.map((row) => row.big_holder_pct), digits: 2, suffix: "%" },
+    { name: "籌碼集中度", values: holdings.map((row) => row.concentration_pct), digits: 2, suffix: "%" },
   ], holdings.map((row) => row.date));
-  tableFromRows(byId("futures-table"), radar.futures, [
+  const institutionRows = chronological(chips.institutional_trading, "date").slice(-42);
+  const institutions = ["外資", "投信", "自營商"];
+  const institutionDates = [...new Set(institutionRows.map((row) => row.date))];
+  const institutionValues = new Map(institutionRows.map((row) => [`${row.date}:${row.institution}`, row.net]));
+  drawChart(byId("chart-institution"), institutions.map((institution) => ({
+    name: institution,
+    values: institutionDates.map((date) => institutionValues.get(`${date}:${institution}`) ?? null),
+    digits: 0,
+    suffix: " 張",
+  })), institutionDates, { bars: [0, 1, 2] });
+
+  const marginRows = chronological(chips.margin_short, "date").slice(-20);
+  drawChart(byId("chart-margin-short"), [
+    { name: "融資餘額", values: marginRows.map((row) => row.margin_balance), digits: 0, suffix: " 張" },
+    { name: "融券餘額", values: marginRows.map((row) => row.short_balance), digits: 0, suffix: " 張" },
+    { name: "券資比", values: marginRows.map((row) => row.short_margin_ratio), digits: 2, suffix: "%" },
+  ], marginRows.map((row) => row.date), { rightAxis: [2] });
+
+  const etfLatestDate = chips.etf_holdings?.[0]?.as_of_date;
+  const etfRows = (chips.etf_holdings || []).filter((row) => row.as_of_date === etfLatestDate).slice(0, 12);
+  drawChart(byId("chart-etf"), [{
+    name: "持股權重",
+    values: etfRows.map((row) => isValue(row.holding_ratio) ? row.holding_ratio * 100 : null),
+    digits: 2,
+    suffix: "%",
+  }], etfRows.map((row) => row.etf_code), { bars: [0] });
+  byId("etf-caption").textContent = etfRows.length
+    ? `${etfLatestDate}｜${etfRows.length} 檔 ETF`
+    : "目前資料源未查到持有此股票的 ETF";
+
+  const futuresRows = radar.futures || [];
+  const contracts = [...new Set(futuresRows.map((row) => row.contract))];
+  const futuresValues = new Map(futuresRows.map((row) => [`${row.contract}:${row.institution}`, row.net_oi]));
+  drawChart(byId("chart-futures"), institutions.map((institution) => ({
+    name: institution,
+    values: contracts.map((contract) => futuresValues.get(`${contract}:${institution}`) ?? null),
+    digits: 0,
+    suffix: " 口",
+  })), contracts, { bars: [0, 1, 2] });
+
+  tableFromRows(byId("futures-table"), futuresRows, [
     { key: "institution", label: "身份" }, { key: "contract", label: "商品" },
     { key: "long_oi", label: "多", format: (v) => fmt(v, 0) }, { key: "short_oi", label: "空", format: (v) => fmt(v, 0) },
     { key: "net_oi", label: "淨額", format: (v) => fmt(v, 0), className: (row) => row.net_oi >= 0 ? "positive" : "negative" },
   ], "待補 TAIFEX 未平倉資料");
   tableFromRows(byId("institution-table"), chips.institutional_trading?.slice(0, 30), [
-    { key: "date", label: "日期" }, { key: "institution", label: "法人" }, { key: "buy", label: "買進", format: (v) => fmt(v, 0) },
-    { key: "sell", label: "賣出", format: (v) => fmt(v, 0) }, { key: "net", label: "淨額", format: (v) => fmt(v, 0) },
+    { key: "date", label: "日期" }, { key: "institution", label: "法人" },
+    { key: "net", label: "買賣超", format: (v) => fmt(v, 0), className: (row) => row.net >= 0 ? "positive" : "negative" },
   ], "待補法人個股買賣超資料");
   tableFromRows(byId("margin-short-table"), chips.margin_short?.slice(0, 30), [
     { key: "date", label: "日期" }, { key: "margin_balance", label: "融資", format: (v) => fmt(v, 0) },
@@ -452,10 +663,10 @@ function renderMarket(chips, radar) {
     { key: "date", label: "日期" }, { key: "branch", label: "分點" }, { key: "buy", label: "買", format: (v) => fmt(v, 0) },
     { key: "sell", label: "賣", format: (v) => fmt(v, 0) }, { key: "net", label: "淨", format: (v) => fmt(v, 0) },
   ], "待補券商分點資料");
-  tableFromRows(byId("etf-table"), chips.etf_holdings?.slice(0, 30), [
+  tableFromRows(byId("etf-table"), etfRows, [
     { key: "as_of_date", label: "日期" }, { key: "etf_code", label: "ETF" }, { key: "etf_name", label: "名稱" },
     { key: "holding_ratio", label: "權重", format: (v) => pct(v) },
-  ], "待補 ETF 成分持股資料");
+  ], "目前資料源未查到持有此股票的 ETF；不以 0 代替");
   tableFromRows(byId("market-cap-table"), radar.market_cap?.slice(0, 50), [
     { key: "rank", label: "#" }, { key: "code", label: "代碼" },
     { key: "name", label: "名稱" },
@@ -466,12 +677,37 @@ function renderMarket(chips, radar) {
 }
 
 function renderRanking(radar = state.radar) {
-  const category = byId("ranking-category").value;
+  const category = `${state.rankingTopic}_${state.rankingMarket}`;
   const rows = radar?.rankings?.[category] || [];
+  const topics = {
+    turnover: ["成交熱度", "用成交值找出資金最集中、最值得先研究的標的。"],
+    margin_ratio: ["券資壓力", "觀察融券相對融資的壓力，找出軋空或籌碼擁擠候選。"],
+    turnover_rate: ["交易活躍", "用週轉率辨識籌碼快速換手、價格正在形成共識的標的。"],
+  };
+  byId("ranking-title").textContent = topics[state.rankingTopic][0];
+  byId("ranking-description").textContent = topics[state.rankingTopic][1];
+  byId("ranking-scope").textContent = state.rankingMarket === "listed" ? "上市股票" : "上櫃股票";
+  byId("ranking-date").textContent = `資料日期 ${rows[0]?.date || "待補"}`;
+  $$('[data-ranking-topic]').forEach((button) => button.classList.toggle("active", button.dataset.rankingTopic === state.rankingTopic));
+  $$('[data-ranking-market]').forEach((button) => button.classList.toggle("active", button.dataset.rankingMarket === state.rankingMarket));
+  const valueLabel = state.rankingTopic === "turnover" ? "成交值" : state.rankingTopic === "margin_ratio" ? "券資比" : "週轉率";
+  const valueFormat = state.rankingTopic === "turnover"
+    ? (value) => isValue(value) ? `${fmt(Number(value) / 1e8, 2)} 億` : "—"
+    : (value) => pct(value, 2, true);
   tableFromRows(byId("ranking-table"), rows.slice(0, 50), [
-    { key: "rank", label: "#" }, { key: "code", label: "代碼" }, { key: "name", label: "名稱" },
-    { key: "value", label: "數值", format: (v) => fmt(v, 2) }, { key: "date", label: "日期" },
-  ], "待補排行榜資料");
+    { key: "rank", label: "排名" }, { key: "code", label: "代碼" },
+    {
+      key: "name",
+      label: "公司／標籤",
+      format: (value, row) => {
+        const market = row.market || (state.rankingMarket === "listed" ? "上市" : "上櫃");
+        const type = String(row.code).startsWith("0") ? "ETF" : "個股";
+        const industry = row.industry ? `<span>${escapeHtml(row.industry)}</span>` : "";
+        return `<div class="stock-labels"><b>${escapeHtml(value)}</b><small>${escapeHtml(market)}</small><small>${type}</small>${industry}</div>`;
+      },
+    },
+    { key: "value", label: valueLabel, format: valueFormat }, { key: "date", label: "資料日" },
+  ], `${valueLabel}的${state.rankingMarket === "listed" ? "上市" : "上櫃"}排行資料源尚未接妥`);
   $$("#ranking-table tbody tr").forEach((row, index) => {
     const code = rows[index]?.code;
     if (!code) return;
@@ -481,7 +717,8 @@ function renderRanking(radar = state.radar) {
 }
 
 function renderDashboard(dashboard, radar) {
-  renderStockHeader(dashboard.stock);
+  renderStockHeader(dashboard.stock, dashboard.freshness);
+  byId("market-current-stock").textContent = `${dashboard.stock.code} ${dashboard.stock.name || ""}${dashboard.stock.industry ? `｜${dashboard.stock.industry}` : ""}`;
   renderDecision(dashboard.decision);
   renderFundamentals(dashboard.fundamentals);
   renderQuality(dashboard.financial_quality);
@@ -493,8 +730,8 @@ function optionsQuery() {
   return new URLSearchParams(state.options).toString();
 }
 
-async function loadStock(code, { modelOnly = false } = {}) {
-  const normalized = String(code).trim();
+async function loadStock(code, { modelOnly = false, bootstrapAttempt = false } = {}) {
+  const normalized = String(code).trim().toUpperCase();
   if (!normalized) return;
   setLoading(true);
   try {
@@ -506,14 +743,26 @@ async function loadStock(code, { modelOnly = false } = {}) {
       renderDashboard(dashboard, state.radar);
       byId("empty-state").classList.add("hidden");
       byId("stock-header").classList.remove("hidden");
+      byId("freshness-rail").classList.remove("hidden");
       byId("workspace-nav").classList.remove("hidden");
       byId("workspace").classList.remove("hidden");
+      byId("refresh-button").classList.remove("hidden");
       history.replaceState(null, "", `?code=${encodeURIComponent(normalized)}&view=${state.view}`);
     } else {
       state.dashboard.decision = dashboard.decision;
       renderDecision(dashboard.decision);
     }
   } catch (error) {
+    if (error.status === 404 && !modelOnly && !bootstrapAttempt) {
+      byId("refresh-message").textContent = `首次建立 ${normalized} 的研究資料…`;
+      try {
+        await waitForRefresh(normalized);
+        return await loadStock(normalized, { bootstrapAttempt: true });
+      } catch (refreshError) {
+        showError(refreshError.message);
+        return;
+      }
+    }
     showError(`查詢失敗：${error.message}`);
   } finally {
     setLoading(false);
@@ -557,11 +806,58 @@ $$('[data-option]').forEach((select) => select.addEventListener("change", () => 
   state.options[select.dataset.option] = select.value;
   if (state.code) loadStock(state.code, { modelOnly: true });
 }));
-byId("ranking-category").addEventListener("change", () => renderRanking());
+$$('[data-fund-mode]').forEach((button) => button.addEventListener("click", () => {
+  const tableMode = button.dataset.fundMode === "table";
+  $$('[data-fund-mode]').forEach((item) => item.classList.toggle("active", item === button));
+  byId("fundamentals-chart-view").classList.toggle("hidden", tableMode);
+  byId("fundamentals-table-view").classList.toggle("hidden", !tableMode);
+  if (!tableMode && state.dashboard) requestAnimationFrame(() => renderFundamentals(state.dashboard.fundamentals));
+}));
+$$('[data-ranking-topic]').forEach((button) => button.addEventListener("click", () => {
+  state.rankingTopic = button.dataset.rankingTopic;
+  renderRanking();
+}));
+$$('[data-ranking-market]').forEach((button) => button.addEventListener("click", () => {
+  state.rankingMarket = button.dataset.rankingMarket;
+  renderRanking();
+}));
 
 const drawer = byId("method-drawer");
 byId("method-toggle").addEventListener("click", () => drawer.classList.toggle("hidden"));
 byId("method-close").addEventListener("click", () => drawer.classList.add("hidden"));
+
+async function waitForRefresh(code) {
+  await fetchJson(`${API}/stocks/${encodeURIComponent(code)}/refresh`, { method: "POST" });
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    const job = await fetchJson(`${API}/stocks/${encodeURIComponent(code)}/refresh-status`);
+    if (job.status === "running") continue;
+    byId("refresh-message").textContent = job.message || "更新完成";
+    if (job.status === "completed") return job;
+    throw new Error(job.message || "資料更新失敗");
+  }
+  throw new Error("更新仍在背景執行，可稍後重新查詢");
+}
+
+async function refreshCurrentStock() {
+  if (!state.code) return;
+  const button = byId("refresh-button");
+  button.disabled = true;
+  button.textContent = "更新中…";
+  byId("refresh-message").textContent = "正在背景更新；目前畫面仍可繼續研究";
+  try {
+    await waitForRefresh(state.code);
+    state.radar = null;
+    await loadStock(state.code);
+  } catch (error) {
+    showError(`更新失敗：${error.message}`);
+    byId("refresh-message").textContent = "更新失敗，畫面保留既有資料";
+  } finally {
+    button.disabled = false;
+    button.textContent = "更新資料";
+  }
+}
+byId("refresh-button").addEventListener("click", refreshCurrentStock);
 
 function tickClock() {
   byId("clock").textContent = new Intl.DateTimeFormat("zh-TW", { timeZone: "Asia/Taipei", hour12: false, month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date());

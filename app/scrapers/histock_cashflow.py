@@ -9,7 +9,9 @@ from io import StringIO
 import httpx
 import pandas as pd
 
-CASHFLOW_URL_TEMPLATE = "https://histock.tw/stock/{code}/%E7%8F%BE%E9%87%91%E6%B5%81%E9%87%8F%E8%A1%A8"
+CASHFLOW_URL_TEMPLATE = (
+    "https://histock.tw/stock/{code}/%E7%8F%BE%E9%87%91%E6%B5%81%E9%87%8F%E8%A1%A8"
+)
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 tw-stock-fundamentals/0.1"
 
 
@@ -73,7 +75,9 @@ def _parse_cashflow_html(html: str, code: str) -> list[QuarterlyCashflow]:
     return results
 
 
-def fetch_quarterly_cashflow(code: str, client: httpx.Client | None = None) -> list[QuarterlyCashflow]:
+def fetch_quarterly_cashflow(
+    code: str, client: httpx.Client | None = None
+) -> list[QuarterlyCashflow]:
     owns_client = client is None
     client = client or httpx.Client(headers={"User-Agent": USER_AGENT}, timeout=15)
     try:

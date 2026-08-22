@@ -34,7 +34,9 @@ class DetailedCashflowNotFoundError(Exception):
     pass
 
 
-def _parse_detailed_cashflow_html(html: str, code: str) -> list[DetailedCashflowQuarter]:
+def _parse_detailed_cashflow_html(
+    html: str, code: str
+) -> list[DetailedCashflowQuarter]:
     soup = BeautifulSoup(html, "lxml")
     table = soup.select_one("table.NormalTable")
     if table is None:

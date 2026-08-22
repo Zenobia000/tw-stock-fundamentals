@@ -2,7 +2,7 @@
 
 入口網站，非官方。頁面是標準 <table>：年度/季別、應收帳款收現天數、
 存貨週轉天數、營運週轉天數。這是原工作表『營業費用』與『九宮格』共用的
-效率指標（蘭氏核心：營運天數 = 收款天數 + 存貨天數）。
+效率指標（翁氏核心：營運天數 = 收款天數 + 存貨天數）。
 """
 
 from dataclasses import dataclass
@@ -72,7 +72,9 @@ def _parse_turnover_html(html: str, code: str) -> list[QuarterlyTurnover]:
     return results
 
 
-def fetch_quarterly_turnover(code: str, client: httpx.Client | None = None) -> list[QuarterlyTurnover]:
+def fetch_quarterly_turnover(
+    code: str, client: httpx.Client | None = None
+) -> list[QuarterlyTurnover]:
     owns_client = client is None
     client = client or httpx.Client(headers={"User-Agent": USER_AGENT}, timeout=15)
     try:

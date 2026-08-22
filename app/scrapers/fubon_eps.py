@@ -75,7 +75,9 @@ def _parse_eps_html(html: str, code: str) -> list[QuarterlyEps]:
     return results
 
 
-def fetch_quarterly_eps(code: str, client: httpx.Client | None = None) -> list[QuarterlyEps]:
+def fetch_quarterly_eps(
+    code: str, client: httpx.Client | None = None
+) -> list[QuarterlyEps]:
     owns_client = client is None
     client = client or httpx.Client(headers={"User-Agent": USER_AGENT}, timeout=15)
     try:

@@ -36,13 +36,18 @@ def _number(value: str, default: float | None = None) -> float | None:
 def _parse_broker_html(html: str, code: str) -> list[BrokerBranch]:
     soup = BeautifulSoup(html, "lxml")
     table = soup.find("table")
-    date_input = soup.find("input", id=lambda value: value and value.endswith("tbxEndDate"))
+    date_input = soup.find(
+        "input", id=lambda value: value and value.endswith("tbxEndDate")
+    )
     if table is None or date_input is None or not date_input.get("value"):
         raise BrokerBranchesNotFoundError(f"查無股票代碼 {code} 的券商分點表")
     trade_date = str(date_input["value"]).replace("/", "-")
     results: list[BrokerBranch] = []
     for row in table.find_all("tr"):
-        values = [cell.get_text(" ", strip=True) for cell in row.find_all(["th", "td"], recursive=False)]
+        values = [
+            cell.get_text(" ", strip=True)
+            for cell in row.find_all(["th", "td"], recursive=False)
+        ]
         if len(values) != 10:
             continue
         for offset in (0, 5):

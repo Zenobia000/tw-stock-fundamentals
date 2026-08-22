@@ -11,9 +11,9 @@ from app.scrapers.histock_revenue import (
     fetch_monthly_revenue,
 )
 
-FIXTURE_2330 = (Path(__file__).parent / "fixtures" / "histock_revenue_2330.html").read_text(
-    encoding="utf-8"
-)
+FIXTURE_2330 = (
+    Path(__file__).parent / "fixtures" / "histock_revenue_2330.html"
+).read_text(encoding="utf-8")
 
 
 def test_parse_revenue_html_extracts_monthly_rows():

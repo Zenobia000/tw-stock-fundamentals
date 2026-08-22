@@ -39,7 +39,12 @@ def compute_historical_pe_ratios(
     return [price / eps for _, price, eps in quarter_price_eps if eps > 0]
 
 
-def pe_percentile_bands(pe_ratios: list[float], low_pct: float = 20, mid_pct: float = 50, high_pct: float = 80) -> PeBands:
+def pe_percentile_bands(
+    pe_ratios: list[float],
+    low_pct: float = 20,
+    mid_pct: float = 50,
+    high_pct: float = 80,
+) -> PeBands:
     return PeBands(
         low=percentile(pe_ratios, low_pct),
         mid=percentile(pe_ratios, mid_pct),

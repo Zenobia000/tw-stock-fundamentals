@@ -13,7 +13,9 @@ from app.scrapers.twse_stock_day import (
 )
 
 FIXTURE_2330 = json.loads(
-    (Path(__file__).parent / "fixtures" / "twse_stock_day_2330_202607.json").read_text(encoding="utf-8")
+    (Path(__file__).parent / "fixtures" / "twse_stock_day_2330_202607.json").read_text(
+        encoding="utf-8"
+    )
 )
 
 

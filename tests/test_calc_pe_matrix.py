@@ -1,6 +1,10 @@
 import pytest
 
-from app.calc.pe_matrix import compute_historical_pe_ratios, pe_percentile_bands, percentile
+from app.calc.pe_matrix import (
+    compute_historical_pe_ratios,
+    pe_percentile_bands,
+    percentile,
+)
 
 
 def test_percentile_hand_calculation():
@@ -23,10 +27,10 @@ def test_percentile_empty_raises():
 
 def test_compute_historical_pe_ratios_skips_loss_quarters():
     data = [
-        ("2025Q1", 100, 10),   # PE 10
-        ("2025Q2", 120, 0),    # 損益兩平，排除
-        ("2025Q3", 150, -5),   # 虧損，排除
-        ("2025Q4", 200, 20),   # PE 10
+        ("2025Q1", 100, 10),  # PE 10
+        ("2025Q2", 120, 0),  # 損益兩平，排除
+        ("2025Q3", 150, -5),  # 虧損，排除
+        ("2025Q4", 200, 20),  # PE 10
     ]
     ratios = compute_historical_pe_ratios(data)
     assert ratios == [10, 10]

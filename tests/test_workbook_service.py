@@ -1,7 +1,7 @@
 import pytest
 
 from app.db.connection import get_connection
-from app.workbook_service import build_workbook_valuation_snapshot
+from app.workbook_service import build_valuation_snapshot
 from tests.test_workbook_model import WORKBOOK_PE_VALUES, _tsmc_quarters
 
 
@@ -14,12 +14,25 @@ def test_sqlite_adapter_reproduces_sunny_golden_chain(tmp_path):
         "INSERT INTO stock_info(code, price, fetched_at) VALUES ('2330', 2395, 'now')"
     )
     revenues = [
-        467580.544, 442679.968, 416975.168, 410725.088, 415191.712, 317656.608,
-        401255.104, 335003.584, 343613.792, 367473.088, 330980.896, 335771.712,
+        467580.544,
+        442679.968,
+        416975.168,
+        410725.088,
+        415191.712,
+        317656.608,
+        401255.104,
+        335003.584,
+        343613.792,
+        367473.088,
+        330980.896,
+        335771.712,
     ]
     conn.executemany(
         "INSERT INTO revenue_monthly VALUES ('2330', ?, ?, 'now')",
-        [(f"2026-{12 - index:02d}", value * 1000) for index, value in enumerate(revenues)],
+        [
+            (f"2026-{12 - index:02d}", value * 1000)
+            for index, value in enumerate(revenues)
+        ],
     )
     for quarter in _tsmc_quarters():
         conn.execute(
@@ -60,7 +73,10 @@ def test_sqlite_adapter_reproduces_sunny_golden_chain(tmp_path):
         )
     conn.executemany(
         "INSERT INTO pe_monthly VALUES ('2330', ?, ?, 'fixture', 'now')",
-        [(f"sample-{index:02d}", value) for index, value in enumerate(WORKBOOK_PE_VALUES)],
+        [
+            (f"sample-{index:02d}", value)
+            for index, value in enumerate(WORKBOOK_PE_VALUES)
+        ],
     )
     conn.executemany(
         """
@@ -72,7 +88,7 @@ def test_sqlite_adapter_reproduces_sunny_golden_chain(tmp_path):
     )
     conn.commit()
 
-    snapshot = build_workbook_valuation_snapshot(conn, "2330")
+    snapshot = build_valuation_snapshot(conn, "2330")
     result = snapshot["result"]
     assert snapshot["warnings"] == []
     assert snapshot["coverage"]["detailed_income_statement"] is True

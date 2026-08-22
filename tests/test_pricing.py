@@ -33,7 +33,17 @@ def test_recent_month_first_days_crosses_year_boundary():
 
 STOCK_DAY_JUNE_PAYLOAD = {
     "stat": "OK",
-    "fields": ["日期", "成交股數", "成交金額", "開盤價", "最高價", "最低價", "收盤價", "漲跌價差", "成交筆數"],
+    "fields": [
+        "日期",
+        "成交股數",
+        "成交金額",
+        "開盤價",
+        "最高價",
+        "最低價",
+        "收盤價",
+        "漲跌價差",
+        "成交筆數",
+    ],
     "data": [
         ["115/06/01", "1", "1", "2300", "2310", "2290", "2305", "+5.00", "1"],
         ["115/06/30", "1", "1", "2390", "2400", "2380", "2395", "+10.00", "1"],
@@ -47,12 +57,19 @@ def test_fetch_missing_quarterly_close_prices_fetches_and_caches(tmp_path):
     upsert_stock(
         conn,
         StockIsinInfo(
-            code="2330", name="台積電", market="上市", security_type="股票",
-            industry="半導體業", isin="TW0002330008", listed_date="1994/09/05",
+            code="2330",
+            name="台積電",
+            market="上市",
+            security_type="股票",
+            industry="半導體業",
+            isin="TW0002330008",
+            listed_date="1994/09/05",
         ),
     )
 
-    route = respx.get(STOCK_DAY_URL).mock(return_value=httpx.Response(200, json=STOCK_DAY_JUNE_PAYLOAD))
+    route = respx.get(STOCK_DAY_URL).mock(
+        return_value=httpx.Response(200, json=STOCK_DAY_JUNE_PAYLOAD)
+    )
 
     results = fetch_missing_quarterly_close_prices("2330", ["2026Q2"], conn)
     assert results == {"2026Q2": None}
@@ -77,8 +94,13 @@ def test_fetch_missing_daily_prices_writes_ohlc_and_caches_historical_month(tmp_
     upsert_stock(
         conn,
         StockIsinInfo(
-            code="2330", name="台積電", market="上市", security_type="股票",
-            industry="半導體業", isin="TW0002330008", listed_date="1994/09/05",
+            code="2330",
+            name="台積電",
+            market="上市",
+            security_type="股票",
+            industry="半導體業",
+            isin="TW0002330008",
+            listed_date="1994/09/05",
         ),
     )
     route = respx.get(STOCK_DAY_URL).mock(

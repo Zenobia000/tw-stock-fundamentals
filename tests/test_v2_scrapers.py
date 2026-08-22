@@ -1,20 +1,23 @@
 from app.db.connection import get_connection
 from app.db.repository import (
     upsert_annual_dividends,
+    upsert_detailed_balance,
     upsert_etf_holdings,
     upsert_institutional_trading,
     upsert_margin_short,
     upsert_monthly_pe,
-    upsert_detailed_balance,
 )
-from app.scrapers.cmoney_stock import _parse_annual_dividend_html, _parse_etf_holdings_html
+from app.scrapers.cmoney_stock import (
+    _parse_annual_dividend_html,
+    _parse_etf_holdings_html,
+)
 from app.scrapers.fubon_institutional import _parse_institutional_html
 from app.scrapers.fubon_margin_short import _parse_margin_short_html
 from app.scrapers.histock_brokers import _parse_broker_html
 from app.scrapers.histock_pe import _parse_pe_html
-from app.scrapers.moneylink_income import _parse_income_html
 from app.scrapers.moneylink_balance import _parse_balance_html
 from app.scrapers.moneylink_cashflow import _parse_detailed_cashflow_html
+from app.scrapers.moneylink_income import _parse_income_html
 from app.scrapers.taifex_market_cap import _parse_market_cap_html
 
 
@@ -258,7 +261,9 @@ def test_v2_scraper_rows_upsert_into_normalized_tables(tmp_path):
     conn.execute(
         "INSERT INTO stocks(code, name, updated_at) VALUES ('2330', '台積電', '2026-08-20')"
     )
-    pe_rows = _parse_pe_html("<table><tr><td>2026/08</td><td>27.24</td></tr></table>", "2330")
+    pe_rows = _parse_pe_html(
+        "<table><tr><td>2026/08</td><td>27.24</td></tr></table>", "2330"
+    )
     institution_rows = _parse_institutional_html(
         """<table><tr><td>115/08/20</td><td>734</td><td>399</td><td>-17</td>
         <td>1,116</td><td>1</td><td>2</td><td>3</td><td>6</td><td>69%</td><td>74%</td>
@@ -303,9 +308,22 @@ def test_v2_scraper_rows_upsert_into_normalized_tables(tmp_path):
     upsert_detailed_balance(conn, "2330", balance_rows)
 
     assert conn.execute("SELECT pe_ratio FROM pe_monthly").fetchone()[0] == 27.24
-    assert conn.execute("SELECT COUNT(*) FROM institutional_trading_daily").fetchone()[0] == 3
-    assert conn.execute("SELECT margin_balance FROM margin_short_daily").fetchone()[0] == 28308
-    assert conn.execute("SELECT payout_ratio FROM dividend_annual").fetchone()[0] == 0.332
-    assert conn.execute("SELECT holding_ratio FROM etf_holdings").fetchone()[0] == 0.6777
-    assert conn.execute("SELECT total_assets FROM balance_sheet_quarterly").fetchone()[0] == 10000
+    assert (
+        conn.execute("SELECT COUNT(*) FROM institutional_trading_daily").fetchone()[0]
+        == 3
+    )
+    assert (
+        conn.execute("SELECT margin_balance FROM margin_short_daily").fetchone()[0]
+        == 28308
+    )
+    assert (
+        conn.execute("SELECT payout_ratio FROM dividend_annual").fetchone()[0] == 0.332
+    )
+    assert (
+        conn.execute("SELECT holding_ratio FROM etf_holdings").fetchone()[0] == 0.6777
+    )
+    assert (
+        conn.execute("SELECT total_assets FROM balance_sheet_quarterly").fetchone()[0]
+        == 10000
+    )
     conn.close()

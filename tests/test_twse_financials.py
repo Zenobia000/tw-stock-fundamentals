@@ -3,11 +3,16 @@ from pathlib import Path
 
 import pytest
 
-from app.scrapers.twse_financials import FinancialsNotFoundError, _parse_financial_health
+from app.scrapers.twse_financials import (
+    FinancialsNotFoundError,
+    _parse_financial_health,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 INCOME = json.loads((FIXTURES / "twse_income_sample.json").read_text(encoding="utf-8"))
-BALANCE = json.loads((FIXTURES / "twse_balance_sample.json").read_text(encoding="utf-8"))
+BALANCE = json.loads(
+    (FIXTURES / "twse_balance_sample.json").read_text(encoding="utf-8")
+)
 MARGIN = json.loads((FIXTURES / "twse_margin_sample.json").read_text(encoding="utf-8"))
 
 

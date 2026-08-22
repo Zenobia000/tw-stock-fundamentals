@@ -1,14 +1,17 @@
 # tw-stock-fundamentals
 
-台股基本面研究工作台。以 `★★★★★★ 波段股價預估試算_sunny.xlsx` 為功能基準，將 17 個 Sheet 重整為「決策總覽、營運基本面、財務品質與回報、蘭氏九宮格、籌碼與市場」五個區域。核心估值公式在 Python 後端運算，前端不複製公式；Google Sheets 的 `IMPORTHTML` 則由爬蟲與 SQLite 歷史資料取代。
+為個人投資研究打造的台股通用平台，整合「決策總覽、營運基本面、財務品質與回報、翁氏九宮格、籌碼與市場」五個區域。估值公式由 Python 後端統一運算，公開資料經正規化後保存於 SQLite，前端只負責一致地呈現研究結果。
 
 ## 快速開始
 
 ```bash
-poetry install
-poetry run uvicorn app.main:app --reload
-poetry run pytest
+uv sync
+uv run python -m app.ingest 2330 3037
+uv run uvicorn app.main:app --reload
+uv run pytest
 ```
+
+`uv sync` 會依 `uv.lock` 建立或更新專案的 `.venv`。
 
 ## 專案結構
 
@@ -19,12 +22,9 @@ app/
   db/         SQLite schema 與存取
   api/        FastAPI route
 web/          前端（純 HTML/CSS/JS，彭博終端風格）
-tests/        pytest（含對照 Excel 快照值的 golden-value 測試）
+tests/        pytest（含固定基準案例與 API 整合測試）
 docs/agents/project.md       專案契約
-docs/specs/workbook-analysis.md  原始 Excel 逐格公式分析
-docs/specs/workbook-formula-contract.md  Sunny 估值公式契約
-docs/specs/site-information-architecture.md  17 Sheet → 5 功能區對照
-reference/    原始 Excel 檔案
+docs/specs/   估值模型、資料來源與產品資訊架構
 ```
 
 ## 資料來源

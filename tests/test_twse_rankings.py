@@ -4,10 +4,16 @@ from pathlib import Path
 import httpx
 import respx
 
-from app.scrapers.twse_rankings import STOCK_DAY_ALL_URL, _parse_rankings_json, fetch_turnover_rankings
+from app.scrapers.twse_rankings import (
+    STOCK_DAY_ALL_URL,
+    _parse_rankings_json,
+    fetch_turnover_rankings,
+)
 
 FIXTURE_RECORDS = json.loads(
-    (Path(__file__).parent / "fixtures" / "twse_stock_day_sample.json").read_text(encoding="utf-8")
+    (Path(__file__).parent / "fixtures" / "twse_stock_day_sample.json").read_text(
+        encoding="utf-8"
+    )
 )
 
 
@@ -29,7 +35,9 @@ def test_parse_rankings_handles_empty_input():
 
 @respx.mock
 def test_fetch_turnover_rankings_hits_official_endpoint_and_parses():
-    respx.get(STOCK_DAY_ALL_URL).mock(return_value=httpx.Response(200, json=FIXTURE_RECORDS))
+    respx.get(STOCK_DAY_ALL_URL).mock(
+        return_value=httpx.Response(200, json=FIXTURE_RECORDS)
+    )
     rankings = fetch_turnover_rankings(top_n=5)
     assert len(rankings) == 5
     assert rankings[0].code == "2408"

@@ -11,9 +11,9 @@ from app.scrapers.histock_chips import (
     fetch_daily_chips,
 )
 
-FIXTURE_2330 = (Path(__file__).parent / "fixtures" / "histock_large_2330.html").read_text(
-    encoding="utf-8"
-)
+FIXTURE_2330 = (
+    Path(__file__).parent / "fixtures" / "histock_large_2330.html"
+).read_text(encoding="utf-8")
 
 
 def test_parse_chips_html_extracts_known_rows():

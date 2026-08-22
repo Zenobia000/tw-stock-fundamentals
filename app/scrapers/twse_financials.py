@@ -84,12 +84,22 @@ def _parse_financial_health(
     balance_rows: list[dict],
     margin_rows: list[dict],
 ) -> list[FinancialHealthQuarter]:
-    income_by_q = {k: v for k, v in _index_by_code_and_quarter(income_rows).items() if k[0] == code}
-    balance_by_q = {k: v for k, v in _index_by_code_and_quarter(balance_rows).items() if k[0] == code}
-    margin_by_q = {k: v for k, v in _index_by_code_and_quarter(margin_rows).items() if k[0] == code}
+    income_by_q = {
+        k: v for k, v in _index_by_code_and_quarter(income_rows).items() if k[0] == code
+    }
+    balance_by_q = {
+        k: v
+        for k, v in _index_by_code_and_quarter(balance_rows).items()
+        if k[0] == code
+    }
+    margin_by_q = {
+        k: v for k, v in _index_by_code_and_quarter(margin_rows).items() if k[0] == code
+    }
 
     quarters = sorted(
-        {q for (c, q) in income_by_q} | {q for (c, q) in balance_by_q} | {q for (c, q) in margin_by_q},
+        {q for (c, q) in income_by_q}
+        | {q for (c, q) in balance_by_q}
+        | {q for (c, q) in margin_by_q},
         reverse=True,
     )
     if not quarters:
@@ -119,14 +129,18 @@ def _parse_financial_health(
                 net_income=_to_float(inc.get("本期淨利（淨損）")),
                 eps=_to_float(inc.get("基本每股盈餘（元）")),
                 gross_margin_pct=_to_float(mar.get("毛利率(%)(營業毛利)/(營業收入)")),
-                operating_margin_pct=_to_float(mar.get("營業利益率(%)(營業利益)/(營業收入)")),
+                operating_margin_pct=_to_float(
+                    mar.get("營業利益率(%)(營業利益)/(營業收入)")
+                ),
                 net_margin_pct=_to_float(mar.get("稅後純益率(%)(稅後純益)/(營業收入)")),
             )
         )
     return results
 
 
-def fetch_financial_health(code: str, client: httpx.Client | None = None) -> list[FinancialHealthQuarter]:
+def fetch_financial_health(
+    code: str, client: httpx.Client | None = None
+) -> list[FinancialHealthQuarter]:
     owns_client = client is None
     client = client or httpx.Client(headers={"User-Agent": USER_AGENT}, timeout=30)
     try:

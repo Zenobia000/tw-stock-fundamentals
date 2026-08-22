@@ -10,21 +10,23 @@ from io import StringIO
 import httpx
 import pandas as pd
 
-DIVIDEND_URL_TEMPLATE = "https://histock.tw/stock/{code}/%E9%99%A4%E6%AC%8A%E9%99%A4%E6%81%AF"
+DIVIDEND_URL_TEMPLATE = (
+    "https://histock.tw/stock/{code}/%E9%99%A4%E6%AC%8A%E9%99%A4%E6%81%AF"
+)
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 tw-stock-fundamentals/0.1"
 
 
 @dataclass
 class DividendEvent:
-    fiscal_year: int          # 所屬年度
-    payout_year: int          # 發放年度
-    ex_dividend_date: str | None    # 除息日 (MM/DD)
-    pre_price: float | None         # 除權息前股價
-    stock_dividend: float           # 股票股利
-    cash_dividend: float            # 現金股利
+    fiscal_year: int  # 所屬年度
+    payout_year: int  # 發放年度
+    ex_dividend_date: str | None  # 除息日 (MM/DD)
+    pre_price: float | None  # 除權息前股價
+    stock_dividend: float  # 股票股利
+    cash_dividend: float  # 現金股利
     eps: float | None
     payout_ratio_pct: float | None  # 配息率
-    cash_yield_pct: float | None    # 現金殖利率
+    cash_yield_pct: float | None  # 現金殖利率
 
 
 class DividendNotFoundError(Exception):
@@ -91,7 +93,9 @@ def _parse_dividend_html(html: str, code: str) -> list[DividendEvent]:
     return results
 
 
-def fetch_dividend_history(code: str, client: httpx.Client | None = None) -> list[DividendEvent]:
+def fetch_dividend_history(
+    code: str, client: httpx.Client | None = None
+) -> list[DividendEvent]:
     owns_client = client is None
     client = client or httpx.Client(headers={"User-Agent": USER_AGENT}, timeout=15)
     try:

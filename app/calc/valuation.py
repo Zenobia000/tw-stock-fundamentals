@@ -63,7 +63,9 @@ def estimate_income_statement(
     )
 
 
-def estimate_eps(net_income: float, capital: float, face_value: float = 10.0) -> float | None:
+def estimate_eps(
+    net_income: float, capital: float, face_value: float = 10.0
+) -> float | None:
     """EPS = 稅後淨利 ÷ 股數；股數 = 股本 ÷ 每股面額（台股慣例 10 元）。"""
     if not capital:
         return None
@@ -71,7 +73,9 @@ def estimate_eps(net_income: float, capital: float, face_value: float = 10.0) ->
     return net_income / shares
 
 
-def compute_target_prices(estimated_eps: float, pe_low: float, pe_mid: float, pe_high: float) -> TargetPrices:
+def compute_target_prices(
+    estimated_eps: float, pe_low: float, pe_mid: float, pe_high: float
+) -> TargetPrices:
     """預估EPS × 高/中/低本益比 → 目標價（估值鏈最後一步）。"""
     return TargetPrices(
         low=estimated_eps * pe_low,
@@ -81,7 +85,7 @@ def compute_target_prices(estimated_eps: float, pe_low: float, pe_mid: float, pe
 
 
 def core_business_ratio(operating_income: float, pretax_income: float) -> float | None:
-    """本業比率 = 營業利益 / 稅前淨利（蘭氏本益比原則：評價前先剔除業外損益）。"""
+    """本業比率 = 營業利益 / 稅前淨利（翁氏本益比原則：評價前先剔除業外損益）。"""
     if not pretax_income:
         return None
     return operating_income / pretax_income
@@ -94,7 +98,7 @@ def split_core_eps(eps: float, core_ratio: float) -> tuple[float, float]:
 
 
 def lan_value(roe: float, core_ratio: float, pb: float) -> float | None:
-    """弦值(蘭氏ROE選指) = (ROE × 本業比率) / PB。全市場排名用的品質×估值單一分數。"""
+    """弦值(翁氏ROE選指) = (ROE × 本業比率) / PB。全市場排名用的品質×估值單一分數。"""
     if not pb:
         return None
     return (roe * core_ratio) / pb

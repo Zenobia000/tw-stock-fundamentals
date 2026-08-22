@@ -1,8 +1,7 @@
-"""減資一覽表 — 手動維護清單（原資料源 money-link 已停用，改由使用者/Claude 查詢
-證交所減資預告表或 MOPS 後手動輸入）。
+"""減資校正資料。
 
-用途：換股時若該股票近期辦理減資，EPS 計算需用這裡的校正值調整；查無資料時
-不影響其他計算（等同原工作表「未減資時本表留空」的設計）。
+上市公司目前公告由證交所減資預告表自動更新；歷史或特殊案件仍可用相同的
+upsert 介面補充。校正值定義為 1 - 減資換股率，供 EPS 模型的分母還原使用。
 """
 
 import sqlite3
@@ -13,44 +12,118 @@ from dataclasses import dataclass
 class CapitalReduction:
     name: str
     code: str | None
-    resume_date: str | None       # 減資恢復買賣日
-    adjust_factor: float | None   # 校正值
+    resume_date: str | None  # 減資恢復買賣日
+    adjust_factor: float | None  # 校正值
+    stop_date: str | None = None
+    exchange_ratio: float | None = None
+    reason: str | None = None
+    source: str | None = None
 
 
 def upsert_capital_reduction(conn: sqlite3.Connection, entry: CapitalReduction) -> None:
     conn.execute(
         """
-        INSERT INTO capital_reductions (name, code, resume_date, adjust_factor)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO capital_reductions (
+            name, code, stop_date, resume_date, exchange_ratio,
+            adjust_factor, reason, source
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(name) DO UPDATE SET
             code = excluded.code,
+            stop_date = excluded.stop_date,
             resume_date = excluded.resume_date,
-            adjust_factor = excluded.adjust_factor
+            exchange_ratio = excluded.exchange_ratio,
+            adjust_factor = excluded.adjust_factor,
+            reason = excluded.reason,
+            source = excluded.source
         """,
-        (entry.name, entry.code, entry.resume_date, entry.adjust_factor),
+        (
+            entry.name,
+            entry.code,
+            entry.stop_date,
+            entry.resume_date,
+            entry.exchange_ratio,
+            entry.adjust_factor,
+            entry.reason,
+            entry.source,
+        ),
     )
     conn.commit()
 
 
-def get_capital_reduction(conn: sqlite3.Connection, name: str) -> CapitalReduction | None:
+def upsert_capital_reductions(
+    conn: sqlite3.Connection, entries: list[CapitalReduction]
+) -> None:
+    conn.executemany(
+        """
+        INSERT INTO capital_reductions (
+            name, code, stop_date, resume_date, exchange_ratio,
+            adjust_factor, reason, source
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(name) DO UPDATE SET
+            code = excluded.code,
+            stop_date = excluded.stop_date,
+            resume_date = excluded.resume_date,
+            exchange_ratio = excluded.exchange_ratio,
+            adjust_factor = excluded.adjust_factor,
+            reason = excluded.reason,
+            source = excluded.source
+        """,
+        [
+            (
+                entry.name,
+                entry.code,
+                entry.stop_date,
+                entry.resume_date,
+                entry.exchange_ratio,
+                entry.adjust_factor,
+                entry.reason,
+                entry.source,
+            )
+            for entry in entries
+        ],
+    )
+    conn.commit()
+
+
+def get_capital_reduction(
+    conn: sqlite3.Connection, name: str
+) -> CapitalReduction | None:
     row = conn.execute(
-        "SELECT name, code, resume_date, adjust_factor FROM capital_reductions WHERE name = ?",
+        "SELECT * FROM capital_reductions WHERE name = ?",
         (name,),
     ).fetchone()
     if row is None:
         return None
     return CapitalReduction(
-        name=row["name"], code=row["code"], resume_date=row["resume_date"], adjust_factor=row["adjust_factor"]
+        name=row["name"],
+        code=row["code"],
+        resume_date=row["resume_date"],
+        adjust_factor=row["adjust_factor"],
+        stop_date=row["stop_date"],
+        exchange_ratio=row["exchange_ratio"],
+        reason=row["reason"],
+        source=row["source"],
     )
 
 
-def get_capital_reduction_by_code(conn: sqlite3.Connection, code: str) -> CapitalReduction | None:
+def get_capital_reduction_by_code(
+    conn: sqlite3.Connection, code: str
+) -> CapitalReduction | None:
     row = conn.execute(
-        "SELECT name, code, resume_date, adjust_factor FROM capital_reductions WHERE code = ?",
+        "SELECT * FROM capital_reductions WHERE code = ?",
         (code,),
     ).fetchone()
     if row is None:
         return None
     return CapitalReduction(
-        name=row["name"], code=row["code"], resume_date=row["resume_date"], adjust_factor=row["adjust_factor"]
+        name=row["name"],
+        code=row["code"],
+        resume_date=row["resume_date"],
+        adjust_factor=row["adjust_factor"],
+        stop_date=row["stop_date"],
+        exchange_ratio=row["exchange_ratio"],
+        reason=row["reason"],
+        source=row["source"],
     )

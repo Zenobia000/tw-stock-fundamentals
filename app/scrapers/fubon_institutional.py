@@ -6,7 +6,9 @@ from dataclasses import dataclass
 import httpx
 from bs4 import BeautifulSoup
 
-INSTITUTIONAL_URL_TEMPLATE = "https://fubon-ebrokerdj.fbs.com.tw/z/zc/zcl/zcl.djhtm?a={code}&b=4"
+INSTITUTIONAL_URL_TEMPLATE = (
+    "https://fubon-ebrokerdj.fbs.com.tw/z/zc/zcl/zcl.djhtm?a={code}&b=4"
+)
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 tw-stock-fundamentals/0.1"
 _ROC_DATE = re.compile(r"^(\d{2,3})/(\d{2})/(\d{2})$")
 
@@ -41,13 +43,17 @@ def _parse_institutional_html(html: str, code: str) -> list[InstitutionalTrade]:
     soup = BeautifulSoup(html, "lxml")
     results: list[InstitutionalTrade] = []
     for row in soup.find_all("tr"):
-        values = [cell.get_text(strip=True) for cell in row.find_all("td", recursive=False)]
+        values = [
+            cell.get_text(strip=True) for cell in row.find_all("td", recursive=False)
+        ]
         if len(values) != 11:
             continue
         trade_date = _date(values[0])
         if trade_date is None:
             continue
-        for institution, raw_value in zip(("外資", "投信", "自營商"), values[1:4], strict=True):
+        for institution, raw_value in zip(
+            ("外資", "投信", "自營商"), values[1:4], strict=True
+        ):
             net = _number(raw_value)
             if net is not None:
                 results.append(InstitutionalTrade(trade_date, institution, net))

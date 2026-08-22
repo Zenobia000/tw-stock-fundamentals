@@ -51,12 +51,19 @@ def _parse_balance_html(html: str, code: str) -> list[DetailedBalanceQuarter]:
         raise DetailedBalanceNotFoundError(f"查無股票代碼 {code} 的資產負債表")
     rows = table.find_all("tr")
     header = next(
-        (row for row in rows if row.find(["th", "td"]) and row.find(["th", "td"]).get_text(strip=True) == "科目"),
+        (
+            row
+            for row in rows
+            if row.find(["th", "td"])
+            and row.find(["th", "td"]).get_text(strip=True) == "科目"
+        ),
         None,
     )
     if header is None:
         raise DetailedBalanceNotFoundError("資產負債表缺少季度表頭")
-    header_cells = [cell.get_text(" ", strip=True) for cell in header.find_all(["th", "td"])]
+    header_cells = [
+        cell.get_text(" ", strip=True) for cell in header.find_all(["th", "td"])
+    ]
     quarters = [_quarter_from_header(value) for value in header_cells[1:]]
     valid = [(index + 1, quarter) for index, quarter in enumerate(quarters) if quarter]
     data: dict[str, dict[str, float | None]] = {}
@@ -100,7 +107,9 @@ def _parse_balance_html(html: str, code: str) -> list[DetailedBalanceQuarter]:
                 ),
                 quarter,
             ),
-            "accounts_receivable": total(("應收帳款淨額", "應收帳款-關係人淨額"), quarter),
+            "accounts_receivable": total(
+                ("應收帳款淨額", "應收帳款-關係人淨額"), quarter
+            ),
             "inventory": value("存貨", quarter),
             "long_term_investments": total(
                 (
@@ -118,7 +127,12 @@ def _parse_balance_html(html: str, code: str) -> list[DetailedBalanceQuarter]:
             "contract_liabilities": None,
             "current_liabilities": value("流動負債", quarter),
             "interest_bearing_debt": total(
-                ("一年或一營業週期內到期長期負債", "應付公司債", "長期借款", "租賃負債－非流動"),
+                (
+                    "一年或一營業週期內到期長期負債",
+                    "應付公司債",
+                    "長期借款",
+                    "租賃負債－非流動",
+                ),
                 quarter,
             ),
             "total_liabilities": value("負債", quarter),
@@ -126,7 +140,10 @@ def _parse_balance_html(html: str, code: str) -> list[DetailedBalanceQuarter]:
             "capital": capital_thousands,
         }
         # MoneyLink 單位為千元；正規化表統一存百萬元。
-        fields = {key: value / 1000 if value is not None else None for key, value in fields.items()}
+        fields = {
+            key: value / 1000 if value is not None else None
+            for key, value in fields.items()
+        }
         results.append(
             DetailedBalanceQuarter(
                 quarter=quarter,
@@ -135,7 +152,9 @@ def _parse_balance_html(html: str, code: str) -> list[DetailedBalanceQuarter]:
             )
         )
     if not results:
-        raise DetailedBalanceNotFoundError(f"股票代碼 {code} 的資產負債表沒有有效資料列")
+        raise DetailedBalanceNotFoundError(
+            f"股票代碼 {code} 的資產負債表沒有有效資料列"
+        )
     return results
 
 

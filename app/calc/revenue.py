@@ -13,8 +13,8 @@ class RevenueSignal:
     near_3m_yoy: float
     near_12m: float
     near_12m_yoy: float
-    yoy_spread: float          # 長短期YOY間距 = 近3月YoY − 近12月YoY
-    yoy_trend: str              # "長短期YOY擴大" / "長短期YOY收斂"
+    yoy_spread: float  # 長短期YOY間距 = 近3月YoY − 近12月YoY
+    yoy_trend: str  # "長短期YOY擴大" / "長短期YOY收斂"
 
 
 def _sum_window(revenues: list[float], start: int, size: int) -> float | None:
@@ -44,7 +44,12 @@ def compute_revenue_signals(revenues: list[float]) -> list[RevenueSignal | None]
         near_3m_yoy = _pct_change(near_3m, near_3m_yoy_base)
         near_12m_yoy = _pct_change(near_12m, near_12m_yoy_base)
 
-        if near_3m is None or near_12m is None or near_3m_yoy is None or near_12m_yoy is None:
+        if (
+            near_3m is None
+            or near_12m is None
+            or near_3m_yoy is None
+            or near_12m_yoy is None
+        ):
             results.append(None)
             spreads.append(None)
             continue
@@ -70,6 +75,8 @@ def compute_revenue_signals(revenues: list[float]) -> list[RevenueSignal | None]
         if prior_spread is None:
             results[i] = None
             continue
-        signal.yoy_trend = "長短期YOY擴大" if signal.yoy_spread > prior_spread else "長短期YOY收斂"
+        signal.yoy_trend = (
+            "長短期YOY擴大" if signal.yoy_spread > prior_spread else "長短期YOY收斂"
+        )
 
     return results

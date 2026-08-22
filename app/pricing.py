@@ -65,7 +65,9 @@ def fetch_missing_daily_prices(
     try:
         for value in missing:
             try:
-                upsert_daily_prices(conn, code, fetch_stock_day(code, value, client=client))
+                upsert_daily_prices(
+                    conn, code, fetch_stock_day(code, value, client=client)
+                )
                 results[value] = None
             except Exception as exc:  # noqa: BLE001 — 單月失敗不影響其他月份
                 results[value] = f"{type(exc).__name__}: {exc}"
@@ -83,7 +85,10 @@ def quarter_to_month_first_day(quarter: str) -> str:
 
 
 def fetch_missing_quarterly_close_prices(
-    code: str, quarters: list[str], conn: sqlite3.Connection, client: httpx.Client | None = None
+    code: str,
+    quarters: list[str],
+    conn: sqlite3.Connection,
+    client: httpx.Client | None = None,
 ) -> dict[str, str | None]:
     """對 quarters 清單裡「資料庫還沒有」的季別，各打一次 STOCK_DAY 抓季底收盤價。
 
@@ -104,12 +109,16 @@ def fetch_missing_quarterly_close_prices(
     try:
         for quarter in missing:
             try:
-                days = fetch_stock_day(code, quarter_to_month_first_day(quarter), client=client)
+                days = fetch_stock_day(
+                    code, quarter_to_month_first_day(quarter), client=client
+                )
                 priced_days = [d for d in days if d.close is not None]
                 if not priced_days:
                     raise ValueError(f"{quarter} 該月沒有任何交易日收盤價")
                 last_day = max(priced_days, key=lambda d: d.date)
-                upsert_quarterly_close_price(conn, code, quarter, last_day.close, last_day.date)
+                upsert_quarterly_close_price(
+                    conn, code, quarter, last_day.close, last_day.date
+                )
                 results[quarter] = None
             except Exception as exc:  # noqa: BLE001 — 單一季失敗不能擋住其他季
                 results[quarter] = f"{type(exc).__name__}: {exc}"
