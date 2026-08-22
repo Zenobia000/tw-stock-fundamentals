@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
-from threading import Lock, Thread
+from threading import Lock
 
 from app.db.connection import get_connection
 from app.ingest import refresh_market, refresh_stock
@@ -14,9 +15,14 @@ def _now() -> str:
 
 
 class RefreshJobs:
-    def __init__(self) -> None:
+    def __init__(self, max_workers: int = 4) -> None:
         self._jobs: dict[str, dict] = {}
         self._lock = Lock()
+        # 避免使用者連續查詢不同代碼時無上限建立執行緒；I/O 型擷取保留小型
+        # 工作池即可，SQLite 仍維持單機 WAL 的短交易寫入模型。
+        self._executor = ThreadPoolExecutor(
+            max_workers=max_workers, thread_name_prefix="stock-refresh"
+        )
 
     def status(self, code: str) -> dict:
         with self._lock:
@@ -37,9 +43,7 @@ class RefreshJobs:
             }
             self._jobs[code] = job
 
-        Thread(
-            target=self._run, args=(code,), daemon=True, name=f"refresh-{code}"
-        ).start()
+        self._executor.submit(self._run, code)
         return dict(job)
 
     def _run(self, code: str) -> None:

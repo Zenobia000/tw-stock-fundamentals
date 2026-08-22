@@ -59,6 +59,15 @@ def client(tmp_path):
     app.dependency_overrides.clear()
 
 
+def test_data_health_endpoint_catalog_includes_router_endpoints(client):
+    response = client.get("/api/data-health/endpoints")
+    assert response.status_code == 200
+    paths = {row["path"] for row in response.json()}
+    assert "/api/data-health" in paths
+    assert "/api/stocks/{code}/dashboard-v2" in paths
+    assert "/api/market/radar" in paths
+
+
 def test_health_check(client):
     resp = client.get("/api/health")
     assert resp.status_code == 200
@@ -115,6 +124,40 @@ def test_search_stocks_matches_by_code_or_name(client):
     resp = client.get("/api/stocks/search", params={"q": "台積"})
     assert resp.status_code == 200
     assert resp.json()[0]["code"] == "2330"
+
+
+def test_sector_momentum_endpoint_returns_empty_list_without_stock_code(client):
+    """板塊動能是獨立頁籤，不需要先選股票就要能拿到資料（即使目前是空的）。"""
+    resp = client.get("/api/market/sector-momentum")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_sub_industry_momentum_endpoint_returns_empty_list_without_data(client):
+    resp = client.get("/api/market/sub-industry-momentum")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_sub_industry_momentum_refresh_endpoints_start_and_report_background_job(
+    client, monkeypatch
+):
+    monkeypatch.setattr(
+        "app.api.routes.sub_industry_refresh_job.start",
+        lambda: {"status": "running", "started_at": "t0"},
+    )
+    monkeypatch.setattr(
+        "app.api.routes.sub_industry_refresh_job.status",
+        lambda: {"status": "completed", "message": "回補完成"},
+    )
+
+    started = client.post("/api/market/sub-industry-momentum/refresh")
+    assert started.status_code == 202
+    assert started.json()["status"] == "running"
+
+    status = client.get("/api/market/sub-industry-momentum/refresh-status")
+    assert status.status_code == 200
+    assert status.json()["status"] == "completed"
 
 
 def test_dashboard_v2_exposes_five_integrated_areas(client):

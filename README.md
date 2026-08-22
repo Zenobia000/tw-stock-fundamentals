@@ -13,6 +13,10 @@ uv run pytest
 
 `uv sync` 會依 `uv.lock` 建立或更新專案的 `.venv`。
 
+服務預設採個人按需模式：啟動本身不會建立每日背景排程；查詢股票後可按「更新資料」，
+資料健康中心也只在開啟或按「重新評估」時讀取本機狀態。若確實需要週間自動更新，才以
+`FORTUNE_ENABLE_SCHEDULED_REFRESH=1 uv run uvicorn app.main:app` 明確啟用。
+
 ## 專案結構
 
 ```text
@@ -30,3 +34,5 @@ docs/specs/   估值模型、資料來源與產品資訊架構
 ## 資料來源
 
 官方來源優先（TWSE 證券編碼查詢、公開資訊觀測站 MOPS 財報、期交所期貨籌碼），券商/入口網站補充非官方公開資料。介面會把尚未落地的來源標成「待補資料源」，不以 0 偽裝。完整對照表見 `docs/agents/project.md`。
+
+資料粒度、單位、來源角色、同期間衝突與新鮮度的嚴格定義見 `docs/specs/data-strategy-contract.md`；執行中的契約由 `app/data_strategy.py` 提供。網站的「資料健康」入口會依相同契約呈現資料集、來源、網站 API 與最近更新紀錄；原始狀態可由 `/api/data-health?code=2330` 查詢。

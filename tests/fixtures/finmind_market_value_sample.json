@@ -1,0 +1,10 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {"date": "2026-08-21", "stock_id": "0050", "market_value": 2346880900000},
+    {"date": "2026-08-21", "stock_id": "2330", "market_value": 62497011861470},
+    {"date": "2026-08-21", "stock_id": "2454", "market_value": 6078763592530},
+    {"date": "2026-08-21", "stock_id": "2317", "market_value": 3455595765014}
+  ]
+}

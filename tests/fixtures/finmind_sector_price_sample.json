@@ -1,0 +1,42 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2026-08-19",
+      "stock_id": "Semiconductor",
+      "Trading_Volume": 500000000,
+      "Trading_money": 100000000000,
+      "open": 1480.0,
+      "max": 1490.0,
+      "min": 1470.0,
+      "close": 1483.0,
+      "spread": -5.0,
+      "Trading_turnover": 500000
+    },
+    {
+      "date": "2026-08-20",
+      "stock_id": "Semiconductor",
+      "Trading_Volume": 510000000,
+      "Trading_money": 101000000000,
+      "open": 1483.0,
+      "max": 1510.0,
+      "min": 1483.0,
+      "close": 1506.4,
+      "spread": 23.4,
+      "Trading_turnover": 510000
+    },
+    {
+      "date": "2026-08-21",
+      "stock_id": "Semiconductor",
+      "Trading_Volume": 632568978,
+      "Trading_money": 237550203710,
+      "open": 1506.4,
+      "max": 1526.32,
+      "min": 1499.38,
+      "close": 1526.32,
+      "spread": 19.92,
+      "Trading_turnover": 643721
+    }
+  ]
+}

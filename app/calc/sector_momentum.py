@@ -64,3 +64,24 @@ def composite_rank(
     if r20 is None or r60 is None or r120 is None:
         return None
     return statistics.fmean([r20, r60, r120])
+
+
+def equal_weighted_index(member_closes_newest_first: list[list[float]]) -> list[float]:
+    """細產業版：用成分股收盤序列（各自新到舊）組出等權重合成指數（新到舊）。
+
+    成分股上市時間不同、序列長度可能不一樣；取所有非空序列共同覆蓋的最近
+    `min_len` 個交易日，每檔各自 rebase 成「這個共同窗口起點（最舊那天）=100」，
+    橫斷面取平均。長度不足的成分股會讓合成指數的可用歷史跟著變短——這是
+    已知限制（近似合成指數，不是官方發布的產業指數），不是 bug。
+
+    空序列的成分股會被忽略；全部成分股都是空序列時回傳空列表。
+    """
+    non_empty = [series for series in member_closes_newest_first if series]
+    if not non_empty:
+        return []
+
+    min_len = min(len(series) for series in non_empty)
+    base_index = min_len - 1  # 共同窗口裡最舊的那一天，rebase 基準
+    trimmed = [series[:min_len] for series in non_empty]
+    rebased = [[price / series[base_index] * 100 for price in series] for series in trimmed]
+    return [statistics.fmean(day_prices) for day_prices in zip(*rebased, strict=True)]

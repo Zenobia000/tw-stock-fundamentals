@@ -165,6 +165,7 @@ CREATE TABLE IF NOT EXISTS rankings_daily (
     code TEXT,
     name TEXT,
     value REAL,
+    source TEXT NOT NULL DEFAULT 'unknown',
     fetched_at TEXT NOT NULL,
     PRIMARY KEY (date, category, rank)
 );
@@ -180,6 +181,28 @@ CREATE TABLE IF NOT EXISTS sector_index_daily (
     source TEXT NOT NULL,          -- 'twse-mi-index'
     fetched_at TEXT NOT NULL,
     PRIMARY KEY (date, index_name)
+);
+
+-- 慢變動維度表（FinMind TaiwanStockIndustryChain），不是逐日時序，一次性/週期回補。
+CREATE TABLE IF NOT EXISTS stock_industry_chain (
+    stock_id TEXT NOT NULL,
+    industry TEXT NOT NULL,
+    sub_industry TEXT NOT NULL,    -- 一檔股票可能有多個 (industry, sub_industry) 標籤
+    tagged_at TEXT,                -- FinMind 原始 date 欄位：這筆標籤最後確認日
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (stock_id, industry, sub_industry)
+);
+
+-- 台灣前100大成分股快照（依市值），細產業動能排名的股票池；覆蓋式更新，不逐日累積。
+CREATE TABLE IF NOT EXISTS stock_universe_top100 (
+    as_of_date TEXT NOT NULL,
+    rank INTEGER NOT NULL,
+    stock_id TEXT NOT NULL,
+    stock_name TEXT,
+    market_value REAL,
+    source TEXT NOT NULL DEFAULT 'unknown',
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (as_of_date, stock_id)
 );
 
 CREATE TABLE IF NOT EXISTS market_cap_daily (
@@ -202,6 +225,7 @@ CREATE TABLE IF NOT EXISTS capital_reductions (
     adjust_factor REAL,
     reason TEXT,
     source TEXT,
+    fetched_at TEXT,
     PRIMARY KEY (name)
 );
 
@@ -358,3 +382,44 @@ CREATE TABLE IF NOT EXISTS broker_branches_daily (
     fetched_at TEXT NOT NULL,
     PRIMARY KEY (code, date, branch)
 );
+
+-- 資料策略控制面：每次來源擷取都保留結果，watermark 只指向依來源優先序
+-- 裁決後的 canonical 資料。兩者不取代 domain tables 的 fetched_at/source。
+CREATE TABLE IF NOT EXISTS ingestion_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dataset_id TEXT NOT NULL,
+    scope_key TEXT NOT NULL,
+    source TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    status TEXT NOT NULL CHECK (status IN ('running', 'success', 'partial', 'failed')),
+    data_as_of TEXT,
+    row_count INTEGER,
+    error TEXT,
+    duration_ms REAL,
+    http_status INTEGER,
+    error_type TEXT
+);
+
+CREATE TABLE IF NOT EXISTS dataset_watermarks (
+    dataset_id TEXT NOT NULL,
+    scope_key TEXT NOT NULL,
+    canonical_source TEXT NOT NULL,
+    data_as_of TEXT,
+    last_success_at TEXT NOT NULL,
+    row_count INTEGER,
+    PRIMARY KEY (dataset_id, scope_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ingestion_runs_lookup
+    ON ingestion_runs(dataset_id, scope_key, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_rankings_category_date
+    ON rankings_daily(category, date DESC, rank);
+CREATE INDEX IF NOT EXISTS idx_futures_date
+    ON futures_oi_daily(date DESC, institution, contract);
+CREATE INDEX IF NOT EXISTS idx_stock_events_code_date
+    ON stock_events(code, event_date DESC);
+CREATE INDEX IF NOT EXISTS idx_etf_holdings_code_date
+    ON etf_holdings(code, as_of_date DESC, holding_ratio DESC);
+CREATE INDEX IF NOT EXISTS idx_sector_index_name_date
+    ON sector_index_daily(index_name, date DESC);

@@ -102,7 +102,10 @@ def _parse_mi_index_json(payload: dict, date: str) -> list[SectorIndex]:
 def fetch_sector_index(
     date: str, client: httpx.Client | None = None
 ) -> list[SectorIndex]:
-    """date: 西元 YYYYMMDD，例如 "20260821"。"""
+    """date: 西元 YYYYMMDD，例如 "20260821"（查詢參數要這個格式）。
+    回傳的 SectorIndex.date 會正規化成 ISO YYYY-MM-DD，跟其他來源（例如
+    app.scrapers.finmind_sector_index）與全專案的日期慣例一致，避免同一天
+    因格式不同在 sector_index_daily 產生兩筆不同 PK 的資料。"""
     owns_client = client is None
     client = client or httpx.Client(headers={"User-Agent": USER_AGENT}, timeout=20)
     try:
@@ -116,4 +119,5 @@ def fetch_sector_index(
         if owns_client:
             client.close()
 
-    return _parse_mi_index_json(resp.json(), date)
+    iso_date = f"{date[:4]}-{date[4:6]}-{date[6:]}"
+    return _parse_mi_index_json(resp.json(), iso_date)

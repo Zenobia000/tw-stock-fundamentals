@@ -17,13 +17,111 @@
       <div id="search-results" class="search-results"></div>
     </form>
     <button id="refresh-button" class="refresh-button hidden" type="button">更新資料</button>
+    <button id="sector-momentum-toggle" class="quiet-button" type="button">板塊動能</button>
+    <button id="health-toggle" class="health-button" type="button">資料健康 <b id="health-badge">按需</b></button>
     <button id="method-toggle" class="quiet-button" type="button">研究方法</button>
     <div id="clock" class="clock"></div>
   </header>
 
+  <section id="data-health-panel" class="data-health-center hidden" aria-label="資料健康中心">
+    <header class="health-hero">
+      <div>
+        <h1>資料健康中心</h1>
+        <p>只在開啟或重新評估時讀取本機狀態；沒有常駐監控程序。先處理會影響判讀的資料，再看來源與技術細節。</p>
+      </div>
+      <div class="health-actions">
+        <span id="health-context" class="health-context">全市場</span>
+        <button id="health-reload" class="health-primary" type="button">重新評估</button>
+        <button id="health-close" class="health-close" type="button">回到研究台</button>
+      </div>
+    </header>
+
+    <div id="health-summary" class="health-summary" aria-live="polite"></div>
+    <div id="health-priority" class="health-priority"></div>
+
+    <div class="health-toolbar">
+      <nav class="health-tabs" aria-label="健康資訊分類">
+        <button class="active" data-health-tab="datasets" type="button">資料集</button>
+        <button data-health-tab="sources" type="button">資料來源</button>
+        <button data-health-tab="api" type="button">網站 API</button>
+        <button data-health-tab="runs" type="button">本次執行</button>
+      </nav>
+      <div class="health-filters" data-health-filters>
+        <label>範圍
+          <select id="health-scope-filter"><option value="all">全部</option><option value="market">全市場</option><option value="stock">個股</option></select>
+        </label>
+        <label>狀態
+          <select id="health-status-filter"><option value="all">全部</option><option value="attention">需要注意</option><option value="healthy">正常</option><option value="not_selected">尚未選股</option></select>
+        </label>
+      </div>
+      <span id="health-evaluated-at" class="health-evaluated">尚未評估</span>
+    </div>
+
+    <div class="health-view" data-health-panel="datasets">
+      <div class="health-table-wrap">
+        <table class="health-table">
+          <thead><tr><th>資料集</th><th>狀態</th><th>資料截至</th><th>完整度</th><th>目前來源</th><th>判定依據</th></tr></thead>
+          <tbody id="health-datasets-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="health-view hidden" data-health-panel="sources">
+      <div class="health-callout"><b>來源狀態不等於資料不可用</b><span>主要來源失敗時，只要既有資料仍可用，資料集會標示「使用備援」或保留快取，不會把畫面清空。</span></div>
+      <div class="health-table-wrap">
+        <table class="health-table">
+          <thead><tr><th>資料來源</th><th>層級</th><th>最近狀態</th><th>24h 成功率</th><th>正式供應</th><th>最近觀察</th></tr></thead>
+          <tbody id="health-sources-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="health-view hidden" data-health-panel="api">
+      <div class="health-callout"><b>本次瀏覽階段</b><span>僅統計這個頁籤開啟後實際呼叫過的網站 API；重開頁面即歸零，不寫入資料庫。</span></div>
+      <div class="health-table-wrap">
+        <table class="health-table">
+          <thead><tr><th>方法與路徑</th><th>狀態</th><th>呼叫次數</th><th>成功率</th><th>平均時間</th><th>最近 HTTP</th></tr></thead>
+          <tbody id="health-api-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="health-view hidden" data-health-panel="runs">
+      <div class="health-callout"><b>外部資料更新紀錄</b><span>只顯示全市場與目前股票最近 100 筆；毫秒數自本版本起才開始累積。</span></div>
+      <div class="health-table-wrap">
+        <table class="health-table">
+          <thead><tr><th>開始時間</th><th>資料集</th><th>來源</th><th>結果</th><th>耗時</th><th>資料截至／錯誤</th></tr></thead>
+          <tbody id="health-runs-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="sector-momentum-panel" class="sector-momentum hidden" aria-label="板塊／細產業動能觀察">
+    <div class="section-title">
+      <div><h2>板塊動能觀察</h2></div>
+      <div class="section-actions">
+        <p>比較 20、60、120 日報酬排名，查看資金往哪個板塊移動。不需先選股票；Rank 為近似值。</p>
+        <div class="mode-switch" role="group" aria-label="動能顆粒度">
+          <button class="active" data-momentum-mode="sector" type="button">板塊</button>
+          <button data-momentum-mode="sub-industry" type="button">細產業</button>
+        </div>
+      </div>
+    </div>
+    <p class="source-note" id="momentum-source-note">來源：TWSE 官方類股指數（約30–37類），大盤超額報酬（REL）以發行量加權股價指數為基準。</p>
+    <div id="sector-momentum-view" class="table-scroll"><table id="sector-momentum-table" class="data-table"></table></div>
+    <div id="sub-industry-momentum-view" class="table-scroll hidden">
+      <div class="sub-industry-refresh-bar">
+        <span id="sub-industry-refresh-message" class="sub-industry-refresh-message">產業標籤／前100大名單／股價都是手動回補的靜態快照，不會每天自動更新。</span>
+        <button id="sub-industry-refresh-button" class="refresh-button" type="button">重新回補細產業資料</button>
+      </div>
+      <table id="sub-industry-momentum-table" class="data-table"></table>
+    </div>
+  </section>
+
   <aside id="method-drawer" class="method-drawer hidden" aria-label="公式與資料說明">
     <div class="drawer-head">
-      <div><span class="eyebrow">MODEL CONTRACT</span><h2>可追溯的估值模型</h2></div>
+      <div><h2>可追溯的估值模型</h2></div>
       <button id="method-close" class="icon-button" type="button" aria-label="關閉">×</button>
     </div>
     <div class="method-grid">
@@ -45,7 +143,6 @@
 
   <section id="stock-header" class="stock-header hidden">
     <div class="stock-identity">
-      <span class="eyebrow">目前研究標的</span>
       <div><h1 id="stock-name">—</h1><strong id="stock-code">—</strong><span id="stock-market" class="tag">—</span><span id="stock-industry" class="tag">—</span></div>
     </div>
     <div class="stock-stats">
@@ -76,7 +173,7 @@
 
   <main id="workspace" class="workspace hidden">
     <section class="view active" data-view-panel="overview">
-      <div class="section-title"><div><span class="eyebrow">DECISION DESK</span><h2>股價預估與模型判讀</h2></div><span id="formula-version" class="version-tag">—</span></div>
+      <div class="section-title"><div><h2>股價預估與模型判讀</h2></div><span id="formula-version" class="version-tag">—</span></div>
       <div id="decision-warnings" class="notice-stack"></div>
       <div id="coverage-strip" class="coverage-strip"></div>
 
@@ -117,7 +214,7 @@
     </section>
 
     <section class="view" data-view-panel="fundamentals">
-      <div class="section-title"><div><span class="eyebrow">OPERATIONS</span><h2>營運基本面</h2></div><div class="section-actions"><p>先看營收動能、利潤率與 EPS 三個決策核心。</p><div class="mode-switch" role="group" aria-label="營運基本面顯示模式"><button class="active" data-fund-mode="chart" type="button">重點圖表</button><button data-fund-mode="table" type="button">完整數據</button></div></div></div>
+      <div class="section-title"><div><h2>營運基本面</h2></div><div class="section-actions"><p>先看營收、利潤率與 EPS。</p><div class="mode-switch" role="group" aria-label="營運基本面顯示模式"><button class="active" data-fund-mode="chart" type="button">重點圖表</button><button data-fund-mode="table" type="button">完整數據</button></div></div></div>
       <div id="fundamentals-chart-view" class="content-grid two">
         <article class="card wide-card"><div class="card-head"><h3>月營收與趨勢</h3><span id="revenue-caption">—</span></div><canvas id="chart-revenue" class="chart" height="260"></canvas></article>
         <article class="card"><div class="card-head"><h3>毛利率／營益率／淨利率</h3><span>最近 12 季</span></div><canvas id="chart-profitability" class="chart" height="240"></canvas></article>
@@ -130,7 +227,7 @@
     </section>
 
     <section class="view" data-view-panel="quality">
-      <div class="section-title"><div><span class="eyebrow">QUALITY & RETURN</span><h2>財務品質與股東回報</h2></div><p>把資產負債、營運效率、現金流、股利與事件整合。</p></div>
+      <div class="section-title"><div><h2>財務品質與股東回報</h2></div><p>整合資產負債、營運效率、現金流、股利與公司事件。</p></div>
       <div class="content-grid two">
         <article class="card"><div class="card-head"><h3>營運週轉天數</h3><span>越低通常越佳</span></div><canvas id="chart-efficiency" class="chart" height="240"></canvas></article>
         <article class="card"><div class="card-head"><h3>現金流結構</h3><span>FCF＝營業現金流－資本支出</span></div><canvas id="chart-cashflow" class="chart" height="240"></canvas></article>
@@ -141,7 +238,7 @@
     </section>
 
     <section class="view" data-view-panel="nine-grid">
-      <div class="section-title"><div><span class="eyebrow">翁氏分析框架</span><h2>翁氏九宮格</h2></div><p>共用同一組季度欄位，離散資料保留節點並對齊去年同期。</p></div>
+      <div class="section-title"><div><h2>翁氏九宮格</h2></div><p>以相同季度軸比較九項核心指標，並保留離散資料節點。</p></div>
       <div id="nine-signals" class="signal-strip"></div>
       <div class="nine-grid">
         <article class="grid-card"><header><b>01</b><h3>營收與獲利率</h3><span data-signal="revenue"></span></header><canvas id="ng-profit" class="chart" height="145"></canvas></article>
@@ -165,10 +262,10 @@
     </section>
 
     <section class="view" data-view-panel="market">
-      <div class="section-title"><div><span class="eyebrow">市場選股雷達</span><h2>股池發現與籌碼驗證</h2></div><p>先用排行找到市場焦點，再下鑽個股資金流，不把不同目的的表格混成一條長頁。</p></div>
+      <div class="section-title"><div><h2>股池發現與籌碼驗證</h2></div><p>先用排行找到市場焦點，再查看個股資金流。</p></div>
 
       <article class="market-discovery">
-        <div class="discovery-copy"><span>第一層・選擇篩選邏輯</span><h3 id="ranking-title">成交熱度</h3><p id="ranking-description">用成交值找出資金最集中、最值得先研究的標的。</p></div>
+        <div class="discovery-copy"><h3 id="ranking-title">成交熱度</h3><p id="ranking-description">用成交值找出資金較集中的標的。</p></div>
         <div class="ranking-controls">
           <div class="topic-switch" role="group" aria-label="排行主題">
             <button class="active" data-ranking-topic="turnover" type="button"><b>成交熱度</b><small>成交值排行</small></button>
@@ -208,10 +305,22 @@
   </main>
 
   <section id="empty-state" class="landing">
-    <span class="eyebrow">個人台股研究工作台</span>
-    <h1>輸入股票代碼，開始建立決策脈絡。</h1>
-    <p>由估值、營運品質、翁氏九宮格到市場股池，逐層檢查而不被過量圖表干擾。</p>
-    <div class="landing-flow"><span>01 估值</span><i></i><span>02 營運</span><i></i><span>03 品質</span><i></i><span>04 九宮格</span><i></i><span>05 籌碼</span></div>
+    <div class="landing-inner">
+      <div class="landing-copy">
+        <h1>看清價值，<br />再決定。</h1>
+        <p>輸入股票代碼，查看估值、營運、財務品質與籌碼。</p>
+        <button id="landing-focus-button" class="landing-action" type="button">查一檔股票</button>
+      </div>
+      <div class="landing-index">
+        <p class="landing-index-title">研究範圍</p>
+        <ul>
+          <li><span>估值與目標價</span><small>決策總覽</small></li>
+          <li><span>營運與財務品質</span><small>長短期趨勢</small></li>
+          <li><span>九宮格與籌碼</span><small>交叉檢查</small></li>
+        </ul>
+      </div>
+    </div>
+    <p class="landing-note">資料依來源發布頻率更新，僅供個人研究。</p>
   </section>
 
   <div id="loading" class="loading hidden"><span></span><p>正在組裝研究資料…</p></div>

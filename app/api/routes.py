@@ -19,10 +19,15 @@ from app.dashboard_v2_service import (
     build_market_radar,
     build_nine_grid,
     build_sector_momentum,
+    build_sub_industry_momentum,
 )
+from app.data_health_service import build_data_health
+from app.data_strategy import strategy_payload
 from app.db import queries
 from app.db.connection import get_connection
+from app.db.lineage import get_strategy_status
 from app.refresh_service import refresh_jobs
+from app.sub_industry_refresh_service import sub_industry_refresh_job
 from app.valuation_service import build_valuation_snapshot
 
 router = APIRouter(prefix="/api")
@@ -41,6 +46,37 @@ Db = Annotated[sqlite3.Connection, Depends(get_db)]
 
 def _rows_to_dicts(rows: list[sqlite3.Row]) -> list[dict]:
     return [dict(row) for row in rows]
+
+
+@router.get("/data-strategy")
+def get_data_strategy(conn: Db):
+    payload = strategy_payload()
+    payload["storage"] = {
+        "engine": "sqlite",
+        "journal_mode": conn.execute("PRAGMA journal_mode").fetchone()[0],
+        "busy_timeout_ms": conn.execute("PRAGMA busy_timeout").fetchone()[0],
+        "deployment_boundary": "單機個人使用；多主機或多寫入者才升級 PostgreSQL",
+    }
+    return payload
+
+
+@router.get("/data-strategy/status")
+def get_data_status(
+    conn: Db,
+    code: str | None = Query(default=None, min_length=4, max_length=6),
+    limit: int = Query(default=100, ge=1, le=500),
+):
+    normalized = code.strip().upper() if code else None
+    return get_strategy_status(conn, normalized, limit)
+
+
+@router.get("/data-health")
+def get_data_health(
+    conn: Db,
+    code: str | None = Query(default=None, min_length=4, max_length=6),
+):
+    normalized = code.strip().upper() if code else None
+    return build_data_health(conn, normalized)
 
 
 @router.get("/stocks/search")
@@ -251,3 +287,18 @@ def get_market_radar_v2(conn: Db):
 @router.get("/market/sector-momentum")
 def get_sector_momentum(conn: Db):
     return build_sector_momentum(conn)
+
+
+@router.get("/market/sub-industry-momentum")
+def get_sub_industry_momentum(conn: Db):
+    return build_sub_industry_momentum(conn)
+
+
+@router.post("/market/sub-industry-momentum/refresh", status_code=202)
+def refresh_sub_industry_momentum():
+    return sub_industry_refresh_job.start()
+
+
+@router.get("/market/sub-industry-momentum/refresh-status")
+def get_sub_industry_momentum_refresh_status():
+    return sub_industry_refresh_job.status()

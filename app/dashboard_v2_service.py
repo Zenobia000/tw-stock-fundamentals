@@ -1,11 +1,17 @@
 """六大功能區共用的網站 view model 組裝層。"""
 
 import sqlite3
+from collections import defaultdict
 from dataclasses import asdict
 
 from app.calc.nine_grid import compute_revenue_bollinger
 from app.calc.revenue import compute_revenue_signals
-from app.calc.sector_momentum import composite_rank, n_day_return, percentile_rank
+from app.calc.sector_momentum import (
+    composite_rank,
+    equal_weighted_index,
+    n_day_return,
+    percentile_rank,
+)
 from app.calc.valuation import quarter_over_quarter_signal
 from app.calc.workbook_model import ValuationModelOptions
 from app.db import queries
@@ -451,6 +457,58 @@ def build_sector_momentum(conn: sqlite3.Connection) -> list[dict]:
                 "rel_20d": None if r20 is None or b20 is None else r20 - b20,
                 "rel_60d": None if r60 is None or b60 is None else r60 - b60,
                 "rel_120d": None if r120 is None or b120 is None else r120 - b120,
+            }
+        )
+
+    for horizon in ("20d", "60d", "120d"):
+        return_key, rank_key = f"return_{horizon}", f"rank_{horizon}"
+        pool = [e[return_key] for e in entries if e[return_key] is not None]
+        for e in entries:
+            e[rank_key] = (
+                percentile_rank(pool, e[return_key])
+                if e[return_key] is not None and pool
+                else None
+            )
+
+    for e in entries:
+        e["rank"] = composite_rank(e["rank_20d"], e["rank_60d"], e["rank_120d"])
+
+    entries.sort(key=lambda e: (e["rank"] is None, -(e["rank"] or 0)))
+    return entries
+
+
+def build_sub_industry_momentum(conn: sqlite3.Connection) -> list[dict]:
+    """細產業動能排名 — 用台灣前100大成分股的股價報酬組出等權重合成指數（見
+    app.calc.sector_momentum.equal_weighted_index），套用板塊層同一組
+    n_day_return/percentile_rank/composite_rank。沒有 REL 欄位（沒有天然的
+    benchmark 可比），rank 母體只有 100 檔成分股實際落在的 sub_industry，見
+    docs/specs/sector-momentum-formula-contract.md「細產業版」的已知限制。
+    """
+    tags = queries.get_stock_industry_chain(conn)
+    top100_ids = {row["stock_id"] for row in queries.get_stock_universe_top100(conn)}
+
+    price_series: dict[str, list[float]] = {}
+    for stock_id in top100_ids:
+        rows = queries.get_stock_prices_daily(conn, stock_id, limit=200)
+        price_series[stock_id] = [row["close"] for row in rows if row["close"] is not None]
+
+    groups: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for tag in tags:
+        if tag["stock_id"] in top100_ids:
+            groups[(tag["industry"], tag["sub_industry"])].add(tag["stock_id"])
+
+    entries = []
+    for (industry, sub_industry), member_ids in groups.items():
+        closes = equal_weighted_index([price_series[sid] for sid in member_ids])
+        r20, r60, r120 = (n_day_return(closes, n) for n in (20, 60, 120))
+        entries.append(
+            {
+                "industry": industry,
+                "sub_industry": sub_industry,
+                "member_count": len(member_ids),
+                "return_20d": r20,
+                "return_60d": r60,
+                "return_120d": r120,
             }
         )
 

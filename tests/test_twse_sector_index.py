@@ -58,3 +58,12 @@ def test_fetch_sector_index_hits_official_endpoint_and_parses():
     rows = fetch_sector_index("20260821")
     assert len(rows) == 7
     assert rows[0].index_name == "發行量加權股價指數"
+
+
+@respx.mock
+def test_fetch_sector_index_normalizes_date_param_to_iso():
+    """date 查詢參數是 YYYYMMDD，但存進 SectorIndex 的必須是 ISO YYYY-MM-DD，
+    否則跟其他來源（例如 FinMind 回補）同一天會產生兩個不同的 PK。"""
+    respx.get(MI_INDEX_URL).mock(return_value=httpx.Response(200, json=FIXTURE_PAYLOAD))
+    rows = fetch_sector_index("20260821")
+    assert all(row.date == "2026-08-21" for row in rows)

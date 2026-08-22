@@ -2,10 +2,10 @@
 
 ## 原則
 
-網站依個人投資決策流程整合成五個主要功能區。所有頁面共用同一份正規化歷史資料、
+網站依個人投資決策流程整合成六個主要功能區。所有頁面共用同一份正規化歷史資料、
 公式引擎與資料新鮮度資訊，不在前端重複推導公式。
 
-## 五大功能區
+## 六大功能區
 
 | 功能區 | 研究範圍 | 必備功能 |
 |---|---|---|
@@ -14,6 +14,7 @@
 | 財務品質與股東回報 | 財務結構與現金回報 | 資產負債、收款/存貨/付款天數、負債與流動比、三大現金流、自由現金流、股利/發放率/殖利率/填息 |
 | 翁氏九宮格 | 九項核心品質指標 | 九張八季核心比較圖、月營收布林、合約負債、K 線；共用季度軸、單位與紅綠判讀 |
 | 籌碼與市場雷達 | 個股與全市場籌碼 | 法人/大戶/董監、融資券、券資比、分點、期貨日夜盤、上市櫃排行榜與市值占比 |
+| 板塊動能觀察 | 全市場板塊輪動 | TWSE 官方類股指數 20/60/120 日報酬同組百分位排名、對大盤超額報酬、綜合 Rank；不需先選股票，獨立頁籤；內含「細產業」子分頁（台灣前100大成分股依細產業分組的動能排名，無 REL） |
 
 ## 跨頁能力
 
@@ -45,7 +46,9 @@
 - 季資料：`income_statement_quarterly`、`financial_health_quarterly`、
   `cashflow_quarterly`、`operating_efficiency_quarterly`
 - 日/週資料：`stock_prices_daily`、`chips_daily`、`broker_branches_daily`、
-  `futures_oi_daily`、`rankings_daily`、`market_cap_daily`
+  `futures_oi_daily`、`rankings_daily`、`market_cap_daily`、`sector_index_daily`
+- 慢變動維度資料：`stock_industry_chain`（股票↔細產業標籤）、
+  `stock_universe_top100`（台灣前100大成分股快照）
 
 每筆事實資料須能追溯 `source`、資料期間與 `fetched_at`。衍生結果須帶 `formula_version`
 與 `as_of`，讓歷史快照可重現。
@@ -58,12 +61,19 @@
 - `GET /api/stocks/{code}/nine-grid`：八季標準化圖表 view model
 - `GET /api/stocks/{code}/chips-market`：個股籌碼
 - `GET /api/market/radar`：期貨、排行榜與市值雷達
+- `GET /api/market/sector-momentum`：板塊動能排名（見 `docs/specs/sector-momentum-formula-contract.md`）
+- `GET /api/market/sub-industry-momentum`：細產業動能排名（同一份公式契約「細產業版」一節）
+- `POST /api/market/sub-industry-momentum/refresh` ／ `GET .../refresh-status`：手動觸發細產業資料回補的背景工作（比照個股 `refresh`／`refresh-status` 同一套輪詢模式）
 
 ## 驗收矩陣
 
-1. 五大功能區的每項使用者能力都有網站去向或明確的背景服務去向。
+1. 六大功能區的每項使用者能力都有網站去向或明確的背景服務去向。
 2. 2330 固定基準案例的預設選項必須得到：預估季 EPS `29.2687245391`、預估 TTM EPS
    `98.1087245391`、PE 平均 `23.1073846154`、母體標準差 `5.8994905326`。
 3. 八個模型選項切換後由後端重算；前端不自行複製核心公式。
 4. 換股票後所有區域以同一 `code`、`as_of` 與資料版本刷新，不需手動貼值。
 5. 每個區塊顯示來源、更新時間、缺項與過期狀態；缺資料不可用 `0` 偽裝。
+6. 板塊動能觀察頁籤不依賴已選股票的 `code`，可獨立瀏覽；歷史不足 121 個交易日時
+   對應板塊的 `rank_120d`／`rank` 回傳 `null`，不得以 0 或其他數字填補。
+7. 細產業子分頁不得顯示 REL 欄位（沒有天然 benchmark 可比）；`member_count` 必須
+   如實顯示，不得隱藏成分股數過少、排名參考價值較低的組別。

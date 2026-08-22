@@ -7,6 +7,10 @@ const state = {
   view: "overview",
   rankingTopic: "turnover",
   rankingMarket: "listed",
+  health: null,
+  healthEndpoints: [],
+  healthTab: "datasets",
+  apiMetrics: {},
   options: {
     revenue_basis: "latest_month",
     gross_margin_basis: "latest_quarter",
@@ -46,14 +50,40 @@ function escapeHtml(value) {
 }
 
 async function fetchJson(url, options = {}) {
-  const response = await fetch(url, options);
-  if (!response.ok) {
+  const started = performance.now();
+  const method = String(options.method || "GET").toUpperCase();
+  const path = new URL(url, window.location.origin).pathname;
+  let recorded = false;
+  try {
+    const response = await fetch(url, options);
     const body = await response.json().catch(() => ({}));
-    const error = new Error(body.detail || `${response.status} ${response.statusText}`);
-    error.status = response.status;
+    recordApiMetric(method, path, response.status, response.ok, performance.now() - started);
+    recorded = true;
+    if (!response.ok) {
+      const error = new Error(body.detail || `${response.status} ${response.statusText}`);
+      error.status = response.status;
+      throw error;
+    }
+    return body;
+  } catch (error) {
+    if (!recorded) recordApiMetric(method, path, error.status || 0, false, performance.now() - started);
     throw error;
   }
-  return response.json();
+}
+
+function recordApiMetric(method, path, status, ok, durationMs) {
+  const key = `${method} ${path}`;
+  const metric = state.apiMetrics[key] || {
+    method, path, count: 0, successCount: 0, errorCount: 0, totalMs: 0, lastStatus: null, lastAt: null,
+  };
+  metric.count += 1;
+  metric.successCount += ok ? 1 : 0;
+  metric.errorCount += ok ? 0 : 1;
+  metric.totalMs += durationMs;
+  metric.lastStatus = status;
+  metric.lastAt = new Date().toISOString();
+  state.apiMetrics[key] = metric;
+  if (state.healthTab === "api" && state.healthEndpoints.length) renderHealthApi();
 }
 
 let errorTimer;
@@ -78,7 +108,7 @@ function emptyTable(table, columns, message = "待補資料源") {
 }
 
 // Canvas charts are dependency-free and share one interaction/legend layer.
-const COLORS = ["#ffb547", "#51d6d9", "#aa8bff", "#f56c88", "#8fd16a"];
+const COLORS = ["#a98256", "#6f9193", "#817991", "#9d686f", "#678473"];
 const chartTooltip = document.createElement("div");
 chartTooltip.className = "chart-tooltip hidden";
 document.body.appendChild(chartTooltip);
@@ -177,7 +207,7 @@ function canvasFrame(canvas) {
 }
 
 function noChartData(ctx, width, height, text = "待補資料源") {
-  ctx.fillStyle = "#6f7782";
+  ctx.fillStyle = "#68747a";
   ctx.font = "12px system-ui";
   ctx.textAlign = "center";
   ctx.fillText(text, width / 2, height / 2);
@@ -215,20 +245,20 @@ function axisValue(value) {
 
 function drawAxes(ctx, width, height, domain, labels, padding, showEveryLabel = false) {
   const { left, right, top, bottom } = padding;
-  ctx.strokeStyle = "#d6dee6";
+  ctx.strokeStyle = "#d0d5d3";
   ctx.lineWidth = 1;
   for (let i = 0; i <= 3; i += 1) {
     const y = top + ((height - top - bottom) * i) / 3;
     ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(width - right, y); ctx.stroke();
     const value = domain.max - ((domain.max - domain.min) * i) / 3;
-    ctx.fillStyle = "#506276"; ctx.font = "600 11px ui-monospace, monospace"; ctx.textAlign = "right";
+    ctx.fillStyle = "#58676e"; ctx.font = "600 11px ui-monospace, monospace"; ctx.textAlign = "right";
     ctx.fillText(axisValue(value), left - 6, y + 3);
   }
   const count = labels.length;
   const labelIndexes = showEveryLabel
     ? labels.map((_, index) => index)
     : [...new Set([0, Math.floor((count - 1) / 2), count - 1])];
-  ctx.textAlign = "center"; ctx.fillStyle = "#506276"; ctx.font = "600 11px ui-monospace, monospace";
+  ctx.textAlign = "center"; ctx.fillStyle = "#58676e"; ctx.font = "600 11px ui-monospace, monospace";
   labelIndexes.forEach((index) => {
     if (index < 0 || !labels[index]) return;
     const x = left + ((width - left - right) * index) / Math.max(count - 1, 1);
@@ -271,7 +301,7 @@ function drawChart(canvas, series, labels = [], { bars = [], zeroBased = false, 
   const barCount = Math.max(bars.length, 1);
 
   if (hasDualAxis) {
-    ctx.fillStyle = "#506276"; ctx.font = "600 11px ui-monospace, monospace"; ctx.textAlign = "left";
+    ctx.fillStyle = "#58676e"; ctx.font = "600 11px ui-monospace, monospace"; ctx.textAlign = "left";
     for (let i = 0; i <= 3; i += 1) {
       const y = padding.top + (plotH * i) / 3;
       const value = rightDomain.max - ((rightDomain.max - rightDomain.min) * i) / 3;
@@ -291,7 +321,7 @@ function drawChart(canvas, series, labels = [], { bars = [], zeroBased = false, 
         if (!isValue(value)) return;
         const y = yOf(value, itemDomain);
         const barX = xOf(index) - groupWidth / 2 + barWidth * (position + 0.5);
-        ctx.fillStyle = Number(value) >= 0 ? color : "#51d6d9";
+        ctx.fillStyle = Number(value) >= 0 ? color : "#6f9193";
         ctx.globalAlpha = 0.78;
         ctx.fillRect(barX - barWidth / 2, Math.min(y, zeroY), Math.max(barWidth - 1, 1), Math.max(Math.abs(zeroY - y), 1));
       });
@@ -310,7 +340,7 @@ function drawChart(canvas, series, labels = [], { bars = [], zeroBased = false, 
       if (!isValue(value)) return;
       ctx.beginPath();
       ctx.arc(xOf(index), yOf(value, itemDomain), maxLength > 36 ? 1.8 : 2.8, 0, Math.PI * 2);
-      ctx.fillStyle = "#ffffff";
+      ctx.fillStyle = "#f4f5f2";
       ctx.fill();
       ctx.strokeStyle = color;
       ctx.lineWidth = 1.5;
@@ -339,18 +369,18 @@ function drawCandles(canvas, priceRows) {
     if (![row.open, row.high, row.low, row.close].every(isValue)) return;
     const x = padding.left + step * index + step / 2;
     const rising = Number(row.close) >= Number(row.open);
-    ctx.strokeStyle = rising ? "#f56c88" : "#8fd16a";
+    ctx.strokeStyle = rising ? "#9d686f" : "#678473";
     ctx.fillStyle = ctx.strokeStyle;
     ctx.beginPath(); ctx.moveTo(x, yOf(row.high)); ctx.lineTo(x, yOf(row.low)); ctx.stroke();
     const yOpen = yOf(row.open); const yClose = yOf(row.close);
     ctx.fillRect(x - bodyWidth / 2, Math.min(yOpen, yClose), bodyWidth, Math.max(Math.abs(yOpen - yClose), 1));
   });
   const series = [
-    { name: "開盤", values: rows.map((row) => row.open), digits: 2, color: "#ffb547" },
-    { name: "最高", values: rows.map((row) => row.high), digits: 2, color: "#f56c88" },
-    { name: "最低", values: rows.map((row) => row.low), digits: 2, color: "#8fd16a" },
-    { name: "收盤", values: rows.map((row) => row.close), digits: 2, color: "#51d6d9" },
-    { name: "成交量", values: rows.map((row) => row.volume), digits: 0, color: "#aa8bff" },
+    { name: "開盤", values: rows.map((row) => row.open), digits: 2, color: "#a98256" },
+    { name: "最高", values: rows.map((row) => row.high), digits: 2, color: "#9d686f" },
+    { name: "最低", values: rows.map((row) => row.low), digits: 2, color: "#678473" },
+    { name: "收盤", values: rows.map((row) => row.close), digits: 2, color: "#6f9193" },
+    { name: "成交量", values: rows.map((row) => row.volume), digits: 0, color: "#817991" },
   ];
   updateChartLegend(canvas, series.slice(0, 4));
   installChartInteraction(canvas, { labels: rows.map((row) => row.date), series, padding });
@@ -676,6 +706,130 @@ function renderMarket(chips, radar) {
   renderRanking(radar);
 }
 
+function relClassName(key) {
+  return (row) => (row[key] == null ? "" : row[key] >= 0 ? "positive" : "negative");
+}
+
+function renderSectorMomentum(rows) {
+  tableFromRows(byId("sector-momentum-table"), rows, [
+    { key: "index_name", label: "板塊" },
+    { key: "close_index", label: "收盤", format: (v) => fmt(v, 2) },
+    { key: "change_pct_1d", label: "1D%", format: (v) => pct(v, 2, true), className: relClassName("change_pct_1d") },
+    { key: "rank_20d", label: "20R", format: (v) => fmt(v, 0) },
+    { key: "rank_60d", label: "60R", format: (v) => fmt(v, 0) },
+    { key: "rank_120d", label: "120R", format: (v) => fmt(v, 0) },
+    { key: "rank", label: "Rank", format: (v) => fmt(v, 0) },
+    { key: "rel_20d", label: "REL20", format: (v) => pct(v, 2), className: relClassName("rel_20d") },
+    { key: "rel_60d", label: "REL60", format: (v) => pct(v, 2), className: relClassName("rel_60d") },
+    { key: "rel_120d", label: "REL120", format: (v) => pct(v, 2), className: relClassName("rel_120d") },
+    { key: "date", label: "資料日" },
+  ], "板塊指數資料尚未回補");
+}
+
+let sectorMomentumLoaded = false;
+async function loadSectorMomentum() {
+  try {
+    setLoading(true);
+    renderSectorMomentum(await fetchJson(`${API}/market/sector-momentum`));
+  } catch (error) {
+    showError(`板塊動能載入失敗：${error.message}`);
+  } finally {
+    setLoading(false);
+  }
+}
+
+function toggleSectorMomentum(forceShow) {
+  const panel = byId("sector-momentum-panel");
+  const willShow = forceShow ?? panel.classList.contains("hidden");
+  panel.classList.toggle("hidden", !willShow);
+  byId("empty-state").classList.toggle("hidden", willShow || !!state.code);
+  if (willShow && !sectorMomentumLoaded) {
+    sectorMomentumLoaded = true;
+    loadSectorMomentum();
+  }
+}
+
+function renderSubIndustryMomentum(rows) {
+  tableFromRows(byId("sub-industry-momentum-table"), rows, [
+    { key: "industry", label: "產業" },
+    { key: "sub_industry", label: "細產業" },
+    { key: "member_count", label: "成分股數", format: (v) => fmt(v, 0) },
+    { key: "rank_20d", label: "20R", format: (v) => fmt(v, 0) },
+    { key: "rank_60d", label: "60R", format: (v) => fmt(v, 0) },
+    { key: "rank_120d", label: "120R", format: (v) => fmt(v, 0) },
+    { key: "rank", label: "Rank", format: (v) => fmt(v, 0) },
+  ], "細產業資料尚未回補");
+}
+
+let subIndustryMomentumLoaded = false;
+async function loadSubIndustryMomentum() {
+  try {
+    setLoading(true);
+    renderSubIndustryMomentum(await fetchJson(`${API}/market/sub-industry-momentum`));
+  } catch (error) {
+    showError(`細產業動能載入失敗：${error.message}`);
+  } finally {
+    setLoading(false);
+  }
+}
+
+async function waitForSubIndustryRefresh() {
+  await fetchJson(`${API}/market/sub-industry-momentum/refresh`, { method: "POST" });
+  // 依序跑產業標籤／前100大名單／股價，最慢的一步要對外部 API 發上百次請求，
+  // 給比個股更新更寬鬆的等待時間（最多 10 分鐘）。
+  for (let attempt = 0; attempt < 300; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    const job = await fetchJson(`${API}/market/sub-industry-momentum/refresh-status`);
+    if (job.status === "running") continue;
+    return job;
+  }
+  throw new Error("回補仍在背景執行，可稍後重新查看");
+}
+
+async function refreshSubIndustryMomentum() {
+  const button = byId("sub-industry-refresh-button");
+  const message = byId("sub-industry-refresh-message");
+  button.disabled = true;
+  button.textContent = "回補中…";
+  message.textContent = "正在依序回補產業標籤、前100大名單與股價，可能需要幾分鐘";
+  try {
+    const job = await waitForSubIndustryRefresh();
+    if (job.status === "failed") {
+      const failedSteps = (job.steps || []).filter((step) => step.status === "failed");
+      message.textContent = `${job.message}：${failedSteps.map((step) => step.step).join("、")}`;
+      showError(`細產業資料回補部分失敗：${failedSteps.map((step) => `${step.step}（${step.error}）`).join("；")}`);
+    } else {
+      message.textContent = job.message || "回補完成";
+    }
+    subIndustryMomentumLoaded = true;
+    await loadSubIndustryMomentum();
+  } catch (error) {
+    message.textContent = "回補失敗，畫面保留既有資料";
+    showError(`細產業資料回補失敗：${error.message}`);
+  } finally {
+    button.disabled = false;
+    button.textContent = "重新回補細產業資料";
+  }
+}
+byId("sub-industry-refresh-button").addEventListener("click", refreshSubIndustryMomentum);
+
+const _MOMENTUM_SOURCE_NOTES = {
+  sector: "來源：TWSE 官方類股指數（約30–37類），大盤超額報酬（REL）以發行量加權股價指數為基準。",
+  "sub-industry": "來源：台灣前100大成分股（依市值）依細產業分組、等權重合成指數估算；沒有大盤超額報酬（REL），成分股數少的細產業排名參考價值較低。",
+};
+
+$$('[data-momentum-mode]').forEach((button) => button.addEventListener("click", () => {
+  const mode = button.dataset.momentumMode;
+  $$('[data-momentum-mode]').forEach((item) => item.classList.toggle("active", item === button));
+  byId("sector-momentum-view").classList.toggle("hidden", mode !== "sector");
+  byId("sub-industry-momentum-view").classList.toggle("hidden", mode !== "sub-industry");
+  byId("momentum-source-note").textContent = _MOMENTUM_SOURCE_NOTES[mode];
+  if (mode === "sub-industry" && !subIndustryMomentumLoaded) {
+    subIndustryMomentumLoaded = true;
+    loadSubIndustryMomentum();
+  }
+}));
+
 function renderRanking(radar = state.radar) {
   const category = `${state.rankingTopic}_${state.rankingMarket}`;
   const rows = radar?.rankings?.[category] || [];
@@ -733,6 +887,7 @@ function optionsQuery() {
 async function loadStock(code, { modelOnly = false, bootstrapAttempt = false } = {}) {
   const normalized = String(code).trim().toUpperCase();
   if (!normalized) return;
+  closeDataHealth(false);
   setLoading(true);
   try {
     const dashboard = await fetchJson(`${API}/stocks/${encodeURIComponent(normalized)}/dashboard-v2?${optionsQuery()}`);
@@ -778,6 +933,210 @@ function switchView(view) {
   window.scrollTo({ top: byId("workspace-nav").offsetTop - 60, behavior: "smooth" });
 }
 
+const HEALTH_LABELS = {
+  healthy: "正常",
+  degraded: "使用備援",
+  incomplete: "歷史深度不足",
+  stale: "資料過期",
+  unavailable: "不可用",
+  attention: "需注意",
+  not_selected: "尚未選股",
+  not_observed: "本次尚未觀察",
+  blocked: "來源受限",
+  failed: "最近失敗",
+  running: "執行中",
+  success: "成功",
+  partial: "部分完成",
+  uncalled: "本次尚未呼叫",
+};
+const HEALTH_SEVERITY = { unavailable: 6, stale: 5, failed: 5, blocked: 5, incomplete: 4, degraded: 3, healthy: 1, not_selected: 0, not_observed: 0 };
+
+function healthStatus(status, label = HEALTH_LABELS[status] || status) {
+  return `<span class="health-status status-${escapeHtml(status)}"><i></i>${escapeHtml(label)}</span>`;
+}
+
+function healthTime(value, includeTime = false) {
+  if (!value) return "—";
+  if (/^\d{4}(?:Q\d|$|[-/]\d{1,2}$)/.test(value) && !value.includes("T")) return value;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-TW", {
+    timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit",
+    ...(includeTime ? { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false } : {}),
+  }).format(parsed);
+}
+
+function renderHealthSummary() {
+  const payload = state.health;
+  if (!payload) return;
+  const attention = payload.summary.attention;
+  byId("health-summary").innerHTML = `
+    <article class="health-summary-card primary"><span>整體判定</span>${healthStatus(payload.overall_status, payload.overall_status_label)}<strong>${attention ? `${attention} 項需要先確認` : "可直接進行研究"}</strong></article>
+    <article class="health-summary-card"><span>符合規則</span><strong>${payload.summary.healthy}<small> / ${payload.summary.actionable} 項</small></strong><p>時效、深度與來源皆通過</p></article>
+    <article class="health-summary-card"><span>評估範圍</span><strong>${payload.code ? escapeHtml(payload.code) : "全市場"}</strong><p>${payload.code ? "市場資料＋目前個股" : "個股資料等待選股"}</p></article>
+    <article class="health-summary-card"><span>運作方式</span><strong>按需</strong><p>不常駐、不定時輪詢</p></article>`;
+  byId("health-context").textContent = payload.code ? `目前股票 ${payload.code}` : "全市場";
+  byId("health-evaluated-at").textContent = `評估時間 ${healthTime(payload.evaluated_at, true)}`;
+  const badge = byId("health-badge");
+  badge.textContent = attention ? `${attention} 項` : "正常";
+  badge.dataset.status = payload.overall_status;
+
+  const importanceWeight = { critical: 3, supporting: 2, optional: 1 };
+  const issues = payload.datasets
+    .filter((row) => !["healthy", "not_selected"].includes(row.status))
+    .sort((a, b) => (importanceWeight[b.importance] || 0) - (importanceWeight[a.importance] || 0) || (HEALTH_SEVERITY[b.status] || 0) - (HEALTH_SEVERITY[a.status] || 0));
+  byId("health-priority").innerHTML = issues.length
+    ? `<div class="priority-heading"><b>優先確認</b><span>依影響程度排序，先看前 ${Math.min(issues.length, 5)} 項</span></div><div class="priority-list">${issues.slice(0, 5).map((row) => `<article><div>${healthStatus(row.status)}<b>${escapeHtml(row.label)}</b></div><p>${escapeHtml(row.reason)}</p></article>`).join("")}</div>`
+    : `<div class="health-all-clear">${healthStatus("healthy")}<div><b>目前沒有阻礙判讀的資料問題</b><span>仍可在下方展開查看每一項的判定依據。</span></div></div>`;
+}
+
+function healthDatasetVisible(row) {
+  const scope = byId("health-scope-filter").value;
+  const status = byId("health-status-filter").value;
+  if (scope !== "all" && row.scope !== scope) return false;
+  if (status === "attention") return !["healthy", "not_selected"].includes(row.status);
+  return status === "all" || row.status === status;
+}
+
+function renderHealthDatasets() {
+  if (!state.health) return;
+  const rows = state.health.datasets
+    .filter(healthDatasetVisible)
+    .sort((a, b) => (HEALTH_SEVERITY[b.status] || 0) - (HEALTH_SEVERITY[a.status] || 0) || a.label.localeCompare(b.label, "zh-Hant"));
+  byId("health-datasets-body").innerHTML = rows.length ? rows.map((row) => {
+    const completeness = row.row_count === null
+      ? "—"
+      : row.allow_empty && row.row_count === 0
+        ? "允許為空"
+        : `${Math.round((row.completeness_ratio || 0) * 100)}% · ${row.row_count}/${row.minimum_rows}`;
+    return `<tr>
+      <td><b>${escapeHtml(row.label)}</b><small>${row.scope === "stock" ? `個股 ${escapeHtml(row.scope_key || "")}` : "全市場"} · ${escapeHtml(row.cadence)} · ${row.importance === "critical" ? "決策核心" : row.importance === "optional" ? "選配" : "輔助"}</small></td>
+      <td>${healthStatus(row.status, row.status_label)}</td>
+      <td><b class="mono">${escapeHtml(healthTime(row.data_as_of))}</b><small>${row.last_success_at ? `成功於 ${escapeHtml(healthTime(row.last_success_at, true))}` : "尚無成功紀錄"}</small></td>
+      <td><b class="mono">${escapeHtml(completeness)}</b><small>${escapeHtml(row.grain)}</small></td>
+      <td><b>${escapeHtml(row.source_label || "—")}</b><small>${escapeHtml(row.source_tier || row.primary_source)}</small></td>
+      <td class="health-reason">${escapeHtml(row.reason)}</td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="6" class="health-empty">目前篩選條件沒有資料</td></tr>`;
+}
+
+function renderHealthSources() {
+  if (!state.health) return;
+  const rows = [...state.health.sources].sort((a, b) => (HEALTH_SEVERITY[b.status] || 0) - (HEALTH_SEVERITY[a.status] || 0) || b.canonical_datasets - a.canonical_datasets);
+  byId("health-sources-body").innerHTML = rows.map((row) => `<tr>
+    <td><b>${escapeHtml(row.label)}</b><small class="mono">${escapeHtml(row.id)}</small></td>
+    <td><span class="source-tier tier-${escapeHtml(row.tier)}">${escapeHtml(row.tier)}</span></td>
+    <td>${healthStatus(row.status, row.status_label)}</td>
+    <td><b class="mono">${row.success_rate_24h === null ? "—" : `${Math.round(row.success_rate_24h * 100)}%`}</b><small>${row.runs_24h} 次觀察</small></td>
+    <td><b>${row.canonical_datasets} 個資料集</b><small>${row.dependent_datasets} 個相依</small></td>
+    <td><b class="mono">${escapeHtml(healthTime(row.latest_run?.started_at, true))}</b><small>${escapeHtml(row.latest_run?.error || "—")}</small></td>
+  </tr>`).join("");
+}
+
+function endpointRegex(path) {
+  const pattern = path.split("/").map((part) => part.startsWith("{") && part.endsWith("}")
+    ? "[^/]+"
+    : part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("/");
+  return new RegExp(`^${pattern}$`);
+}
+
+function endpointMetric(path, method) {
+  const matcher = endpointRegex(path);
+  const matching = Object.values(state.apiMetrics).filter((metric) => metric.method === method && matcher.test(metric.path));
+  if (!matching.length) return null;
+  return matching.reduce((total, metric) => ({
+    count: total.count + metric.count,
+    successCount: total.successCount + metric.successCount,
+    errorCount: total.errorCount + metric.errorCount,
+    totalMs: total.totalMs + metric.totalMs,
+    lastStatus: !total.lastAt || metric.lastAt > total.lastAt ? metric.lastStatus : total.lastStatus,
+    lastAt: !total.lastAt || metric.lastAt > total.lastAt ? metric.lastAt : total.lastAt,
+  }), { count: 0, successCount: 0, errorCount: 0, totalMs: 0, lastStatus: null, lastAt: null });
+}
+
+function renderHealthApi() {
+  const rows = state.healthEndpoints.flatMap((endpoint) => endpoint.methods.map((method) => {
+    const metric = endpointMetric(endpoint.path, method);
+    const average = metric ? metric.totalMs / metric.count : null;
+    const status = !metric ? "uncalled" : metric.errorCount ? (metric.successCount ? "degraded" : "failed") : average > 1500 ? "degraded" : "healthy";
+    return { ...endpoint, method, metric, average, status };
+  })).sort((a, b) => (a.metric ? 0 : 1) - (b.metric ? 0 : 1) || (HEALTH_SEVERITY[b.status] || 0) - (HEALTH_SEVERITY[a.status] || 0) || a.path.localeCompare(b.path));
+  byId("health-api-body").innerHTML = rows.map((row) => `<tr>
+    <td><span class="http-method method-${row.method.toLowerCase()}">${row.method}</span><b class="mono api-path">${escapeHtml(row.path)}</b></td>
+    <td>${healthStatus(row.status)}</td>
+    <td><b class="mono">${row.metric?.count ?? 0}</b></td>
+    <td><b class="mono">${row.metric ? `${Math.round(row.metric.successCount / row.metric.count * 100)}%` : "—"}</b></td>
+    <td><b class="mono">${row.average === null ? "—" : `${Math.round(row.average)} ms`}</b></td>
+    <td><b class="mono">${row.metric?.lastStatus || "—"}</b><small>${escapeHtml(healthTime(row.metric?.lastAt, true))}</small></td>
+  </tr>`).join("");
+}
+
+function renderHealthRuns() {
+  if (!state.health) return;
+  const labels = Object.fromEntries(state.health.datasets.map((row) => [row.id, row.label]));
+  const sources = Object.fromEntries(state.health.sources.map((row) => [row.id, row.label]));
+  byId("health-runs-body").innerHTML = state.health.recent_runs.length ? state.health.recent_runs.map((row) => `<tr>
+    <td><b class="mono">${escapeHtml(healthTime(row.started_at, true))}</b><small>${escapeHtml(row.scope_key)}</small></td>
+    <td><b>${escapeHtml(labels[row.dataset_id] || row.dataset_id)}</b><small class="mono">${escapeHtml(row.dataset_id)}</small></td>
+    <td><b>${escapeHtml(sources[row.source] || row.source)}</b></td>
+    <td>${healthStatus(row.status)}</td>
+    <td><b class="mono">${row.duration_ms === null ? "—" : `${Math.round(row.duration_ms)} ms`}</b><small>${row.http_status ? `HTTP ${row.http_status}` : ""}</small></td>
+    <td class="health-reason"><b class="mono">${escapeHtml(row.data_as_of || "—")}</b><small>${escapeHtml(row.error || `${row.row_count ?? "—"} 筆`)}</small></td>
+  </tr>`).join("") : `<tr><td colspan="6" class="health-empty">這個範圍尚無外部資料更新紀錄</td></tr>`;
+}
+
+function setHealthTab(tab) {
+  state.healthTab = tab;
+  $$('[data-health-tab]').forEach((button) => button.classList.toggle("active", button.dataset.healthTab === tab));
+  $$('[data-health-panel]').forEach((panel) => panel.classList.toggle("hidden", panel.dataset.healthPanel !== tab));
+  $('[data-health-filters]').classList.toggle("hidden", tab !== "datasets");
+  if (tab === "api") renderHealthApi();
+}
+
+async function loadDataHealth() {
+  setLoading(true);
+  try {
+    const query = state.code ? `?code=${encodeURIComponent(state.code)}` : "";
+    const [health, endpoints] = await Promise.all([
+      fetchJson(`${API}/data-health${query}`),
+      fetchJson(`${API}/data-health/endpoints`),
+    ]);
+    state.health = health;
+    state.healthEndpoints = endpoints;
+    renderHealthSummary();
+    renderHealthDatasets();
+    renderHealthSources();
+    renderHealthApi();
+    renderHealthRuns();
+  } catch (error) {
+    showError(`資料健康評估失敗：${error.message}`);
+  } finally {
+    setLoading(false);
+  }
+}
+
+function openDataHealth() {
+  document.body.classList.add("health-open");
+  byId("data-health-panel").classList.remove("hidden");
+  byId("method-drawer").classList.add("hidden");
+  const url = new URL(window.location.href);
+  url.searchParams.set("panel", "data-health");
+  if (state.code) url.searchParams.set("code", state.code);
+  history.replaceState(null, "", url);
+  window.scrollTo({ top: 0, behavior: "instant" });
+  loadDataHealth();
+}
+
+function closeDataHealth(updateUrl = true) {
+  document.body.classList.remove("health-open");
+  byId("data-health-panel").classList.add("hidden");
+  if (updateUrl) {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("panel");
+    history.replaceState(null, "", url);
+  }
+}
+
 // Search and navigation
 let searchTimer;
 byId("code-input").addEventListener("input", () => {
@@ -799,6 +1158,10 @@ byId("code-input").addEventListener("input", () => {
 
 byId("search-form").addEventListener("submit", (event) => {
   event.preventDefault(); byId("search-results").classList.remove("show"); loadStock(byId("code-input").value);
+});
+byId("landing-focus-button").addEventListener("click", () => {
+  byId("code-input").focus();
+  byId("code-input").scrollIntoView({ behavior: "smooth", block: "center" });
 });
 document.addEventListener("click", (event) => { if (!byId("search-form").contains(event.target)) byId("search-results").classList.remove("show"); });
 $$('.nav-tab').forEach((button) => button.addEventListener("click", () => switchView(button.dataset.view)));
@@ -825,6 +1188,13 @@ $$('[data-ranking-market]').forEach((button) => button.addEventListener("click",
 const drawer = byId("method-drawer");
 byId("method-toggle").addEventListener("click", () => drawer.classList.toggle("hidden"));
 byId("method-close").addEventListener("click", () => drawer.classList.add("hidden"));
+byId("sector-momentum-toggle").addEventListener("click", () => toggleSectorMomentum());
+byId("health-toggle").addEventListener("click", openDataHealth);
+byId("health-close").addEventListener("click", () => closeDataHealth());
+byId("health-reload").addEventListener("click", loadDataHealth);
+$$('[data-health-tab]').forEach((button) => button.addEventListener("click", () => setHealthTab(button.dataset.healthTab)));
+byId("health-scope-filter").addEventListener("change", renderHealthDatasets);
+byId("health-status-filter").addEventListener("change", renderHealthDatasets);
 
 async function waitForRefresh(code) {
   await fetchJson(`${API}/stocks/${encodeURIComponent(code)}/refresh`, { method: "POST" });
@@ -874,4 +1244,11 @@ const params = new URLSearchParams(window.location.search);
 const initialView = params.get("view");
 if (["overview", "fundamentals", "quality", "nine-grid", "market"].includes(initialView)) switchView(initialView);
 const initialCode = params.get("code");
-if (initialCode) { byId("code-input").value = initialCode; loadStock(initialCode); }
+const initialPanel = params.get("panel");
+if (initialCode) {
+  byId("code-input").value = initialCode;
+  if (initialPanel === "data-health") state.code = initialCode;
+  else loadStock(initialCode);
+}
+if (initialPanel === "sector-momentum") toggleSectorMomentum(true);
+if (initialPanel === "data-health") openDataHealth();

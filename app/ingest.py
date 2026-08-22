@@ -15,6 +15,7 @@ import httpx
 
 from app.db.capital_reductions import upsert_capital_reductions
 from app.db.connection import get_connection
+from app.db.lineage import run_ingestion_step
 from app.db.repository import (
     upsert_annual_dividends,
     upsert_broker_branches,
@@ -77,121 +78,165 @@ from app.scrapers.twse_sector_index import fetch_sector_index
 # 會全部失敗（單獨測試時看不出來）。
 _SHARED_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 tw-stock-fundamentals/0.1"
 
-# (來源名稱, 抓取+寫入的函式) —— 每個 step 各自 try/except，互不影響。
+# (顯示名稱, dataset id, source id, 抓取+寫入函式)。dataset/source 必須先在
+# app.data_strategy 登錄，否則 run_ingestion_step 會拒絕執行。
 _STEPS = (
     (
         "證券編碼查詢",
+        "stock_identity",
+        "twse-isin",
         lambda conn, code, client: upsert_stock(conn, fetch_stock_isin(code, client)),
     ),
     (
         "股票資訊",
+        "stock_snapshot",
+        "fubon-stock-info",
         lambda conn, code, client: upsert_stock_info(
             conn, fetch_stock_info(code, client)
         ),
     ),
     (
         "營收",
+        "revenue_monthly",
+        "histock-revenue",
         lambda conn, code, client: upsert_monthly_revenue(
             conn, code, fetch_monthly_revenue(code, client)
         ),
     ),
     (
         "毛利率業外",
+        "profitability_quarterly",
+        "fubon-margin",
         lambda conn, code, client: upsert_margin_quarters(
             conn, code, fetch_margin_quarters(code, client)
         ),
     ),
     (
         "完整單季損益",
+        "income_statement_quarterly",
+        "moneylink-income",
         lambda conn, code, client: upsert_detailed_income(
             conn, code, fetch_detailed_income(code, client)
         ),
     ),
     (
         "完整資產負債",
+        "balance_sheet_quarterly",
+        "moneylink-balance",
         lambda conn, code, client: upsert_detailed_balance(
             conn, code, fetch_detailed_balance(code, client)
         ),
     ),
     (
         "營業費用(週轉天數)",
+        "operating_efficiency_quarterly",
+        "histock-turnover",
         lambda conn, code, client: upsert_quarterly_turnover(
             conn, code, fetch_quarterly_turnover(code, client)
         ),
     ),
     (
         "EPS",
+        "eps_quarterly",
+        "fubon-eps",
         lambda conn, code, client: upsert_quarterly_eps(
             conn, code, fetch_quarterly_eps(code, client)
         ),
     ),
     (
         "五年月本益比",
+        "pe_monthly",
+        "histock-pe",
         lambda conn, code, client: upsert_monthly_pe(
             conn, code, fetch_monthly_pe(code, client)
         ),
     ),
     (
         "財報健檢",
+        "financial_health_quarterly",
+        "twse-openapi-financials",
         lambda conn, code, client: upsert_financial_health(
             conn, fetch_financial_health(code, client)
         ),
     ),
     (
         "股息",
+        "dividend_events",
+        "histock-dividend",
         lambda conn, code, client: upsert_dividends(
             conn, code, fetch_dividend_history(code, client)
         ),
     ),
     (
         "年度股利率",
+        "dividend_annual",
+        "cmoney-dividend",
         lambda conn, code, client: upsert_annual_dividends(
             conn, code, fetch_annual_dividends(code, client)
         ),
     ),
     (
         "現金流",
+        "cashflow_quarterly",
+        "histock-cashflow",
         lambda conn, code, client: upsert_quarterly_cashflow(
             conn, code, fetch_quarterly_cashflow(code, client)
         ),
     ),
     (
         "完整現金流與資本支出",
+        "cashflow_quarterly",
+        "moneylink-cashflow",
         lambda conn, code, client: upsert_detailed_cashflow(
             conn, code, fetch_detailed_cashflow(code, client)
         ),
     ),
     (
         "籌碼",
+        "chips_daily",
+        "histock-chips",
         lambda conn, code, client: upsert_daily_chips(
             conn, code, fetch_daily_chips(code, client)
         ),
     ),
     (
         "法人買賣超",
+        "institutional_trading_daily",
+        "fubon-institutional",
         lambda conn, code, client: upsert_institutional_trading(
             conn, code, fetch_institutional_trading(code, client)
         ),
     ),
     (
         "融資融券",
+        "margin_short_daily",
+        "fubon-margin-short",
         lambda conn, code, client: upsert_margin_short(
             conn, code, fetch_margin_short(code, client)
         ),
     ),
     (
         "ETF持股",
+        "etf_holdings",
+        "cmoney-etf",
         lambda conn, code, client: upsert_etf_holdings(
             conn, code, fetch_etf_holdings(code, client)
         ),
     ),
     (
         "券商分點",
+        "broker_branches_daily",
+        "histock-brokers",
         lambda conn, code, client: upsert_broker_branches(
             conn, code, fetch_broker_branches(code, client)
         ),
     ),
 )
+
+
+def _partial_fetch_error(results: dict[str, str | None]) -> str | None:
+    failed = {key: error for key, error in results.items() if error is not None}
+    return None if not failed else f"部分期間失敗：{failed}"
 
 
 def refresh_stock(
@@ -213,9 +258,15 @@ def refresh_stock(
 
     results: dict[str, str | None] = {}
     try:
-        for name, step in _STEPS:
+        for name, dataset_id, source, step in _STEPS:
             try:
-                step(conn, code, client)
+                run_ingestion_step(
+                    conn,
+                    dataset_id,
+                    code,
+                    source,
+                    lambda step=step: step(conn, code, client),
+                )
                 results[name] = None
             except Exception as exc:  # noqa: BLE001 — 單一來源失敗不能中斷整批
                 results[name] = f"{type(exc).__name__}: {exc}"
@@ -230,8 +281,15 @@ def refresh_stock(
                     (code,),
                 ).fetchall()
             ]
-            price_results = fetch_missing_quarterly_close_prices(
-                code, quarters, conn, client=client
+            price_results = run_ingestion_step(
+                conn,
+                "stock_prices_quarterly",
+                code,
+                "twse-stock-day",
+                lambda: fetch_missing_quarterly_close_prices(
+                    code, quarters, conn, client=client
+                ),
+                partial_error=_partial_fetch_error,
             )
             failed = {q: err for q, err in price_results.items() if err is not None}
             results["季底股價(PE分位用)"] = (
@@ -243,8 +301,15 @@ def refresh_stock(
             results["季底股價(PE分位用)"] = f"{type(exc).__name__}: {exc}"
 
         try:
-            daily_results = fetch_missing_daily_prices(
-                code, recent_month_first_days(12), conn, client=client
+            daily_results = run_ingestion_step(
+                conn,
+                "stock_prices_daily",
+                code,
+                "twse-stock-day",
+                lambda: fetch_missing_daily_prices(
+                    code, recent_month_first_days(12), conn, client=client
+                ),
+                partial_error=_partial_fetch_error,
             )
             failed = {
                 month: error
@@ -270,76 +335,108 @@ def refresh_stock(
 _MARKET_STEPS = (
     (
         "證交所減資預告",
+        "capital_reductions",
+        "twse-capital-reduction",
         lambda conn, client: upsert_capital_reductions(
             conn, fetch_capital_reductions(client)
         ),
     ),
     (
         "期貨籌碼",
+        "futures_oi_daily",
+        "taifex-futures",
         lambda conn, client: upsert_futures_oi(conn, fetch_futures_oi(client)),
     ),
     (
         "上市成交值排行",
+        "ranking_turnover_listed",
+        "twse-stock-day-all",
         lambda conn, client: upsert_rankings(
-            conn, "turnover_listed", fetch_turnover_rankings(top_n=50, client=client)
+            conn,
+            "turnover_listed",
+            fetch_turnover_rankings(top_n=50, client=client),
+            source="twse-stock-day-all",
         ),
     ),
     (
         "上市成交值當日補充",
+        "ranking_turnover_listed",
+        "fubon-rankings",
         lambda conn, client: upsert_rankings(
             conn,
             "turnover_listed",
             fetch_market_rankings("turnover", "listed", client=client),
+            source="fubon-rankings",
+            only_if_newer=True,
         ),
     ),
     (
         "上櫃成交值排行",
+        "ranking_turnover_otc",
+        "fubon-rankings",
         lambda conn, client: upsert_rankings(
             conn,
             "turnover_otc",
             fetch_market_rankings("turnover", "otc", client=client),
+            source="fubon-rankings",
         ),
     ),
     (
         "上市券資比排行",
+        "ranking_margin_ratio_listed",
+        "fubon-rankings",
         lambda conn, client: upsert_rankings(
             conn,
             "margin_ratio_listed",
             fetch_market_rankings("margin_ratio", "listed", client=client),
+            source="fubon-rankings",
         ),
     ),
     (
         "上櫃券資比排行",
+        "ranking_margin_ratio_otc",
+        "fubon-rankings",
         lambda conn, client: upsert_rankings(
             conn,
             "margin_ratio_otc",
             fetch_market_rankings("margin_ratio", "otc", client=client),
+            source="fubon-rankings",
         ),
     ),
     (
         "上市週轉率排行",
+        "ranking_turnover_rate_listed",
+        "fubon-rankings",
         lambda conn, client: upsert_rankings(
             conn,
             "turnover_rate_listed",
             fetch_market_rankings("turnover_rate", "listed", client=client),
+            source="fubon-rankings",
         ),
     ),
     (
         "上櫃週轉率排行",
+        "ranking_turnover_rate_otc",
+        "fubon-rankings",
         lambda conn, client: upsert_rankings(
             conn,
             "turnover_rate_otc",
             fetch_market_rankings("turnover_rate", "otc", client=client),
+            source="fubon-rankings",
         ),
     ),
     (
         "市值排行",
+        "market_cap_daily",
+        "taifex-market-cap",
         lambda conn, client: upsert_market_cap_weights(
             conn, fetch_market_cap_weights(client)
         ),
     ),
     (
         "板塊指數",
+        "sector_index_daily",
+        "twse-mi-index",
         lambda conn, client: upsert_sector_indices(
             conn,
             fetch_sector_index(_latest_market_date(conn), client=client),
@@ -369,9 +466,15 @@ def refresh_market(
 
     results: dict[str, str | None] = {}
     try:
-        for name, step in _MARKET_STEPS:
+        for name, dataset_id, source, step in _MARKET_STEPS:
             try:
-                step(conn, client)
+                run_ingestion_step(
+                    conn,
+                    dataset_id,
+                    "market",
+                    source,
+                    lambda step=step: step(conn, client),
+                )
                 results[name] = None
             except Exception as exc:  # noqa: BLE001 — 單一來源失敗不能中斷整批
                 results[name] = f"{type(exc).__name__}: {exc}"

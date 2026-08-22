@@ -4,6 +4,8 @@
 
 本專案是個人使用的台股通用研究平台。公開市場與公司資料由 Python 擷取、正規化並保存於 SQLite；FastAPI 統一提供估值、營運品質、翁氏九宮格與籌碼市場資料，前端負責跨時間與跨領域的研究呈現。
 
+資料來源角色、同期間衝突裁決、新鮮度與升級門檻以 `docs/specs/data-strategy-contract.md` 為準；可執行的單一真實來源是 `app/data_strategy.py`，未登錄的 dataset/source 不得接入正式 ETL。
+
 產品資訊架構及 API 邊界見 `docs/specs/site-information-architecture.md`；估值與 PE 河流的逐步公式見 `docs/specs/workbook-formula-contract.md`。兩者都是本專案自身的契約，不依賴任何外部應用程式執行。
 
 估值方法論代號「翁氏」，核心邏輯：
@@ -31,6 +33,8 @@
 | 籌碼 | 法人買賣超、大戶比、融資券、分點 | histock、Fubon | 入口/券商 |
 | 期貨籌碼 | 三大法人期貨未平倉 | `taifex.com.tw`（官方） | 官方，優先 |
 | 排行榜 | 上市櫃成交值、券資比、週轉率股池 | TWSE OpenAPI STOCK_DAY_ALL；Fubon eBroker DJ 補上櫃與另兩種指標，並補官方源延遲日 | 官方優先／券商補充 |
+| 板塊動能排名 | 類股輪動觀察（20/60/120日相對強度百分位排名） | TWSE MI_INDEX（官方，每日增量）／FinMind TaiwanStockPrice（入口，僅一次性歷史回補用） | 官方優先，FinMind 僅回補用 |
+| 細產業動能排名 | 台灣前100大成分股依細產業分組的動能排名 | TAIFEX 月市值權重（股票池，官方）／FinMind TaiwanStockIndustryChain（標籤，需付費）／TaiwanStockPrice（僅歷史回補） | 股票池官方優先；FinMind 欄位依契約受限；見 `docs/specs/sector-momentum-formula-contract.md` |
 | 減資一覽表 | 減資股 EPS 校正值 | 手動維護（原資料源已停用） | 手動 |
 
 **資料覆蓋缺口**：網站能力與資料表已保留市值排行、完整損益、資產負債細目、日股價、法人、融資券、券商分點與 ETF 持股；尚未接妥來源時 API 回傳空陣列，前端顯示「待補資料源」。估值在缺少 `income_statement_quarterly` 時可用 `margin_quarterly` 推回營業費用，但會附警告；缺少 65 個月 `pe_monthly` 時可用季底股價／TTM EPS 暫代，並標示為非正式月 PE 河流口徑。這兩種 fallback 不得視為正式驗收完成。
@@ -52,9 +56,14 @@
 - `cashflow_quarterly(code, quarter, operating, investing, financing, capital_expenditure, free_cash_flow, operating_plus_investing, source, fetched_at)`
 - `chips_daily(code, date, foreign_holding_pct, trust_holding_pct, margin_balance, short_balance, fetched_at)`
 - `futures_oi_daily(date, institution, contract, long_oi, short_oi, net_oi, fetched_at)`
-- `rankings_daily(date, category, rank, code, name, value, fetched_at)`
-- `market_cap_daily(date, code, market_cap, pct_of_market, fetched_at)` — 目前無填入來源（見已知缺口）
-- `capital_reductions(name PK, code, stop_date, resume_date, exchange_ratio, adjust_factor, reason, source)`
+- `rankings_daily(date, category, rank, code, name, value, source, fetched_at)`
+- `market_cap_daily(date, code, rank, name, market_cap, pct_of_market, fetched_at)` — TAIFEX 官方月市值權重
+- `sector_index_daily(date, index_name, close_index, change_direction, change_points, change_pct, remark, source, fetched_at)` — 板塊動能排名用，見 `docs/specs/sector-momentum-formula-contract.md`
+- `stock_industry_chain(stock_id, industry, sub_industry, tagged_at, fetched_at)` — 股票↔細產業標籤，慢變動維度表非時序
+- `stock_universe_top100(as_of_date, rank, stock_id, stock_name, market_value, source, fetched_at)` — 台灣前100大股票池；canonical 來源為 TAIFEX 月市值權重
+- `capital_reductions(name PK, code, stop_date, resume_date, exchange_ratio, adjust_factor, reason, source, fetched_at)`
+- `ingestion_runs(dataset_id, scope_key, source, started_at, finished_at, status, data_as_of, row_count, error)` — 每次 ETL 稽核紀錄
+- `dataset_watermarks(dataset_id, scope_key, canonical_source, data_as_of, last_success_at, row_count)` — 經來源裁決後的供應水位
 - `income_statement_quarterly`、`balance_sheet_quarterly`、`operating_efficiency_quarterly` — 完整季度領域
 - `pe_monthly`、`stock_prices_daily` — PE 河流與 K 線歷史
 - `stock_events`、`dividend_annual`、`etf_holdings`、`institutional_trading_daily`、`margin_short_daily`、`broker_branches_daily` — 事件、年度股利與籌碼領域

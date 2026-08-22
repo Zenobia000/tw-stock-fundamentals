@@ -6,6 +6,7 @@ upsert 介面補充。校正值定義為 1 - 減資換股率，供 EPS 模型的
 
 import sqlite3
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 
 @dataclass
@@ -21,13 +22,14 @@ class CapitalReduction:
 
 
 def upsert_capital_reduction(conn: sqlite3.Connection, entry: CapitalReduction) -> None:
+    fetched_at = datetime.now(UTC).isoformat()
     conn.execute(
         """
         INSERT INTO capital_reductions (
             name, code, stop_date, resume_date, exchange_ratio,
-            adjust_factor, reason, source
+            adjust_factor, reason, source, fetched_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(name) DO UPDATE SET
             code = excluded.code,
             stop_date = excluded.stop_date,
@@ -35,7 +37,8 @@ def upsert_capital_reduction(conn: sqlite3.Connection, entry: CapitalReduction) 
             exchange_ratio = excluded.exchange_ratio,
             adjust_factor = excluded.adjust_factor,
             reason = excluded.reason,
-            source = excluded.source
+            source = excluded.source,
+            fetched_at = excluded.fetched_at
         """,
         (
             entry.name,
@@ -46,6 +49,7 @@ def upsert_capital_reduction(conn: sqlite3.Connection, entry: CapitalReduction) 
             entry.adjust_factor,
             entry.reason,
             entry.source,
+            fetched_at,
         ),
     )
     conn.commit()
@@ -54,13 +58,14 @@ def upsert_capital_reduction(conn: sqlite3.Connection, entry: CapitalReduction) 
 def upsert_capital_reductions(
     conn: sqlite3.Connection, entries: list[CapitalReduction]
 ) -> None:
+    fetched_at = datetime.now(UTC).isoformat()
     conn.executemany(
         """
         INSERT INTO capital_reductions (
             name, code, stop_date, resume_date, exchange_ratio,
-            adjust_factor, reason, source
+            adjust_factor, reason, source, fetched_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(name) DO UPDATE SET
             code = excluded.code,
             stop_date = excluded.stop_date,
@@ -68,7 +73,8 @@ def upsert_capital_reductions(
             exchange_ratio = excluded.exchange_ratio,
             adjust_factor = excluded.adjust_factor,
             reason = excluded.reason,
-            source = excluded.source
+            source = excluded.source,
+            fetched_at = excluded.fetched_at
         """,
         [
             (
@@ -80,6 +86,7 @@ def upsert_capital_reductions(
                 entry.adjust_factor,
                 entry.reason,
                 entry.source,
+                fetched_at,
             )
             for entry in entries
         ],

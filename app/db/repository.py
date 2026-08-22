@@ -1,7 +1,9 @@
 import sqlite3
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from app.scrapers.cmoney_stock import AnnualDividend, EtfHolding
+from app.scrapers.finmind_industry_chain import IndustryChainTag
 from app.scrapers.fubon_eps import QuarterlyEps
 from app.scrapers.fubon_institutional import InstitutionalTrade
 from app.scrapers.fubon_margin import MarginQuarter
@@ -155,7 +157,7 @@ def upsert_quarterly_cashflow(
             code, quarter, operating, investing, financing,
             operating_plus_investing, source, fetched_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, 'histock', ?)
+        VALUES (?, ?, ?, ?, ?, ?, 'histock-cashflow', ?)
         ON CONFLICT(code, quarter) DO UPDATE SET
             operating = excluded.operating,
             investing = excluded.investing,
@@ -163,6 +165,8 @@ def upsert_quarterly_cashflow(
             operating_plus_investing = excluded.operating_plus_investing,
             source = excluded.source,
             fetched_at = excluded.fetched_at
+        WHERE cashflow_quarterly.source IS NULL
+           OR cashflow_quarterly.source NOT IN ('moneylink-cashflow', 'moneylink-iiam5')
         """,
         [
             (
@@ -190,7 +194,7 @@ def upsert_detailed_cashflow(
             code, quarter, operating, investing, financing, capital_expenditure,
             free_cash_flow, operating_plus_investing, source, fetched_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'moneylink-iiam5', ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'moneylink-cashflow', ?)
         ON CONFLICT(code, quarter) DO UPDATE SET
             operating = excluded.operating,
             investing = excluded.investing,
@@ -384,19 +388,36 @@ def upsert_futures_oi(conn: sqlite3.Connection, rows: list[FuturesOI]) -> None:
 
 
 def upsert_rankings(
-    conn: sqlite3.Connection, category: str, rows: list[RankingEntry]
+    conn: sqlite3.Connection,
+    category: str,
+    rows: list[RankingEntry],
+    source: str = "twse-stock-day-all",
+    *,
+    only_if_newer: bool = False,
 ) -> None:
-    """rows 需已附帶各自的交易日（RankingEntry.date），查無日期的列直接跳過。"""
+    """寫入排行；官方同日資料不可被券商補充源覆蓋。"""
     fetched_at = datetime.now(UTC).isoformat()
+    eligible = [row for row in rows if row.date is not None]
+    if only_if_newer:
+        latest = conn.execute(
+            "SELECT MAX(date) FROM rankings_daily WHERE category = ?", (category,)
+        ).fetchone()[0]
+        if latest is not None:
+            eligible = [row for row in eligible if row.date > latest]
     conn.executemany(
         """
-        INSERT INTO rankings_daily (date, category, rank, code, name, value, fetched_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO rankings_daily (
+            date, category, rank, code, name, value, source, fetched_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(date, category, rank) DO UPDATE SET
             code = excluded.code,
             name = excluded.name,
             value = excluded.value,
+            source = excluded.source,
             fetched_at = excluded.fetched_at
+        WHERE excluded.source = 'twse-stock-day-all'
+           OR rankings_daily.source != 'twse-stock-day-all'
         """,
         [
             (
@@ -406,16 +427,20 @@ def upsert_rankings(
                 row.code,
                 row.name,
                 row.trade_value,
+                source,
                 fetched_at,
             )
-            for row in rows
-            if row.date is not None
+            for row in eligible
         ],
     )
     conn.commit()
 
 
-def upsert_sector_indices(conn: sqlite3.Connection, rows: list[SectorIndex]) -> None:
+def upsert_sector_indices(
+    conn: sqlite3.Connection,
+    rows: list[SectorIndex],
+    source: str = "twse-mi-index",
+) -> None:
     fetched_at = datetime.now(UTC).isoformat()
     conn.executemany(
         """
@@ -432,6 +457,8 @@ def upsert_sector_indices(conn: sqlite3.Connection, rows: list[SectorIndex]) -> 
             remark = excluded.remark,
             source = excluded.source,
             fetched_at = excluded.fetched_at
+        WHERE excluded.source = 'twse-mi-index'
+           OR sector_index_daily.source != 'twse-mi-index'
         """,
         [
             (
@@ -442,7 +469,7 @@ def upsert_sector_indices(conn: sqlite3.Connection, rows: list[SectorIndex]) -> 
                 row.change_points,
                 row.change_pct,
                 row.remark,
-                "twse-mi-index",
+                source,
                 fetched_at,
             )
             for row in rows
@@ -612,7 +639,10 @@ def upsert_margin_short(
 
 
 def upsert_daily_prices(
-    conn: sqlite3.Connection, code: str, rows: list[DailyPrice]
+    conn: sqlite3.Connection,
+    code: str,
+    rows: list[DailyPrice],
+    source: str = "twse-stock-day",
 ) -> None:
     fetched_at = datetime.now(UTC).isoformat()
     conn.executemany(
@@ -620,7 +650,7 @@ def upsert_daily_prices(
         INSERT INTO stock_prices_daily (
             code, date, open, high, low, close, volume, source, fetched_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'twse-stock-day', ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(code, date) DO UPDATE SET
             open = excluded.open,
             high = excluded.high,
@@ -629,6 +659,8 @@ def upsert_daily_prices(
             volume = excluded.volume,
             source = excluded.source,
             fetched_at = excluded.fetched_at
+        WHERE excluded.source = 'twse-stock-day'
+           OR stock_prices_daily.source != 'twse-stock-day'
         """,
         [
             (
@@ -639,6 +671,7 @@ def upsert_daily_prices(
                 row.low,
                 row.close,
                 row.volume,
+                source,
                 fetched_at,
             )
             for row in rows
@@ -881,6 +914,74 @@ def upsert_detailed_balance(
                 row.capital,
                 row.book_value_per_share,
                 row.roe_ratio,
+                fetched_at,
+            )
+            for row in rows
+        ],
+    )
+    conn.commit()
+
+
+def upsert_industry_chain(
+    conn: sqlite3.Connection, tags: list[IndustryChainTag]
+) -> None:
+    """全量覆蓋寫入股票↔細產業標籤；不是逐日時序，同一 (stock_id, industry,
+    sub_industry) 標籤重複回補只會更新 tagged_at/fetched_at。"""
+    fetched_at = datetime.now(UTC).isoformat()
+    conn.executemany(
+        """
+        INSERT INTO stock_industry_chain (stock_id, industry, sub_industry, tagged_at, fetched_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(stock_id, industry, sub_industry) DO UPDATE SET
+            tagged_at = excluded.tagged_at,
+            fetched_at = excluded.fetched_at
+        """,
+        [
+            (tag.stock_id, tag.industry, tag.sub_industry, tag.tagged_at, fetched_at)
+            for tag in tags
+        ],
+    )
+    conn.commit()
+
+
+@dataclass
+class Top100Entry:
+    as_of_date: str
+    rank: int
+    stock_id: str
+    stock_name: str | None
+    market_value: float | None
+
+
+def upsert_stock_universe_top100(
+    conn: sqlite3.Connection,
+    rows: list[Top100Entry],
+    source: str = "taifex-market-cap",
+) -> None:
+    fetched_at = datetime.now(UTC).isoformat()
+    conn.executemany(
+        """
+        INSERT INTO stock_universe_top100 (
+            as_of_date, rank, stock_id, stock_name, market_value, source, fetched_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(as_of_date, stock_id) DO UPDATE SET
+            rank = excluded.rank,
+            stock_name = excluded.stock_name,
+            market_value = excluded.market_value,
+            source = excluded.source,
+            fetched_at = excluded.fetched_at
+        WHERE excluded.source = 'taifex-market-cap'
+           OR stock_universe_top100.source != 'taifex-market-cap'
+        """,
+        [
+            (
+                row.as_of_date,
+                row.rank,
+                row.stock_id,
+                row.stock_name,
+                row.market_value,
+                source,
                 fetched_at,
             )
             for row in rows

@@ -233,3 +233,37 @@ def get_broker_branches_daily(
         "SELECT * FROM broker_branches_daily WHERE code = ? ORDER BY date DESC, ABS(net) DESC LIMIT ?",
         (code, limit),
     ).fetchall()
+
+
+def get_stock_industry_chain(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT stock_id, industry, sub_industry FROM stock_industry_chain"
+    ).fetchall()
+
+
+def get_stock_universe_top100(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    watermark = conn.execute(
+        """
+        SELECT data_as_of, canonical_source
+        FROM dataset_watermarks
+        WHERE dataset_id = 'stock_universe_top100' AND scope_key = 'market'
+        """
+    ).fetchone()
+    if watermark is None:
+        return conn.execute(
+            """
+            SELECT stock_id, rank, stock_name, as_of_date, source
+            FROM stock_universe_top100
+            WHERE as_of_date = (SELECT MAX(as_of_date) FROM stock_universe_top100)
+            ORDER BY rank ASC
+            """
+        ).fetchall()
+    return conn.execute(
+        """
+        SELECT stock_id, rank, stock_name, as_of_date, source
+        FROM stock_universe_top100
+        WHERE as_of_date = ? AND source = ?
+        ORDER BY rank ASC
+        """,
+        (watermark["data_as_of"], watermark["canonical_source"]),
+    ).fetchall()
