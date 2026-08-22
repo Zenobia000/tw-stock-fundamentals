@@ -477,41 +477,26 @@ def build_sector_momentum(conn: sqlite3.Connection) -> list[dict]:
     return entries
 
 
-def build_sub_industry_momentum(conn: sqlite3.Connection) -> list[dict]:
-    """細產業動能排名 — 用台灣前100大成分股的股價報酬組出等權重合成指數（見
-    app.calc.sector_momentum.equal_weighted_index），套用板塊層同一組
-    n_day_return/percentile_rank/composite_rank。沒有 REL 欄位（沒有天然的
-    benchmark 可比），rank 母體只有 100 檔成分股實際落在的 sub_industry，見
-    docs/specs/sector-momentum-formula-contract.md「細產業版」的已知限制。
+_SUB_INDUSTRY_TREND_WINDOW = 20
+
+
+def _aggregate_momentum(member_ids: set[str], price_series: dict[str, list[float]]) -> dict:
+    """member_ids 這組成分股的等權重合成指數摘要：報酬三個窗口 + 趨勢序列。
+    不含排名（排名要看母體是誰，交給呼叫端的 _rank_entries 統一算）。
     """
-    tags = queries.get_stock_industry_chain(conn)
-    top100_ids = {row["stock_id"] for row in queries.get_stock_universe_top100(conn)}
+    closes = equal_weighted_index([price_series[sid] for sid in member_ids])
+    r20, r60, r120 = (n_day_return(closes, n) for n in (20, 60, 120))
+    return {
+        "member_count": len(member_ids),
+        "return_20d": r20,
+        "return_60d": r60,
+        "return_120d": r120,
+        "trend": list(reversed(closes[:_SUB_INDUSTRY_TREND_WINDOW])),
+    }
 
-    price_series: dict[str, list[float]] = {}
-    for stock_id in top100_ids:
-        rows = queries.get_stock_prices_daily(conn, stock_id, limit=200)
-        price_series[stock_id] = [row["close"] for row in rows if row["close"] is not None]
 
-    groups: dict[tuple[str, str], set[str]] = defaultdict(set)
-    for tag in tags:
-        if tag["stock_id"] in top100_ids:
-            groups[(tag["industry"], tag["sub_industry"])].add(tag["stock_id"])
-
-    entries = []
-    for (industry, sub_industry), member_ids in groups.items():
-        closes = equal_weighted_index([price_series[sid] for sid in member_ids])
-        r20, r60, r120 = (n_day_return(closes, n) for n in (20, 60, 120))
-        entries.append(
-            {
-                "industry": industry,
-                "sub_industry": sub_industry,
-                "member_count": len(member_ids),
-                "return_20d": r20,
-                "return_60d": r60,
-                "return_120d": r120,
-            }
-        )
-
+def _rank_entries(entries: list[dict]) -> None:
+    """就地幫 entries 加上 rank_20d/60d/120d/rank；母體就是傳入的這批 entries。"""
     for horizon in ("20d", "60d", "120d"):
         return_key, rank_key = f"return_{horizon}", f"rank_{horizon}"
         pool = [e[return_key] for e in entries if e[return_key] is not None]
@@ -521,9 +506,60 @@ def build_sub_industry_momentum(conn: sqlite3.Connection) -> list[dict]:
                 if e[return_key] is not None and pool
                 else None
             )
-
     for e in entries:
         e["rank"] = composite_rank(e["rank_20d"], e["rank_60d"], e["rank_120d"])
 
-    entries.sort(key=lambda e: (e["rank"] is None, -(e["rank"] or 0)))
-    return entries
+
+def build_sub_industry_momentum(conn: sqlite3.Connection) -> list[dict]:
+    """細產業樞紐表 — industry → sub_industry 兩層，都用台灣前100大成分股的股價
+    報酬組出等權重合成指數（見 app.calc.sector_momentum.equal_weighted_index），
+    套用板塊層同一組 n_day_return/percentile_rank/composite_rank。
+
+    兩層各自獨立排名：industry 母體是全部 industry（跨 sub_industry 聯集去重
+    後的成分股），sub_industry 母體維持全市場口徑（不限縮在同一個父層內）——
+    這樣「哪個細分類全市場最熱」還是看得到，不因為巢狀顯示而改變排名意義。
+    沒有 REL 欄位（沒有天然的 benchmark 可比）。member_count 少的組排名參考
+    價值較低，見 docs/specs/sector-momentum-formula-contract.md「細產業版」。
+    """
+    tags = queries.get_stock_industry_chain(conn)
+    top100_ids = {row["stock_id"] for row in queries.get_stock_universe_top100(conn)}
+
+    price_series: dict[str, list[float]] = {}
+    for stock_id in top100_ids:
+        rows = queries.get_stock_prices_daily(conn, stock_id, limit=200)
+        price_series[stock_id] = [row["close"] for row in rows if row["close"] is not None]
+
+    industry_members: dict[str, set[str]] = defaultdict(set)
+    sub_groups: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for tag in tags:
+        if tag["stock_id"] in top100_ids:
+            industry_members[tag["industry"]].add(tag["stock_id"])
+            sub_groups[(tag["industry"], tag["sub_industry"])].add(tag["stock_id"])
+
+    sub_entries_by_industry: dict[str, list[dict]] = defaultdict(list)
+    all_sub_entries: list[dict] = []
+    for (industry, sub_industry), member_ids in sub_groups.items():
+        entry = {
+            "sub_industry": sub_industry,
+            **_aggregate_momentum(member_ids, price_series),
+        }
+        sub_entries_by_industry[industry].append(entry)
+        all_sub_entries.append(entry)
+    _rank_entries(all_sub_entries)
+
+    industries = []
+    for industry, member_ids in industry_members.items():
+        entry = {
+            "industry": industry,
+            **_aggregate_momentum(member_ids, price_series),
+        }
+        entry["sub_industries"] = sub_entries_by_industry[industry]
+        industries.append(entry)
+    _rank_entries(industries)
+
+    for entry in industries:
+        entry["sub_industries"].sort(
+            key=lambda e: (e["rank"] is None, -(e["rank"] or 0))
+        )
+    industries.sort(key=lambda e: (e["rank"] is None, -(e["rank"] or 0)))
+    return industries

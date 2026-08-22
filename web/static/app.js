@@ -749,23 +749,113 @@ function toggleSectorMomentum(forceShow) {
   }
 }
 
-function renderSubIndustryMomentum(rows) {
-  tableFromRows(byId("sub-industry-momentum-table"), rows, [
-    { key: "industry", label: "產業" },
-    { key: "sub_industry", label: "細產業" },
-    { key: "member_count", label: "成分股數", format: (v) => fmt(v, 0) },
-    { key: "rank_20d", label: "20R", format: (v) => fmt(v, 0) },
-    { key: "rank_60d", label: "60R", format: (v) => fmt(v, 0) },
-    { key: "rank_120d", label: "120R", format: (v) => fmt(v, 0) },
-    { key: "rank", label: "Rank", format: (v) => fmt(v, 0) },
-  ], "細產業資料尚未回補");
+// 純函式：走勢陣列 -> 一小段 inline SVG 折線圖。不重用 drawChart —— 那個是含座標軸／
+// 圖例的全功能圖表，對表格裡每一列都畫一份太重；這裡只要「漲跌形狀 + 紅漲綠跌」。
+function sparklineSvg(trend) {
+  if (!trend?.length || trend.length < 2) return "";
+  const width = 64;
+  const height = 22;
+  const pad = 2;
+  const min = Math.min(...trend);
+  const max = Math.max(...trend);
+  const span = max - min || 1;
+  const stepX = (width - pad * 2) / (trend.length - 1);
+  const points = trend.map((value, index) => {
+    const x = pad + index * stepX;
+    const y = height - pad - ((value - min) / span) * (height - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+  const rising = trend[trend.length - 1] >= trend[0];
+  return `<svg class="sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">` +
+    `<polyline points="${points}" fill="none" stroke="${rising ? "var(--red)" : "var(--green)"}" stroke-width="1.6" /></svg>`;
+}
+
+function rankHeatClass(value) {
+  return value == null ? "" : value >= 50 ? "positive" : "negative";
+}
+
+let industryPivotSort = { key: "rank", dir: "desc" };
+const industryPivotExpanded = new Set();
+
+function _pivotSortValue(entry, key) {
+  const value = entry[key];
+  return value == null ? -Infinity : value;
+}
+
+const _PIVOT_COLUMNS = [
+  { key: "name", label: "產業 / 細產業" },
+  { key: "member_count", label: "成分股數", sortable: true },
+  { key: "trend", label: "走勢" },
+  { key: "rank_20d", label: "20R", sortable: true },
+  { key: "rank_60d", label: "60R", sortable: true },
+  { key: "rank_120d", label: "120R", sortable: true },
+  { key: "rank", label: "Rank", sortable: true },
+];
+
+function _pivotRowHtml(entry, { indent = false, expandButton = null } = {}) {
+  const nameCell = expandButton
+    ? `<button type="button" class="pivot-toggle" aria-expanded="${expandButton}">${expandButton === "true" ? "▾" : "▸"}</button>${escapeHtml(entry.industry)}`
+    : `<span class="pivot-child-name">${escapeHtml(entry.sub_industry)}</span>`;
+  return `<tr class="pivot-row${indent ? " pivot-child" : " pivot-parent"}"${indent ? "" : ` data-industry="${escapeHtml(entry.industry)}"`}>` +
+    `<td class="pivot-name">${nameCell}</td>` +
+    `<td>${fmt(entry.member_count, 0)}</td>` +
+    `<td>${sparklineSvg(entry.trend)}</td>` +
+    `<td class="${rankHeatClass(entry.rank_20d)}">${fmt(entry.rank_20d, 0)}</td>` +
+    `<td class="${rankHeatClass(entry.rank_60d)}">${fmt(entry.rank_60d, 0)}</td>` +
+    `<td class="${rankHeatClass(entry.rank_120d)}">${fmt(entry.rank_120d, 0)}</td>` +
+    `<td class="${rankHeatClass(entry.rank)}">${fmt(entry.rank, 0)}</td></tr>`;
+}
+
+function renderSubIndustryMomentum(industries) {
+  const table = byId("sub-industry-momentum-table");
+  if (!industries?.length) { emptyTable(table, _PIVOT_COLUMNS.length, "細產業資料尚未回補"); return; }
+
+  const sorted = [...industries].sort((a, b) => {
+    const diff = _pivotSortValue(a, industryPivotSort.key) - _pivotSortValue(b, industryPivotSort.key);
+    return industryPivotSort.dir === "asc" ? diff : -diff;
+  });
+
+  const head = `<thead><tr>${_PIVOT_COLUMNS.map((column) => {
+    if (!column.sortable) return `<th>${escapeHtml(column.label)}</th>`;
+    const active = industryPivotSort.key === column.key;
+    const arrow = active ? (industryPivotSort.dir === "desc" ? " ▾" : " ▴") : "";
+    return `<th class="sortable${active ? " active" : ""}" data-sort-key="${column.key}">${escapeHtml(column.label)}${arrow}</th>`;
+  }).join("")}</tr></thead>`;
+
+  const body = sorted.map((industry) => {
+    const expanded = industryPivotExpanded.has(industry.industry);
+    const rows = [_pivotRowHtml(industry, { expandButton: expanded ? "true" : "false" })];
+    if (expanded) {
+      for (const sub of industry.sub_industries) rows.push(_pivotRowHtml(sub, { indent: true }));
+    }
+    return rows.join("");
+  }).join("");
+
+  table.innerHTML = `${head}<tbody>${body}</tbody>`;
+
+  $$(".sortable", table).forEach((th) => th.addEventListener("click", () => {
+    const key = th.dataset.sortKey;
+    industryPivotSort = industryPivotSort.key === key
+      ? { key, dir: industryPivotSort.dir === "desc" ? "asc" : "desc" }
+      : { key, dir: "desc" };
+    renderSubIndustryMomentum(industries);
+  }));
+
+  $$(".pivot-parent", table).forEach((row) => row.addEventListener("click", () => {
+    const name = row.dataset.industry;
+    if (industryPivotExpanded.has(name)) industryPivotExpanded.delete(name);
+    else industryPivotExpanded.add(name);
+    renderSubIndustryMomentum(industries);
+  }));
 }
 
 let subIndustryMomentumLoaded = false;
+let subIndustryMomentumData = [];
 async function loadSubIndustryMomentum() {
   try {
     setLoading(true);
-    renderSubIndustryMomentum(await fetchJson(`${API}/market/sub-industry-momentum`));
+    subIndustryMomentumData = await fetchJson(`${API}/market/sub-industry-momentum`);
+    renderSubIndustryMomentum(subIndustryMomentumData);
   } catch (error) {
     showError(`細產業動能載入失敗：${error.message}`);
   } finally {
@@ -814,8 +904,8 @@ async function refreshSubIndustryMomentum() {
 byId("sub-industry-refresh-button").addEventListener("click", refreshSubIndustryMomentum);
 
 const _MOMENTUM_SOURCE_NOTES = {
-  sector: "來源：TWSE 官方類股指數（約30–37類），大盤超額報酬（REL）以發行量加權股價指數為基準。",
-  "sub-industry": "來源：台灣前100大成分股（依市值）依細產業分組、等權重合成指數估算；沒有大盤超額報酬（REL），成分股數少的細產業排名參考價值較低。",
+  sector: "來源：TWSE 官方類股指數（約 30-37 類），大盤超額報酬（REL）以發行量加權股價指數為基準。",
+  "sub-industry": "來源：台灣前100大成分股（依市值）依 FinMind 自身的 industry／sub_industry 兩層階層分組，兩層都是等權重合成指數估算，可展開查看；點列展開看細產業、點欄位標題排序。沒有大盤超額報酬（REL），成分股數少的細產業排名參考價值較低。",
 };
 
 $$('[data-momentum-mode]').forEach((button) => button.addEventListener("click", () => {

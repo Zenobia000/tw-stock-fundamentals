@@ -66,6 +66,34 @@ sub_industry 標籤，47 個 industry、數百個 sub_industry），成分股限
 `min_len` 個交易日，每檔各自 rebase 成「這個共同窗口起點（最舊那天）=100」，橫斷面
 取平均，組成等權重合成指數。這是我方近似合成指數，不是官方發布的產業指數。
 
+### 樞紐階層（industry → sub_industry）
+
+前端「細產業」分頁是一張可展開的兩層樞紐表，父層 industry、子層 sub_industry，
+點列展開/收合。階層直接沿用 **FinMind 自己的 `industry`/`sub_industry` 兩層標籤**，
+不是 TWSE 官方板塊（`sector-momentum-view`）那 30-37 類。
+
+放棄用 TWSE 板塊當樞紐頂層的原因：兩套分類系統不是同一套。2026-08-22 直接查
+`stock_industry_chain` 跟板塊指數名稱比對過，TWSE 板塊（去除類指數後 37 個）
+跟 FinMind industry（47 個）**完全同名匹配只有 13 個**（如「半導體」「食品」），
+航運、金融保險、生技醫療這些板塊在 FinMind 完全沒有對應 industry，反之
+FinMind 有的「人工智慧」「印刷電路板」「被動元件」這些細顆粒度 industry
+在 TWSE 板塊裡也找不到對應。硬要把兩套分類串起來，一半的節點會斷鏈或語意
+錯配，不如直接用 FinMind 內部本來就一致的兩層階層——industry 層跟
+sub_industry 層都是同一套「前100大成分股股價報酬等權重合成指數」算出來的，
+天生可以正確展開，數字之間互相印證。
+
+- **industry 層**：同一個 industry 底下所有 sub_industry 的成分股**聯集去重**
+  （不是加總，一檔股票只算一次），丟進 `equal_weighted_index`。百分位排名
+  母體是全部 industry（約47個）。
+- **sub_industry 層**：邏輯跟原本扁平版一樣不變，百分位排名母體維持**全市場
+  口徑**（約500個 sub_industry），不限縮在同一個父層內——因此同一個 industry
+  底下的兩個 sub_industry，排名不是互相比較，而是各自跟全市場所有 sub_industry
+  比較；這樣「哪個細分類全市場最熱」不會因為巢狀顯示而失真。
+- **trend 欄位**：兩層都額外回傳最近 20 個交易日的合成指數收盤序列（舊到新），
+  給前端畫 sparkline 用；資料不足 20 筆就照實際筆數給，不補值。
+- 既有 TWSE 官方板塊指數頁籤維持不動、不受影響，只有原本扁平列表的「細產業」
+  分頁被這張樞紐表取代。
+
 ### 跟板塊版的差異
 
 - **沒有 REL（相對大盤超額報酬）欄位**：細產業沒有天然的 benchmark 可比，不像板塊層
