@@ -71,6 +71,14 @@ button:active { transform: translateY(1px); }
 .icon-button { width: 36px; height: 36px; font-size: 23px; }
 .clock { color: #a7b3b7; font: 11px/1 var(--mono); white-space: nowrap; font-variant-numeric: tabular-nums; }
 
+.topbar-nav { display: flex; align-items: center; }
+.topbar-tab {
+  padding: 8px 14px; border: 1px solid #596970; background: transparent;
+  color: #bdc7ca; font-weight: 700; white-space: nowrap; cursor: pointer;
+}
+.topbar-tab:hover { border-color: #8599a1; background: #31434d; color: #f0f2ef; }
+.topbar-tab.active { border-color: #eda940; background: rgba(237, 169, 64, .16); color: #eda940; }
+
 body.health-open { background: var(--canvas); }
 body.health-open > #market-overview-panel,
 body.health-open > #stock-header,
@@ -509,12 +517,14 @@ body.health-open > #empty-state { display: none !important; }
 .stock-labels span { border-color: #b6c7c9; background: var(--blue-soft); color: var(--blue-deep); }
 
 /* ===================================================================================
-   大盤總覽 dark theme — scoped entirely to .mkt-dark, a wrapper <div> inside
-   #market-overview-panel that covers "大盤總覽" through "產業資金流向" (the part that
-   has a match among the 5 reference screenshots in 參考/*.png). It deliberately stops
-   before "板塊動能", a separate pre-existing feature with no screenshot equivalent and
-   its own established rank/gain/loss heatmap system — left on the site's normal light
-   theme rather than reskinned without a reference.
+   大盤總覽 dark theme — scoped entirely to .mkt-dark, a wrapper <div> that now covers
+   the *entire* #market-overview-panel, "大盤總覽" through "板塊動能". Originally this
+   stopped before "板塊動能" (a separate pre-existing feature with no reference-screenshot
+   equivalent, left on the site's light theme rather than reskinned without a reference).
+   That split put a hard light/dark seam mid-panel, inside what the header now presents
+   as a single tab — flagged as inconsistent UI, so the dark theme was extended to cover
+   板塊動能 too (2026-08-24), reusing the same tokens and the alpha-tier technique already
+   established below for the treemap's gain/loss heat.
 
    New tokens only (--mkt-*), not reassignments of the global --paper/--ink/--line/--red/
    --green tokens, so nothing here can affect any other view; --mkt-* is undefined outside
@@ -553,6 +563,13 @@ body.health-open > #empty-state { display: none !important; }
   background: var(--mkt-bg);
   color: var(--mkt-text);
 }
+/* #market-overview-panel keeps .sector-momentum's padding/centering rules (its
+   `> *` max-width rule is still needed by every direct child, dark or not), but the
+   section's own background/border must switch too now that .mkt-dark wraps its full
+   content — otherwise .sector-momentum's light --canvas shows through as a frame
+   around the dark panel. Literal hex restated (custom properties on .mkt-dark aren't
+   reachable from this ancestor selector). */
+#market-overview-panel.sector-momentum { background: #242424; border-bottom-color: #3d3d3d; }
 
 .mkt-dark .momentum-header { border-bottom-color: var(--mkt-card-border); }
 .mkt-dark .momentum-heading h2 { position: relative; padding-left: 14px; color: var(--mkt-text-strong); }
@@ -708,11 +725,106 @@ body.health-open > #empty-state { display: none !important; }
 .turnover-bar-fill { height: 100%; background: var(--mkt-accent); }
 .turnover-bar-pct { text-align: right; color: var(--mkt-accent); font: 700 12px var(--mono); }
 
+/* 個股漲跌分佈：漲停/跌停兩塊可點進去看清單（月新高/月新低資料累積中，不可點）。
+   .clickable 由 app.js 依資料是否存在動態加上，不是所有 4 塊都有這個 class。 */
+.change-stat-tile.clickable { cursor: pointer; }
+.change-stat-tile.clickable:hover { border-color: var(--mkt-accent); background: rgba(237, 169, 64, .08); }
+
+/* 「更多 ▸」— 打開 #detail-drawer 的觸發按鈕，全站共用同一個視覺樣式。 */
+.drawer-more {
+  display: inline-flex; align-items: center; gap: 4px; margin-top: 10px; padding: 6px 12px;
+  border: 1px solid var(--mkt-card-border); background: var(--mkt-card-alt); color: var(--mkt-muted-2);
+  font-size: 11px; font-weight: 700; cursor: pointer;
+}
+.drawer-more:hover { border-color: var(--mkt-accent); color: var(--mkt-accent); }
+
+/* 「市值占大盤比重」降到第二層，不再佔 market-overview-grid 一個格位，改成
+   收斂成一條可點的連結列。 */
+.second-tier-link {
+  display: block; width: 100%; margin: -6px 0 18px; padding: 10px 14px;
+  border: 1px dashed var(--mkt-card-border); background: transparent; color: var(--mkt-muted);
+  font-size: 12px; text-align: left; cursor: pointer;
+}
+.second-tier-link:hover { border-color: var(--mkt-accent); color: var(--mkt-accent); }
+
+/* 產業排行（漲幅／跌幅／成交量／成交金額前 6 名）— 沿用 turnover-bar-row 同一種
+   「標籤＋數字」列表節奏，但這裡沒有比重長條，改成純數字兩欄。 */
+.industry-ranking-list { display: flex; flex-direction: column; gap: 1px; margin-top: 6px; background: var(--mkt-line); border: 1px solid var(--mkt-card-border); }
+.industry-ranking-row { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 10px; padding: 9px 12px; background: var(--mkt-card); }
+.industry-ranking-rank { color: var(--mkt-muted); font: 700 11px var(--mono); }
+.industry-ranking-name { color: var(--mkt-text); font-size: 12.5px; }
+.industry-ranking-name small { display: block; margin-top: 2px; color: var(--mkt-muted); font-size: 10px; }
+.industry-ranking-value { text-align: right; font: 700 13px var(--mono); }
+
+/* 產業資金流向 treemap 收進 <details class="market-group">（跟籌碼與市場分頁
+   「目前研究標的的資金流」同一個摺疊元件），這裡只覆蓋深色主題需要的顏色。 */
+.mkt-dark details.market-group { border-color: var(--mkt-card-border); background: var(--mkt-card); }
+.mkt-dark .market-group summary span { color: var(--mkt-text); }
+.mkt-dark .market-group summary strong { background: rgba(237, 169, 64, .16); color: var(--mkt-accent); }
+.mkt-dark .market-group summary em { color: var(--mkt-muted); }
+
 /* 大盤委買委賣小卡 — tucked into the 加權指數走勢 card, under index-ohlc-strip. */
 .order-book-mini { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--mkt-line); font-size: 11px; }
 .order-book-label { color: var(--mkt-muted); }
 .order-book-figures { display: flex; gap: 16px; font: 700 13px var(--mono); }
 .order-book-mini small { color: var(--mkt-muted); font-size: 10px; }
+
+/* 板塊動能 (folded into .mkt-dark 2026-08-24, see the header-comment note above) — same
+   tokens as the rest of this theme; heat-tier rgba() triplets reuse the exact --mkt-up/
+   --mkt-down alpha scale already established for the treemap's gain-heat/loss-heat, and
+   --mkt-accent for the amber rank scale (the light version's tan→amber progression). */
+.mkt-dark .momentum-context { border-bottom-color: var(--mkt-card-border); }
+.mkt-dark .momentum-context .source-note { color: var(--mkt-muted); }
+.mkt-dark .momentum-legend { color: var(--mkt-muted); }
+.mkt-dark .momentum-summary { border-color: var(--mkt-card-border); background: var(--mkt-card-border); }
+.mkt-dark .momentum-summary > div { background: var(--mkt-card); }
+.mkt-dark .momentum-summary > div:first-child { background: var(--mkt-card-alt); }
+.mkt-dark .momentum-summary span { color: var(--mkt-muted); }
+.mkt-dark .momentum-summary strong { color: var(--mkt-text); }
+.mkt-dark .momentum-summary > div:first-child span { color: var(--mkt-muted); }
+.mkt-dark .momentum-summary > div:first-child strong { color: var(--mkt-text-strong); }
+.mkt-dark .momentum-summary small { color: var(--mkt-muted); }
+.mkt-dark .momentum-scroll-hint { color: var(--mkt-muted); }
+.mkt-dark .momentum-table-frame { border-color: var(--mkt-card-border); background: var(--mkt-card); }
+.mkt-dark .sub-industry-refresh-bar { border-bottom-color: var(--mkt-card-border); background: var(--mkt-card-alt); }
+.mkt-dark .sub-industry-refresh-message { color: var(--mkt-muted); }
+.mkt-dark .sub-industry-refresh-bar .refresh-button { border-color: var(--mkt-accent); background: var(--mkt-accent); color: var(--mkt-bg); }
+.mkt-dark .sub-industry-refresh-bar .refresh-button:hover { background: #f0b866; }
+.mkt-dark .mode-switch, .mkt-dark .market-switch { border-color: var(--mkt-card-border); background: var(--mkt-card); }
+.mkt-dark .mode-switch button, .mkt-dark .market-switch button { border-right-color: var(--mkt-card-border); color: var(--mkt-muted); }
+.mkt-dark .mode-switch button.active, .mkt-dark .market-switch button.active { background: var(--mkt-accent); color: var(--mkt-bg); }
+.mkt-dark .momentum-table th, .mkt-dark .momentum-table td { border-right-color: var(--mkt-line); border-bottom-color: var(--mkt-line); }
+.mkt-dark .momentum-table thead th { background: var(--mkt-card-alt); color: var(--mkt-muted-2); border-bottom-color: var(--mkt-card-border); }
+.mkt-dark .momentum-table thead .rank-band { background: rgba(237, 169, 64, .28); color: var(--mkt-text); }
+.mkt-dark .momentum-table thead .rel-band { background: rgba(150, 170, 200, .2); color: var(--mkt-text); }
+.mkt-dark .momentum-table thead tr > :first-child { background: var(--mkt-card-alt); }
+.mkt-dark .momentum-table tbody tr:not(.momentum-group) > :first-child { background: var(--mkt-card); color: var(--mkt-text); }
+.mkt-dark .momentum-table tbody tr:not(.momentum-group):hover > th { background: var(--mkt-card-alt); }
+.mkt-dark .momentum-table tbody tr:not(.momentum-group):hover > td:not(.metric-heat) { background: var(--mkt-card-alt); }
+.mkt-dark .momentum-name strong { color: var(--mkt-text); }
+.mkt-dark .momentum-name small { color: var(--mkt-muted); }
+.mkt-dark .momentum-price, .mkt-dark .momentum-date { color: var(--mkt-muted-2); }
+.mkt-dark .momentum-group th { border-top-color: var(--mkt-card-border); }
+.mkt-dark .momentum-group-leader th { background: rgba(237, 169, 64, .22); color: var(--mkt-accent); }
+.mkt-dark .momentum-group-middle th { background: var(--mkt-card-alt); color: var(--mkt-muted-2); }
+.mkt-dark .momentum-group-lagger th { background: rgba(96, 179, 87, .14); color: var(--mkt-down); }
+.mkt-dark .momentum-group-missing th { background: var(--mkt-card); color: var(--mkt-muted); }
+.mkt-dark .table-sort:hover, .mkt-dark .table-sort.active { color: var(--mkt-text-strong); }
+.mkt-dark .metric-heat.is-empty { background: var(--mkt-card-alt); color: var(--mkt-muted); }
+.mkt-dark .rank-heat.rank-tier-1 { background: rgba(237, 169, 64, .10); color: var(--mkt-muted-2); }
+.mkt-dark .rank-heat.rank-tier-2 { background: rgba(237, 169, 64, .18); color: var(--mkt-text); }
+.mkt-dark .rank-heat.rank-tier-3 { background: rgba(237, 169, 64, .32); color: var(--mkt-text-strong); }
+.mkt-dark .rank-heat.rank-tier-4 { background: rgba(237, 169, 64, .55); color: #2b1c05; }
+.mkt-dark .rank-heat.composite-rank { box-shadow: inset 1px 0 var(--mkt-accent), inset -1px 0 var(--mkt-accent); }
+.mkt-dark .gain-heat { color: var(--mkt-up); }
+.mkt-dark .gain-heat.heat-tier-1 { background: rgba(215, 61, 56, .12); }
+.mkt-dark .gain-heat.heat-tier-2 { background: rgba(215, 61, 56, .22); }
+.mkt-dark .gain-heat.heat-tier-3 { background: rgba(215, 61, 56, .34); color: var(--mkt-text-strong); }
+.mkt-dark .loss-heat { color: var(--mkt-down); }
+.mkt-dark .loss-heat.heat-tier-1 { background: rgba(96, 179, 87, .12); }
+.mkt-dark .loss-heat.heat-tier-2 { background: rgba(96, 179, 87, .22); }
+.mkt-dark .loss-heat.heat-tier-3 { background: rgba(96, 179, 87, .32); color: var(--mkt-text-strong); }
+.mkt-dark .delta-chip.is-empty { background: var(--mkt-card-alt); color: var(--mkt-muted); }
 
 .market-discovery { display: grid; grid-template-columns: minmax(220px, .7fr) 1.7fr; gap: 16px 24px; padding: 18px; border: 1px solid var(--line); background: var(--paper); box-shadow: 0 12px 28px rgba(57, 75, 83, .07); }
 .ranking-meta span { color: var(--blue-deep); font: 750 9px/1 var(--mono); letter-spacing: .04em; }
@@ -779,6 +891,27 @@ body.health-open > #empty-state { display: none !important; }
 .loading p { color: #c2ccce; font-size: 12px; }
 @keyframes loading-pulse { 0%, 100% { opacity: .38; transform: scaleX(.4); } 50% { opacity: 1; transform: scaleX(1); } }
 .error-banner { position: fixed; right: 20px; bottom: 20px; z-index: 100; max-width: 440px; padding: 13px 16px; border: 1px solid var(--red); background: #fff0f1; color: #922531; box-shadow: 0 16px 50px #00121f33; }
+
+/* 全站共用的「更多」抽屜面板 — 從右側滑入，內容永遠是大盤總覽的深色卡片內容
+   （目前只有 .mkt-dark 場景會用到這個元件），所以 panel 本身直接掛 .mkt-dark
+   重用它的 padding/background/token，不需要另外複製一份顏色。 */
+.detail-drawer { position: fixed; inset: 0; z-index: 90; }
+.detail-drawer-backdrop { position: absolute; inset: 0; background: rgba(10, 10, 10, .6); }
+.detail-drawer-panel {
+  position: absolute; top: 0; right: 0; bottom: 0; width: clamp(320px, 90vw, 560px);
+  overflow-y: auto; box-shadow: -18px 0 50px rgba(0, 0, 0, .4);
+  transform: translateX(0); transition: transform .22s cubic-bezier(.16, 1, .3, 1);
+}
+.detail-drawer.hidden .detail-drawer-panel { transform: translateX(100%); }
+.detail-drawer-head {
+  position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between;
+  margin: -24px -32px 18px; padding: 18px 24px; border-bottom: 1px solid var(--mkt-card-border); background: var(--mkt-bg);
+}
+.detail-drawer-head h3 { margin: 0; color: var(--mkt-text-strong); font-size: 15px; }
+.detail-drawer-head .icon-button { border-color: var(--mkt-card-border); color: var(--mkt-muted); background: transparent; }
+.detail-drawer-head .icon-button:hover { border-color: var(--mkt-accent); color: var(--mkt-accent); }
+.detail-drawer-body .industry-ranking-list,
+.detail-drawer-body .table-scroll { margin-top: 0; }
 
 @media (max-width: 1180px) {
   .stock-header { grid-template-columns: 1fr; }

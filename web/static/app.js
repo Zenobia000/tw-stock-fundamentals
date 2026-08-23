@@ -5,6 +5,11 @@ const state = {
   dashboard: null,
   radar: null,
   marketOverview: null,
+  marketOverviewActive: false,
+  stockRankings: null,
+  stockRankingsTab: "top_gainers",
+  industryRankings: null,
+  industryRankingsTab: "top_gainers",
   valuationBenchmark: null,
   view: "overview",
   rankingTopic: "turnover",
@@ -112,6 +117,22 @@ function emptyHtml(message = "待補資料源") {
 function emptyTable(table, columns, message = "待補資料源") {
   table.innerHTML = `<tr><td colspan="${columns}"><div class="table-empty">${escapeHtml(message)}</div></td></tr>`;
 }
+
+// 全站共用的「更多」抽屜面板 — 各卡片只負責準備 title/bodyHtml，開關與畫面
+// 結構統一在這裡處理，不用每個卡片各自刻一份 modal。
+function openDrawer(title, bodyHtml) {
+  byId("detail-drawer-title").textContent = title;
+  byId("detail-drawer-body").innerHTML = bodyHtml;
+  byId("detail-drawer").classList.remove("hidden");
+}
+function closeDrawer() {
+  byId("detail-drawer").classList.add("hidden");
+}
+byId("detail-drawer-close").addEventListener("click", closeDrawer);
+byId("detail-drawer-backdrop").addEventListener("click", closeDrawer);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeDrawer();
+});
 
 // Canvas charts are dependency-free and share one interaction/legend layer.
 const COLORS = ["#a98256", "#6f9193", "#817991", "#9d686f", "#678473"];
@@ -994,24 +1015,60 @@ function renderSyncSignal(sync) {
   ].join("");
 }
 
-function stockCandidateRow(row) {
-  const meta = SYNC_SIGNAL_META[row.sync_signal] || SYNC_SIGNAL_META.YELLOW;
-  return `<tr class="${row.paused_today ? "paused-row" : ""}">` +
-    `<td>${escapeHtml(row.code)}</td>` +
-    `<td>${escapeHtml(row.name)}</td>` +
-    `<td>${escapeHtml(row.industry)}</td>` +
-    `<td>${fmt(row.consecutive_buy_days, 0)}</td>` +
-    `<td>${fmt(row.industry_rank, 0)}</td>` +
-    `<td><span class="sync-pill ${meta.cls}">${meta.label}</span>${row.paused_today ? '<span class="pause-tag">今日暫停新增</span>' : ""}</td>` +
-    `</tr>`;
+// 熱門排行 — 台灣前100大成分股（stock_universe_top100）當日五個排行維度，
+// 取代舊版「同步燈號驅動」的選股候選清單。首頁只顯示前 5 名，「更多」抽屜
+// 顯示同一份資料的完整排行（limit_up/limit_down 本來就只有真的漲跌停的股票，
+// 天生就短，不需要額外截斷）。
+const STOCK_RANKINGS_INLINE_N = 5;
+const STOCK_RANKINGS_TABS = [
+  { key: "top_gainers", label: "強勢股" },
+  { key: "top_losers", label: "弱勢股" },
+  { key: "top_volume", label: "成交量" },
+  { key: "limit_up", label: "漲停" },
+  { key: "limit_down", label: "跌停" },
+];
+
+function stockRankingRow(row) {
+  const cls = Number(row.change_pct) >= 0 ? "positive" : "negative";
+  const sign = Number(row.change_pct) >= 0 ? "+" : "";
+  return `<tr><td>${escapeHtml(row.code)}</td><td>${escapeHtml(row.name)}</td>` +
+    `<td>${fmt(row.close, 2)}</td>` +
+    `<td class="${cls}">${sign}${pct(row.change_pct, 2, true)}</td>` +
+    `<td>${fmt(row.volume, 0)}</td></tr>`;
 }
 
-function renderStockCandidates(rows) {
-  const table = byId("stock-candidates-table");
+function stockRankingsTableHtml(rows) {
+  if (!rows?.length) return `<tr><td colspan="5"><div class="table-empty">今日無符合資料</div></td></tr>`;
+  return rows.map(stockRankingRow).join("");
+}
+
+function renderStockRankings(data) {
+  const table = byId("stock-rankings-table");
+  const dateNote = byId("stock-rankings-date");
+  const moreButton = byId("stock-rankings-more");
   if (!table) return;
-  if (!rows?.length) { emptyTable(table, 6, "今日無符合條件的候選股"); return; }
-  table.innerHTML = `<thead><tr><th>代碼</th><th>名稱</th><th>產業</th><th>連續買超天數</th><th>產業排名</th><th>狀態</th></tr></thead>` +
-    `<tbody>${rows.map(stockCandidateRow).join("")}</tbody>`;
+  state.stockRankings = data;
+  if (dateNote) {
+    dateNote.textContent = data?.universe_date
+      ? `台灣前100大成分股（${data.universe_date}，共 ${fmt(data.universe_size, 0)} 檔），不含目標價或買賣建議`
+      : "台灣前100大成分股，不含目標價或買賣建議";
+  }
+  const activeTab = state.stockRankingsTab || STOCK_RANKINGS_TABS[0].key;
+  const rows = data?.[activeTab] || [];
+  table.innerHTML = `<thead><tr><th>代碼</th><th>名稱</th><th>現價</th><th>漲跌幅</th><th>成交量(張)</th></tr></thead>` +
+    `<tbody>${stockRankingsTableHtml(rows.slice(0, STOCK_RANKINGS_INLINE_N))}</tbody>`;
+  if (moreButton) moreButton.classList.toggle("hidden", rows.length <= STOCK_RANKINGS_INLINE_N);
+}
+
+function openStockRankingsDrawer() {
+  const data = state.stockRankings;
+  const activeTab = state.stockRankingsTab || STOCK_RANKINGS_TABS[0].key;
+  const tabMeta = STOCK_RANKINGS_TABS.find((t) => t.key === activeTab);
+  const rows = data?.[activeTab] || [];
+  openDrawer(`熱門排行 · ${tabMeta.label}（共 ${rows.length} 檔）`, `
+    <table class="data-table"><thead><tr><th>代碼</th><th>名稱</th><th>現價</th><th>漲跌幅</th><th>成交量(張)</th></tr></thead>
+    <tbody>${stockRankingsTableHtml(rows)}</tbody></table>
+  `);
 }
 
 // Reuses the existing gain-heat/loss-heat/heat-tier-N tokens (see signedHeatClass) so the
@@ -1052,6 +1109,58 @@ function renderIndustryFlowTreemap(rows) {
   }).join("");
 }
 
+// 產業排行（漲幅／跌幅／成交量／成交金額）— 取代「產業資金流向」原本唯一的
+// treemap 視角，treemap 收進下方 <details> 摺疊區塊，不刪除只降階。
+const INDUSTRY_RANKINGS_INLINE_N = 6;
+const INDUSTRY_RANKINGS_TABS = [
+  { key: "top_gainers", all: "all_by_gainers", label: "漲幅", unit: "change_pct" },
+  { key: "top_losers", all: "all_by_losers", label: "跌幅", unit: "change_pct" },
+  { key: "top_volume", all: "all_by_volume", label: "成交量", unit: "volume" },
+  { key: "top_turnover", all: "all_by_turnover", label: "成交金額", unit: "turnover" },
+];
+
+function industryRankingValue(row, unit) {
+  if (unit === "change_pct") {
+    const cls = Number(row.change_pct) >= 0 ? "positive" : "negative";
+    const sign = Number(row.change_pct) >= 0 ? "+" : "";
+    return `<span class="${cls}">${sign}${pct(row.change_pct, 2, true)}</span>`;
+  }
+  if (unit === "volume") return `${fmt(row.volume, 0)} 張`;
+  return `${fmt(Number(row.turnover) / 1e8, 2)} 億`;
+}
+
+function industryRankingRows(rows, unit) {
+  if (!rows?.length) return emptyHtml("今日無產業排行資料");
+  return rows.map((row, i) => `<div class="industry-ranking-row">` +
+    `<span class="industry-ranking-rank">${i + 1}</span>` +
+    `<span class="industry-ranking-name">${escapeHtml(row.industry)}<small>${fmt(row.member_count, 0)} 檔成分股</small></span>` +
+    `<span class="industry-ranking-value">${industryRankingValue(row, unit)}</span></div>`).join("");
+}
+
+function renderIndustryRankings(data) {
+  const listEl = byId("industry-rankings-list");
+  const meta = byId("industry-rankings-meta");
+  const moreButton = byId("industry-rankings-more");
+  if (!listEl) return;
+  state.industryRankings = data;
+  const activeTab = state.industryRankingsTab || INDUSTRY_RANKINGS_TABS[0].key;
+  const tabMeta = INDUSTRY_RANKINGS_TABS.find((t) => t.key === activeTab);
+  const rows = data?.[activeTab] || [];
+  listEl.innerHTML = industryRankingRows(rows.slice(0, INDUSTRY_RANKINGS_INLINE_N), tabMeta.unit);
+  if (meta) meta.textContent = data?.date ? `資料日 ${data.date}｜依 stock_industry_chain 產業分組` : "";
+  if (moreButton) moreButton.classList.toggle("hidden", rows.length <= INDUSTRY_RANKINGS_INLINE_N);
+}
+
+function openIndustryRankingsDrawer() {
+  const data = state.industryRankings;
+  const activeTab = state.industryRankingsTab || INDUSTRY_RANKINGS_TABS[0].key;
+  const tabMeta = INDUSTRY_RANKINGS_TABS.find((t) => t.key === activeTab);
+  const rows = data?.[tabMeta.all] || [];
+  openDrawer(`產業排行 · ${tabMeta.label}（共 ${rows.length} 個產業）`, `
+    <div class="industry-ranking-list">${industryRankingRows(rows, tabMeta.unit)}</div>
+  `);
+}
+
 // 加權指數貢獻排行 — 依市值占比反推的估算值（見 index_contribution 契約），不是交易所
 // 官方逐筆貢獻數字，所以卡頭 meta 文字跟 title tooltip 都要講明「估算」。
 function contributionRows(list, positive) {
@@ -1067,29 +1176,71 @@ function contributionRows(list, positive) {
   }).join("");
 }
 
+const INDEX_CONTRIBUTION_INLINE_N = 5;
+
 function renderIndexContribution(data) {
   const posTable = byId("index-contribution-positive");
   const negTable = byId("index-contribution-negative");
   const meta = byId("index-contribution-meta");
+  const moreButton = byId("index-contribution-more");
   if (!posTable || !negTable) return;
-  posTable.innerHTML = `<tbody>${contributionRows(data?.top_positive, true)}</tbody>`;
-  negTable.innerHTML = `<tbody>${contributionRows(data?.top_negative, false)}</tbody>`;
+  posTable.innerHTML = `<tbody>${contributionRows(data?.top_positive?.slice(0, INDEX_CONTRIBUTION_INLINE_N), true)}</tbody>`;
+  negTable.innerHTML = `<tbody>${contributionRows(data?.top_negative?.slice(0, INDEX_CONTRIBUTION_INLINE_N), false)}</tbody>`;
   if (meta) {
     meta.textContent = data
       ? `權重資料日 ${data.weight_data_date || "-"}｜估算值，依市值占比推算，非官方精確數字`
       : "待補加權指數貢獻排行資料";
   }
+  if (moreButton) {
+    const hasMore = (data?.top_positive?.length || 0) > INDEX_CONTRIBUTION_INLINE_N
+      || (data?.top_negative?.length || 0) > INDEX_CONTRIBUTION_INLINE_N;
+    moreButton.classList.toggle("hidden", !hasMore);
+  }
+}
+
+function openIndexContributionDrawer() {
+  const data = state.marketOverview?.index_contribution;
+  if (!data) return;
+  openDrawer("加權指數貢獻排行（前 20 名）", `
+    <div class="contribution-columns">
+      <div><div class="contribution-head gain">正貢獻</div><table class="data-table contribution-table"><tbody>${contributionRows(data.top_positive, true)}</tbody></table></div>
+      <div><div class="contribution-head loss">負貢獻</div><table class="data-table contribution-table"><tbody>${contributionRows(data.top_negative, false)}</tbody></table></div>
+    </div>
+  `);
 }
 
 // 個股漲跌分佈 — 11 桶區間長條圖 + 漲停/跌停統計卡。月新高／月新低目前資料庫累積天數
 // 不足以計算（見 market-daily-digest 契約），這裡故意不生 0，也不整卡拿掉，改用
 // "資料累積中" + title tooltip 明講原因，避免使用者誤以為當天真的 0 檔創新高/新低。
-function changeStatTile(label, valueHtml, valueClass, note) {
-  return `<div class="change-stat-tile">` +
+function changeStatTile(label, valueHtml, valueClass, note, clickKey) {
+  return `<div class="change-stat-tile${clickKey ? " clickable" : ""}"${clickKey ? ` data-drill="${clickKey}"` : ""}>` +
     `<span>${escapeHtml(label)}</span>` +
     `<strong class="${valueClass}">${valueHtml}</strong>` +
     (note ? `<small title="${escapeHtml(note)}">${escapeHtml(note)}</small>` : "") +
     `</div>`;
+}
+
+// 漲停/跌停個股清單 — 每檔股票同時帶 industry（FinMind 細產業，可能多筆）跟
+// official_sector（TWSE 官方產業別，固定一個），兩個分類系統分開顯示，不合併。
+function taggedStockRow(row) {
+  const cls = Number(row.change_pct) >= 0 ? "positive" : "negative";
+  const sign = Number(row.change_pct) >= 0 ? "+" : "";
+  const industryText = row.industry?.length ? row.industry.join("、") : "無細產業標籤";
+  return `<tr><td>${escapeHtml(row.code)}</td><td>${escapeHtml(row.name)}</td>` +
+    `<td class="${cls}">${sign}${pct(row.change_pct, 2, true)}</td>` +
+    `<td>${escapeHtml(row.official_sector || "-")}</td>` +
+    `<td>${escapeHtml(industryText)}</td></tr>`;
+}
+
+function openChangeDistributionDrawer(key) {
+  const data = state.marketOverview?.stock_change_distribution;
+  const rows = key === "limit_up" ? data?.limit_up_stocks : data?.limit_down_stocks;
+  const label = key === "limit_up" ? "漲停" : "跌停";
+  const body = rows?.length
+    ? `<table class="data-table"><thead><tr><th>代碼</th><th>名稱</th><th>漲跌幅</th><th>官方產業別</th><th>細產業</th></tr></thead>` +
+      `<tbody>${rows.map(taggedStockRow).join("")}</tbody></table>`
+    : emptyHtml(`今日無${label}個股`);
+  openDrawer(`${label}個股（共 ${rows?.length || 0} 檔）`, body);
 }
 
 // index 5 是 "0%" 那一桶；離中心越遠（>5%／<-5% 那兩端）heat-tier 越深，
@@ -1119,11 +1270,14 @@ function renderStockChangeDistribution(data) {
   const newHighNote = "資料庫目前累積的歷史交易日還不夠計算「股價月新高」，需要更多交易日歷史才能提供，不是 0 檔";
   const newLowNote = "資料庫目前累積的歷史交易日還不夠計算「股價月新低」，需要更多交易日歷史才能提供，不是 0 檔";
   statsEl.innerHTML = [
-    changeStatTile("漲停", fmt(data.limit_up_count, 0), "positive"),
+    changeStatTile("漲停", fmt(data.limit_up_count, 0), "positive", null, data.limit_up_count > 0 ? "limit_up" : null),
     changeStatTile("股價月新高", "資料累積中", "pending", newHighNote),
     changeStatTile("股價月新低", "資料累積中", "pending", newLowNote),
-    changeStatTile("跌停", fmt(data.limit_down_count, 0), "negative"),
+    changeStatTile("跌停", fmt(data.limit_down_count, 0), "negative", null, data.limit_down_count > 0 ? "limit_down" : null),
   ].join("");
+  $$("#stock-change-stats .change-stat-tile.clickable").forEach((tile) => {
+    tile.addEventListener("click", () => openChangeDistributionDrawer(tile.dataset.drill));
+  });
   const buckets = data.buckets || [];
   const maxCount = Math.max(...buckets.map((b) => Number(b.count) || 0), 1);
   bucketsEl.innerHTML = buckets.map((b, i) => {
@@ -1191,25 +1345,28 @@ function renderMarketOverview(overview) {
   renderMarketMarginTable(overview.margin_short);
   renderMarketFutures(overview.futures || []);
   renderFuturesLargeTrader(overview.futures_large_trader || []);
-  tableFromRows(byId("market-cap-table"), overview.market_cap?.slice(0, 50), [
+  renderIndustryTurnoverShare(overview.industry_turnover_share);
+  renderSyncSignal(overview.sync_signal);
+  renderStockRankings(overview.stock_rankings);
+  renderIndustryRankings(overview.industry_rankings);
+  renderIndustryFlowTreemap(overview.industry_capital_flow);
+  renderSectorMomentum(overview.sector_momentum);
+  renderMarketSnapshotCard(overview);
+}
+
+// 市值占大盤比重降到第二層 — 資料本身不常變，收進「更多」抽屜，不佔
+// market-overview-grid 版面。
+function openMarketCapShareDrawer() {
+  const rows = state.marketOverview?.market_cap?.slice(0, 50) || [];
+  const table = document.createElement("table");
+  table.className = "data-table";
+  tableFromRows(table, rows, [
     { key: "rank", label: "#" }, { key: "code", label: "代碼" },
     { key: "name", label: "名稱" },
     { key: "pct_of_market", label: "大盤比重", format: (v) => pct(v, 3) },
     { key: "date", label: "資料日期" },
   ], "待補全市場流通股本與市值資料源");
-  renderIndustryTurnoverShare(overview.industry_turnover_share);
-  renderSyncSignal(overview.sync_signal);
-  renderStockCandidates(overview.stock_candidates);
-  const candidatesDateNote = byId("stock-candidates-date");
-  const candidatesDate = overview.industry_capital_flow?.[0]?.date;
-  if (candidatesDateNote) {
-    candidatesDateNote.textContent = candidatesDate
-      ? `依產業資金流向＋連續買超篩出（資料日 ${candidatesDate}），不含目標價或買賣建議`
-      : "依產業資金流向＋連續買超篩出，不含目標價或買賣建議";
-  }
-  renderIndustryFlowTreemap(overview.industry_capital_flow);
-  renderSectorMomentum(overview.sector_momentum);
-  renderMarketSnapshotCard(overview);
+  openDrawer("市值占大盤比重（全市場前 50 名）", table.outerHTML);
 }
 
 function marketSnapshotItem(label, value) {
@@ -1255,6 +1412,41 @@ async function loadMarketOverview() {
     renderMarketOverview(await fetchJson(`${API}/market/overview`));
   } catch (error) {
     showError(`大盤總覽載入失敗：${error.message}`);
+  }
+}
+
+function showMarketOverviewTab() {
+  byId("empty-state").classList.add("hidden");
+  byId("stock-header").classList.add("hidden");
+  byId("freshness-rail").classList.add("hidden");
+  byId("workspace-nav").classList.add("hidden");
+  byId("workspace").classList.add("hidden");
+  byId("refresh-button").classList.add("hidden");
+  byId("market-overview-panel").classList.remove("hidden");
+  byId("market-overview-tab").classList.add("active");
+  byId("market-overview-tab").setAttribute("aria-pressed", "true");
+  state.marketOverviewActive = true;
+  history.replaceState(null, "", state.code
+    ? `?code=${encodeURIComponent(state.code)}&view=${state.view}&panel=market-overview`
+    : "?panel=market-overview");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function hideMarketOverviewTab() {
+  byId("market-overview-panel").classList.add("hidden");
+  byId("market-overview-tab").classList.remove("active");
+  byId("market-overview-tab").setAttribute("aria-pressed", "false");
+  state.marketOverviewActive = false;
+  if (state.code) {
+    byId("stock-header").classList.remove("hidden");
+    byId("freshness-rail").classList.remove("hidden");
+    byId("workspace-nav").classList.remove("hidden");
+    byId("workspace").classList.remove("hidden");
+    byId("refresh-button").classList.remove("hidden");
+    history.replaceState(null, "", `?code=${encodeURIComponent(state.code)}&view=${state.view}`);
+  } else {
+    byId("empty-state").classList.remove("hidden");
+    history.replaceState(null, "", "/");
   }
 }
 
@@ -1603,6 +1795,23 @@ $$('[data-momentum-mode]').forEach((button) => button.addEventListener("click", 
   }
 }));
 
+$$('#stock-rankings-tabs [data-rankings-tab]').forEach((button) => button.addEventListener("click", () => {
+  state.stockRankingsTab = button.dataset.rankingsTab;
+  $$('#stock-rankings-tabs [data-rankings-tab]').forEach((item) => item.classList.toggle("active", item === button));
+  renderStockRankings(state.stockRankings);
+}));
+byId("stock-rankings-more").addEventListener("click", openStockRankingsDrawer);
+
+$$('#industry-rankings-tabs [data-industry-tab]').forEach((button) => button.addEventListener("click", () => {
+  state.industryRankingsTab = button.dataset.industryTab;
+  $$('#industry-rankings-tabs [data-industry-tab]').forEach((item) => item.classList.toggle("active", item === button));
+  renderIndustryRankings(state.industryRankings);
+}));
+byId("industry-rankings-more").addEventListener("click", openIndustryRankingsDrawer);
+
+byId("index-contribution-more").addEventListener("click", openIndexContributionDrawer);
+byId("market-cap-share-link").addEventListener("click", openMarketCapShareDrawer);
+
 function renderRanking(radar = state.radar) {
   const category = `${state.rankingTopic}_${state.rankingMarket}`;
   const rows = radar?.rankings?.[category] || [];
@@ -1672,6 +1881,9 @@ async function loadStock(code, { modelOnly = false, bootstrapAttempt = false } =
       renderDashboard(dashboard, state.radar, state.valuationBenchmark);
       byId("empty-state").classList.add("hidden");
       byId("market-overview-panel").classList.add("hidden");
+      byId("market-overview-tab").classList.remove("active");
+      byId("market-overview-tab").setAttribute("aria-pressed", "false");
+      state.marketOverviewActive = false;
       byId("stock-header").classList.remove("hidden");
       byId("freshness-rail").classList.remove("hidden");
       byId("workspace-nav").classList.remove("hidden");
@@ -1937,6 +2149,13 @@ byId("search-form").addEventListener("submit", (event) => {
 byId("landing-focus-button").addEventListener("click", () => {
   byId("code-input").focus();
 });
+byId("market-overview-tab").addEventListener("click", () => {
+  if (state.marketOverviewActive) hideMarketOverviewTab(); else showMarketOverviewTab();
+});
+byId("market-snapshot-link").addEventListener("click", (event) => {
+  event.preventDefault();
+  showMarketOverviewTab();
+});
 document.addEventListener("click", (event) => { if (!byId("search-form").contains(event.target)) byId("search-results").classList.remove("show"); });
 $$('.nav-tab').forEach((button) => button.addEventListener("click", () => switchView(button.dataset.view)));
 $$('[data-option]').forEach((select) => select.addEventListener("change", () => {
@@ -2012,7 +2231,7 @@ window.addEventListener("resize", () => {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
     if (state.dashboard) renderDashboard(state.dashboard, state.radar || { futures: [], rankings: {} }, state.valuationBenchmark || {});
-    if (state.marketOverview && !state.code) renderMarketOverview(state.marketOverview);
+    if (state.marketOverview && state.marketOverviewActive) renderMarketOverview(state.marketOverview);
   }, 150);
 });
 
@@ -2027,4 +2246,5 @@ if (initialCode) {
   else loadStock(initialCode);
 }
 if (initialPanel === "data-health") openDataHealth();
+else if (initialPanel === "market-overview") showMarketOverviewTab();
 loadMarketOverview();

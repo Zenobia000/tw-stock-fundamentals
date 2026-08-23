@@ -5,11 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="個人台股研究平台，整合估值、營運基本面、財務品質、翁氏九宮格與籌碼市場。" />
   <title>台股基本面研究工作台</title>
-  <link rel="stylesheet" href="/static/style.css?v=20260823-1" />
+  <link rel="stylesheet" href="/static/style.css?v=20260824-2" />
 </head>
 <body>
   <header class="topbar">
     <a class="brand" href="/" aria-label="回到首頁">波段<span>決策台</span></a>
+    <nav class="topbar-nav" aria-label="頂層視圖">
+      <button id="market-overview-tab" class="topbar-tab" type="button" aria-pressed="false">大盤總覽</button>
+    </nav>
     <form id="search-form" class="search" autocomplete="off">
       <label class="sr-only" for="code-input">股票代碼或名稱</label>
       <input id="code-input" type="search" placeholder="股票代碼／名稱" maxlength="12" />
@@ -271,7 +274,7 @@
       <article class="card market-snapshot-card">
         <div class="card-head"><h3>大盤快照</h3><span>與目前研究標的資金流對照，看相對強弱</span></div>
         <div id="market-snapshot-body" class="market-snapshot-body"></div>
-        <a href="/" class="market-snapshot-link">查看完整大盤總覽 →</a>
+        <a href="/?panel=market-overview" id="market-snapshot-link" class="market-snapshot-link">查看完整大盤總覽 →</a>
       </article>
     </section>
   </main>
@@ -295,11 +298,12 @@
     <p class="landing-note">資料依來源發布頻率更新，僅供個人研究。</p>
   </section>
 
-  <section id="market-overview-panel" class="sector-momentum" aria-label="大盤總覽">
-    <!-- 深色主題只包住「大盤總覽」到「產業資金流向」這段（對應 5 張參考截圖的內容），
-         「板塊動能」是既有且截圖沒有對應的獨立功能，維持原本淺色視覺不動，避免無依據地
-         改動它既有的 heatmap 配色系統。scope 靠 .mkt-dark 這個 class（不是全站變數），
-         不會外溢到 section 以外的其他 view。 -->
+  <section id="market-overview-panel" class="sector-momentum hidden" aria-label="大盤總覽">
+    <!-- 大盤總覽現在是頂層 header 分頁（見 #market-overview-tab），整段（含下方「板塊
+         動能」）統一套用 .mkt-dark 深色主題，不再讓「板塊動能」維持獨立淺色視覺 —
+         之前那個切法在同一個 section 裡中途從深轉淺，是使用者實測回報的視覺不一致
+         來源。scope 靠 .mkt-dark 這個 class（不是全站變數），不會外溢到 section 以外
+         的其他 view。 -->
     <div class="mkt-dark">
     <header class="momentum-header">
       <div class="momentum-heading">
@@ -325,6 +329,7 @@
           <table id="index-contribution-negative" class="data-table contribution-table"><tbody></tbody></table>
         </div>
       </div>
+      <button id="index-contribution-more" class="drawer-more" type="button">更多 ▸</button>
     </article>
 
     <section id="market-hero" aria-label="今日結論">
@@ -339,12 +344,20 @@
           <div id="sync-signal-facts" class="market-snapshot-body sync-signal-facts"></div>
         </div>
       </div>
-      <article class="card wide-card" id="stock-candidates-card">
+      <article class="card wide-card" id="stock-rankings-card">
         <div class="card-head">
-          <h3>選股候選清單</h3>
-          <span id="stock-candidates-date">依產業資金流向＋連續買超篩出，不含目標價或買賣建議</span>
+          <h3>熱門排行</h3>
+          <span id="stock-rankings-date">台灣前100大成分股（依市值），不含目標價或買賣建議</span>
         </div>
-        <div class="table-scroll compact-table"><table id="stock-candidates-table" class="data-table"></table></div>
+        <div class="mode-switch" role="group" aria-label="排行維度" id="stock-rankings-tabs">
+          <button class="active" data-rankings-tab="top_gainers" type="button">強勢股</button>
+          <button data-rankings-tab="top_losers" type="button">弱勢股</button>
+          <button data-rankings-tab="top_volume" type="button">成交量</button>
+          <button data-rankings-tab="limit_up" type="button">漲停</button>
+          <button data-rankings-tab="limit_down" type="button">跌停</button>
+        </div>
+        <div class="table-scroll compact-table"><table id="stock-rankings-table" class="data-table"></table></div>
+        <button id="stock-rankings-more" class="drawer-more" type="button">更多 ▸</button>
       </article>
     </section>
 
@@ -370,19 +383,33 @@
       <article class="card"><div class="card-head"><h3>各商品法人期貨淨部位</h3><span>每個商品 × 法人</span></div><canvas id="chart-futures" class="chart" height="200"></canvas><div class="table-scroll compact-table"><table id="futures-table" class="data-table"></table></div></article>
       <article class="card"><div class="card-head"><h3>期貨大戶集中度</h3><span>十大交易人／十大特定法人淨未平倉，口</span></div><div class="table-scroll compact-table"><table id="futures-large-trader-table" class="data-table"></table></div></article>
       <article class="card"><div class="card-head"><h3>台指期貨日／夜盤 OHLC</h3><span>含結算價與漲跌幅</span></div><div class="table-scroll compact-table"><table id="futures-price-table" class="data-table"></table></div></article>
-      <article class="card"><div class="card-head"><h3>市值占大盤比重</h3><span>全市場</span></div><div class="table-scroll"><table id="market-cap-table" class="data-table"></table></div></article>
       <article class="card" id="industry-turnover-card"><div class="card-head"><h3>類股成交金額比重分佈</h3><span id="industry-turnover-date">依成交金額占大盤比重，前6大類股</span></div><div id="industry-turnover-bars" class="turnover-bar-list"></div></article>
     </div>
 
+    <button id="market-cap-share-link" class="second-tier-link" type="button">市值占大盤比重（全市場）— 更多 ▸</button>
+
     <header class="momentum-header">
       <div class="momentum-heading">
-        <h2>產業資金流向（依買賣超張數）</h2>
-        <p>當日三大法人買賣超「張數」依產業加總 — 不是金額也不是報酬排名。面積＝買賣超規模，顏色＝資金流向的方向與相對強度，回答「今天錢實際往哪個產業流」；口徑跟下方「板塊動能」（20/60/120 日報酬排名）不同，不能互相取代。</p>
+        <h2>產業排行</h2>
+        <p>依 <code>stock_industry_chain</code> 產業分組，成交金額加權平均個股漲跌幅（近似值，非官方板塊指數）。漲幅／跌幅／成交量／成交金額四個維度各看前 6 名，「更多」看完整排行。</p>
+      </div>
+      <div class="mode-switch" role="group" aria-label="產業排行維度" id="industry-rankings-tabs">
+        <button class="active" data-industry-tab="top_gainers" type="button">漲幅</button>
+        <button data-industry-tab="top_losers" type="button">跌幅</button>
+        <button data-industry-tab="top_volume" type="button">成交量</button>
+        <button data-industry-tab="top_turnover" type="button">成交金額</button>
       </div>
     </header>
-    <p id="industry-flow-meta" class="source-note"></p>
-    <div id="industry-flow-treemap" class="industry-treemap" role="img" aria-label="產業資金流向 treemap"></div>
-    </div><!-- /.mkt-dark -->
+    <p id="industry-rankings-meta" class="source-note"></p>
+    <div id="industry-rankings-list" class="industry-ranking-list"></div>
+    <button id="industry-rankings-more" class="drawer-more" type="button">更多 ▸</button>
+
+    <details class="market-group" id="industry-treemap-details">
+      <summary><span><b>產業資金流向熱力圖</b><strong>依買賣超張數</strong></span><em>展開／收合</em></summary>
+      <p class="source-note">當日三大法人買賣超「張數」依產業加總 — 不是金額也不是報酬排名。面積＝買賣超規模，顏色＝資金流向的方向與相對強度；口徑跟上方「產業排行」（漲跌幅／成交量／成交金額）跟下方「板塊動能」（20/60/120 日報酬排名）都不同，三者不能互相取代。</p>
+      <p id="industry-flow-meta" class="source-note"></p>
+      <div id="industry-flow-treemap" class="industry-treemap" role="img" aria-label="產業資金流向 treemap"></div>
+    </details>
 
     <header class="momentum-header">
       <div class="momentum-heading">
@@ -417,10 +444,22 @@
       </div>
       <table id="sub-industry-momentum-table" class="data-table momentum-table"></table>
     </div>
+    </div><!-- /.mkt-dark -->
   </section>
+
+  <div id="detail-drawer" class="detail-drawer hidden" aria-label="詳情面板">
+    <div id="detail-drawer-backdrop" class="detail-drawer-backdrop"></div>
+    <div class="detail-drawer-panel mkt-dark">
+      <div class="detail-drawer-head">
+        <h3 id="detail-drawer-title">-</h3>
+        <button id="detail-drawer-close" class="icon-button" type="button" aria-label="關閉">×</button>
+      </div>
+      <div id="detail-drawer-body" class="detail-drawer-body"></div>
+    </div>
+  </div>
 
   <div id="loading" class="loading hidden"><span></span><p>正在組裝研究資料…</p></div>
   <div id="error-banner" class="error-banner hidden"></div>
-  <script src="/static/app.js?v=20260823-2"></script>
+  <script src="/static/app.js?v=20260824-2"></script>
 </body>
 </html>
