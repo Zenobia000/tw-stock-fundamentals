@@ -416,6 +416,22 @@ def get_futures_price_latest(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     ).fetchall()
 
 
+def get_futures_price_series(
+    conn: sqlite3.Connection, contract: str, session: str = "day"
+) -> list[sqlite3.Row]:
+    """單一商品、單一盤別（預設日盤）的歷史 OHLC 序列，日期由舊到新——給台指期貨
+    K線細項用。日盤／夜盤分開查，不在這裡合併成同一條序列（合併會把同一天的兩根
+    K棒疊在一起，語意不清楚）。"""
+    return conn.execute(
+        """
+        SELECT * FROM futures_price_daily
+        WHERE contract = ? AND session = ?
+        ORDER BY date ASC
+        """,
+        (contract, session),
+    ).fetchall()
+
+
 def get_industry_capital_flow_latest(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     return conn.execute(
         """

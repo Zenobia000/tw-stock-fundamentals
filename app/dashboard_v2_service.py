@@ -441,6 +441,7 @@ def build_market_radar(conn: sqlite3.Connection) -> dict:
 
 
 _OTC_INDEX_NAME = "櫃買指數"
+_FUTURES_INDEX_CONTRACT = "臺股期貨"
 _LARGE_TRADER_GROUPS = ("十大交易人", "十大特定法人")
 
 
@@ -585,6 +586,12 @@ def build_market_overview(conn: sqlite3.Connection) -> dict:
             "twse": _index_close_summary(conn, _SECTOR_BENCHMARK_INDEX_NAME),
             "otc": _index_close_summary(conn, _OTC_INDEX_NAME),
             "futures": _dicts(queries.get_futures_price_latest(conn)),
+            "futures_series": _dicts(
+                queries.get_futures_price_series(conn, _FUTURES_INDEX_CONTRACT)
+            ),
+            "otc_trend": _dicts(
+                queries.get_sector_index_series(conn, _OTC_INDEX_NAME)
+            ),
         },
         "industry_capital_flow": _dicts(queries.get_industry_capital_flow_latest(conn)),
         "sync_signal": sync_signal,

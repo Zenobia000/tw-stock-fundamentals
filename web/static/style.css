@@ -559,13 +559,19 @@ body.health-open > #empty-state { display: none !important; }
 /* Top 3 index cards (加權指數／櫃買指數／台指期貨) — reference screenshot 1/2/5: dark
    card, name on top, big value in the middle, arrow + ％ delta on the bottom. */
 .mkt-index-cards { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 22px; }
-.mkt-index-card { flex: 1 1 200px; min-width: 172px; padding: 18px 16px; border: 1px solid var(--mkt-card-border); background: var(--mkt-card); text-align: center; }
+.mkt-index-card {
+  flex: 1 1 200px; min-width: 172px; padding: 18px 16px; border: 1px solid var(--mkt-card-border);
+  background: var(--mkt-card); color: inherit; font: inherit; text-align: center; cursor: pointer;
+}
+.mkt-index-card:hover { border-color: var(--mkt-accent); }
 .mkt-index-name { display: block; margin-bottom: 12px; color: var(--mkt-text); font-size: 14px; font-weight: 650; }
 .mkt-index-value { display: block; color: var(--mkt-text-strong); font: 750 clamp(24px, 2.6vw, 32px)/1 var(--mono); letter-spacing: -.02em; }
 .mkt-index-delta { display: block; margin-top: 12px; font: 700 14px/1 var(--mono); }
 .mkt-index-delta.positive { color: var(--mkt-up); }
 .mkt-index-delta.negative { color: var(--mkt-down); }
 .mkt-index-delta.neutral { color: var(--mkt-muted); }
+.mkt-index-drill { display: block; margin-top: 10px; color: var(--mkt-muted); font-size: 10px; }
+.mkt-index-card:hover .mkt-index-drill { color: var(--mkt-accent); }
 
 /* Sync-signal badge — reuses the reference's "colored-border-emphasis card" technique
    (screenshot 1/5's amber-bordered 台指電子盤 card) for our own GREEN/YELLOW/RED traffic

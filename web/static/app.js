@@ -672,6 +672,70 @@ function openIndexDetailDrawer() {
   }));
 }
 
+// 三張指數迷你卡（加權指數／櫃買指數／台指期貨）點進去的分流 — 三者資料完整度
+// 不同，不能共用同一支渲染函式硬套：加權指數有官方開高低（見上），台指期貨有
+// 官方日盤／夜盤開高低（下面用日盤畫K線），櫃買指數目前只有收盤指數，只能先
+// 給收盤趨勢線 + 明講缺口，不能假裝成K線圖。
+function openIndexCardDrawer(key) {
+  if (key === "twse") { openIndexDetailDrawer(); return; }
+  if (key === "futures") { openFuturesDetailDrawer(); return; }
+  if (key === "otc") { openOtcDetailDrawer(); return; }
+}
+
+function futuresSeriesToBars(series) {
+  return (series || []).map((row) => ({ date: row.date, open: row.open, high: row.high, low: row.low, close: row.close }));
+}
+
+function renderFuturesDetailChart(overview, granularity) {
+  const canvas = byId("futures-detail-candlestick");
+  if (!canvas) return;
+  canvas._candleView = null;
+  const dailyBars = futuresSeriesToBars(overview.index_ohlc?.futures_series);
+  const bars = aggregateOhlcBars(dailyBars, granularity);
+  const visible = granularity === "day" ? 60 : granularity === "week" ? 52 : 24;
+  drawCandlestickChart(canvas, bars, { defaultVisible: visible });
+}
+
+function openFuturesDetailDrawer() {
+  const overview = state.marketOverview;
+  if (!overview) return;
+  const latest = latestFuturesQuote(overview.index_ohlc?.futures);
+  const stats = latest
+    ? `<div class="index-detail-stats">` +
+      indexDetailStat("最新盤別", latest.session === "night" ? "夜盤" : "日盤") +
+      indexDetailStat("收盤", fmt(latest.close, 0)) +
+      indexDetailStat("結算價", fmt(latest.settlement_price, 0)) +
+      indexDetailStat("漲跌幅", `${Number(latest.change_pct) >= 0 ? "+" : ""}${pct(latest.change_pct, 2, true)}`) +
+      `</div>`
+    : emptyHtml("待補台指期貨統計資料");
+  openDrawer("台指期貨走勢細項", `
+    <div class="mode-switch" id="futures-detail-tabs" role="group" aria-label="K線週期">
+      ${INDEX_DETAIL_TABS.map((t, i) => `<button class="${i === 0 ? "active" : ""}" data-futures-detail-tab="${t.key}" type="button">${t.label}</button>`).join("")}
+    </div>
+    <canvas id="futures-detail-candlestick" class="chart" height="280"></canvas>
+    <p class="source-note">滾輪縮放，拖曳平移。只畫日盤 K 棒（不含夜盤），來源 TAIFEX 官方期貨每日交易行情；週K／月K 由日線聚合。</p>
+    ${stats}
+  `);
+  renderFuturesDetailChart(overview, "day");
+  $$('#futures-detail-tabs [data-futures-detail-tab]').forEach((button) => button.addEventListener("click", () => {
+    $$('#futures-detail-tabs [data-futures-detail-tab]').forEach((item) => item.classList.toggle("active", item === button));
+    renderFuturesDetailChart(overview, button.dataset.futuresDetailTab);
+  }));
+}
+
+function openOtcDetailDrawer() {
+  const overview = state.marketOverview;
+  if (!overview) return;
+  const trend = overview.index_ohlc?.otc_trend || [];
+  openDrawer("櫃買指數走勢細項", `
+    <canvas id="otc-detail-chart" class="chart" height="240"></canvas>
+    <p class="source-note">櫃買指數目前只有官方收盤指數（TWSE MI_INDEX），還沒有逐日開高低來源，暫時只能畫收盤趨勢線，不是K線圖——等找到 TPEx 對應的開高低端點後再升級，不能用收盤價回推假造開高低。</p>
+  `);
+  drawChart(byId("otc-detail-chart"), [
+    { name: "櫃買指數", values: trend.map((row) => row.close_index), digits: 2 },
+  ], trend.map((row) => row.date), { labelCount: 8 });
+}
+
 function renderStockHeader(stock, freshness = {}, valuationBenchmark = {}) {
   byId("stock-name").textContent = stock.name || stock.code;
   byId("stock-code").textContent = stock.code;
@@ -1153,16 +1217,17 @@ function latestFuturesQuote(rows) {
 // 「漲跌點數」欄位（index_ohlc.twse/otc 固定回傳 change_pct，futures_price_daily
 // 也只有 change_pct，見同一份契約），所以卡片只顯示 ％，不倒推點數避免四捨五入
 // 誤差跟官方公告的點數對不上。
-function marketIndexCardHtml(name, value, changePct) {
+function marketIndexCardHtml(name, value, changePct, key) {
   const hasChange = isValue(changePct);
   const changeClass = hasChange ? (Number(changePct) >= 0 ? "positive" : "negative") : "neutral";
   const arrow = hasChange ? (Number(changePct) >= 0 ? "▲" : "▼") : "";
   const changeText = hasChange ? `${arrow}${pct(Math.abs(Number(changePct)), 2, true)}` : "-";
-  return `<div class="mkt-index-card">` +
+  return `<button type="button" class="mkt-index-card" data-index-card="${key}">` +
     `<span class="mkt-index-name">${escapeHtml(name)}</span>` +
     `<strong class="mkt-index-value">${fmt(value, 0)}</strong>` +
     `<span class="mkt-index-delta ${changeClass}">${changeText}</span>` +
-    `</div>`;
+    `<small class="mkt-index-drill">細項 ▸</small>` +
+    `</button>`;
 }
 
 function renderMarketIndexCards(overview) {
@@ -1172,10 +1237,13 @@ function renderMarketIndexCards(overview) {
   const otc = overview.index_ohlc?.otc;
   const futuresQuote = latestFuturesQuote(overview.index_ohlc?.futures);
   container.innerHTML = [
-    marketIndexCardHtml("加權指數", latestIndex?.close_index, latestIndex?.change_pct),
-    marketIndexCardHtml("櫃買指數", otc?.close_index, otc?.change_pct),
-    marketIndexCardHtml("台指期貨", futuresQuote?.close, futuresQuote?.change_pct),
+    marketIndexCardHtml("加權指數", latestIndex?.close_index, latestIndex?.change_pct, "twse"),
+    marketIndexCardHtml("櫃買指數", otc?.close_index, otc?.change_pct, "otc"),
+    marketIndexCardHtml("台指期貨", futuresQuote?.close, futuresQuote?.change_pct, "futures"),
   ].join("");
+  $$('#market-index-cards [data-index-card]').forEach((button) => button.addEventListener("click", () => {
+    openIndexCardDrawer(button.dataset.indexCard);
+  }));
 }
 
 const SYNC_SIGNAL_META = {

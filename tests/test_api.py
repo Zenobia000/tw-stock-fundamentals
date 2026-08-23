@@ -168,7 +168,9 @@ def test_market_overview_endpoint_returns_shape_without_data(client):
     assert body["institutional_trading"] == []
     assert body["margin_short"] == []
     assert body["futures_large_trader"] == []
-    assert body["index_ohlc"] == {"twse": None, "otc": None, "futures": []}
+    assert body["index_ohlc"] == {
+        "twse": None, "otc": None, "futures": [], "futures_series": [], "otc_trend": [],
+    }
     assert body["industry_capital_flow"] == []
     assert body["sync_signal"]["signal"] == "YELLOW"
     assert body["sync_signal"]["insufficient_data"] is True

@@ -97,3 +97,41 @@ def test_upsert_industry_capital_flow_roundtrip(tmp_path):
     assert row["member_count"] == 3
     assert row["formula_version"] == "v1"
     conn.close()
+
+
+def test_get_futures_price_series_filters_contract_and_session_ordered_by_date(tmp_path):
+    from app.db.queries import get_futures_price_series
+
+    conn = get_connection(tmp_path / "test.db")
+    upsert_futures_price(
+        conn,
+        [
+            FuturesPrice(
+                date="2026-08-20", contract="臺股期貨", session="day",
+                open=44700.0, high=44900.0, low=44600.0, close=44800.0,
+                settlement_price=44800.0, change_pct=0.2,
+            ),
+            FuturesPrice(
+                date="2026-08-21", contract="臺股期貨", session="day",
+                open=44900.0, high=45300.0, low=44800.0, close=45224.0,
+                settlement_price=45224.0, change_pct=0.65,
+            ),
+            FuturesPrice(
+                date="2026-08-21", contract="臺股期貨", session="night",
+                open=45000.0, high=45100.0, low=44900.0, close=45074.0,
+                settlement_price=None, change_pct=-0.14,
+            ),
+            FuturesPrice(
+                date="2026-08-21", contract="小型臺指期貨", session="day",
+                open=100.0, high=110.0, low=90.0, close=105.0,
+                settlement_price=105.0, change_pct=1.0,
+            ),
+        ],
+    )
+
+    series = get_futures_price_series(conn, "臺股期貨", "day")
+
+    assert [row["date"] for row in series] == ["2026-08-20", "2026-08-21"]
+    assert all(row["session"] == "day" for row in series)
+    assert series[-1]["close"] == 45224.0
+    conn.close()
