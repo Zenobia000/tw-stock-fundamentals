@@ -149,6 +149,7 @@ body.health-open > #empty-state { display: none !important; }
 .tier-official { border-color: #b5c7cb; background: var(--blue-soft); color: var(--blue-deep); }
 .tier-publisher { border-color: #b9cec1; background: #eaf0ec; color: var(--green); }
 .tier-portal { border-color: #c9c1cf; background: #efebf0; color: var(--violet); }
+.tier-derived { border-color: var(--line-strong); background: var(--paper-soft); color: var(--muted); }
 .http-method { margin-right: 8px; }
 .method-get { border-color: #b5c7cb; color: var(--blue-deep); }
 .method-post { border-color: #d5b990; color: var(--amber); }
