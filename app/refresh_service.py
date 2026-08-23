@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from threading import Lock
 
 from app.db.connection import get_connection
 from app.ingest import refresh_market, refresh_stock
+
+_STALE_JOB_AGE = timedelta(hours=6)
 
 
 def _now() -> str:
@@ -28,8 +30,23 @@ class RefreshJobs:
         with self._lock:
             return dict(self._jobs.get(code, {"code": code, "status": "idle"}))
 
+    def _purge_stale(self) -> None:
+        """呼叫端須已持有 self._lock。清掉完成／失敗超過 _STALE_JOB_AGE 的舊 job，
+        避免 self._jobs 隨歷史上查詢過的相異股票代碼數無上限成長。"""
+        cutoff = datetime.now(UTC) - _STALE_JOB_AGE
+        stale_codes = [
+            job_code
+            for job_code, job in self._jobs.items()
+            if job["status"] != "running"
+            and job["finished_at"] is not None
+            and datetime.fromisoformat(job["finished_at"]) < cutoff
+        ]
+        for job_code in stale_codes:
+            del self._jobs[job_code]
+
     def start(self, code: str) -> dict:
         with self._lock:
+            self._purge_stale()
             current = self._jobs.get(code)
             if current and current["status"] == "running":
                 return dict(current)
