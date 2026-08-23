@@ -42,6 +42,43 @@ LIMIT_UP_THRESHOLD = 9.5
 LIMIT_DOWN_THRESHOLD = -9.5
 
 
+def _tag_stocks(
+    conn: sqlite3.Connection, entries: list[tuple[str, str, float]]
+) -> list[dict]:
+    """幫漲停/跌停個股清單補上 `industry`（FinMind 細產業，`stock_industry_chain`，
+    可能多筆）與 `official_sector`（TWSE 官方產業別，`stocks.industry`，固定一個）。
+    兩者是不同分類系統，不合併。沒有標籤就是 `None`，不是排除或補「未分類」字串。
+    """
+    if not entries:
+        return []
+    codes = [code for code, _, _ in entries]
+    placeholders = ",".join("?" for _ in codes)
+    chain_rows = conn.execute(
+        f"SELECT stock_id, industry FROM stock_industry_chain WHERE stock_id IN ({placeholders})",
+        codes,
+    ).fetchall()
+    chain_by_code: dict[str, list[str]] = {}
+    for row in chain_rows:
+        chain_by_code.setdefault(row["stock_id"], []).append(row["industry"])
+
+    official_rows = conn.execute(
+        f"SELECT code, industry FROM stocks WHERE code IN ({placeholders})",
+        codes,
+    ).fetchall()
+    official_by_code = {row["code"]: row["industry"] for row in official_rows}
+
+    return [
+        {
+            "code": code,
+            "name": name,
+            "change_pct": change_pct,
+            "industry": chain_by_code.get(code) or None,
+            "official_sector": official_by_code.get(code),
+        }
+        for code, name, change_pct in entries
+    ]
+
+
 def compute_stock_change_distribution(conn: sqlite3.Connection, date: str) -> dict:
     """算當日全市場（TWSE + TPEX）個股漲跌分佈。
 
@@ -57,13 +94,22 @@ def compute_stock_change_distribution(conn: sqlite3.Connection, date: str) -> di
       不是額外獨立的第 12 個桶。
     - `up_count` / `down_count` / `flat_count`：全部正/負/零家數總和（跨
       所有桶加總），不是細分佈。
+    - `limit_up_stocks` / `limit_down_stocks`：漲停/跌停個股清單，每筆
+      `{"code", "name", "change_pct", "industry", "official_sector"}`。
+      `industry` 是 `stock_industry_chain.industry`（FinMind 細產業標籤，
+      可能有多筆——一檔股票掛在多個產業就出現多筆）；`official_sector` 是
+      `stocks.industry`（TWSE 官方產業別，個股固定一個）。兩者是不同分類
+      系統，刻意分開兩個欄位，不合併成一個「產業」。個股若沒有
+      `stock_industry_chain` 標籤，仍會出現一筆、`industry` 為 `None`
+      （不因為沒有細產業標籤就整檔排除）。依 `change_pct` 由大到小
+      （跌停清單則由小到大，即跌幅最深排最前）排序。
 
     `change_pct` 為 `NULL` 的個股（例如當日無前一日收盤可比較）整列排除，
     不計入任何欄位。
     """
     rows = conn.execute(
         """
-        SELECT change_pct
+        SELECT code, name, change_pct
         FROM market_stock_snapshot_daily
         WHERE date = ? AND change_pct IS NOT NULL
         """,
@@ -76,6 +122,8 @@ def compute_stock_change_distribution(conn: sqlite3.Connection, date: str) -> di
     up_count = 0
     down_count = 0
     flat_count = 0
+    limit_up_codes: list[tuple[str, str, float]] = []
+    limit_down_codes: list[tuple[str, str, float]] = []
 
     for row in rows:
         change_pct = row["change_pct"]
@@ -87,8 +135,10 @@ def compute_stock_change_distribution(conn: sqlite3.Connection, date: str) -> di
 
         if change_pct >= LIMIT_UP_THRESHOLD:
             limit_up_count += 1
+            limit_up_codes.append((row["code"], row["name"], change_pct))
         elif change_pct <= LIMIT_DOWN_THRESHOLD:
             limit_down_count += 1
+            limit_down_codes.append((row["code"], row["name"], change_pct))
 
         if change_pct > 0:
             up_count += 1
@@ -97,6 +147,9 @@ def compute_stock_change_distribution(conn: sqlite3.Connection, date: str) -> di
         else:
             flat_count += 1
 
+    limit_up_codes.sort(key=lambda item: item[2], reverse=True)
+    limit_down_codes.sort(key=lambda item: item[2])
+
     return {
         "date": date,
         "buckets": [
@@ -104,6 +157,8 @@ def compute_stock_change_distribution(conn: sqlite3.Connection, date: str) -> di
         ],
         "limit_up_count": limit_up_count,
         "limit_down_count": limit_down_count,
+        "limit_up_stocks": _tag_stocks(conn, limit_up_codes),
+        "limit_down_stocks": _tag_stocks(conn, limit_down_codes),
         "up_count": up_count,
         "down_count": down_count,
         "flat_count": flat_count,

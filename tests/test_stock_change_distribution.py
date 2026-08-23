@@ -225,3 +225,45 @@ def test_empty_date_returns_zeroed_result(tmp_path):
     assert result["up_count"] == 0
     assert result["down_count"] == 0
     assert result["flat_count"] == 0
+
+
+def test_limit_up_and_down_stocks_are_tagged_with_industry_and_official_sector(tmp_path):
+    from app.db.repository import upsert_industry_chain, upsert_stock
+    from app.scrapers.finmind_industry_chain import IndustryChainTag
+    from app.scrapers.twse_isin import StockIsinInfo
+
+    conn = get_connection(tmp_path / "test.db")
+    upsert_stock(
+        conn,
+        StockIsinInfo(
+            code="1101", name="台泥", market="上市", security_type="股票",
+            industry="水泥工業", isin="TW0001101004", listed_date="1962-02-09",
+        ),
+    )
+    upsert_industry_chain(
+        conn, [IndustryChainTag(stock_id="1101", industry="水泥", sub_industry="水泥製造", tagged_at="2026-08-21")]
+    )
+    _seed(conn, {"1101": 9.7, "1102": -9.8}, {})
+
+    result = compute_stock_change_distribution(conn, DATE)
+
+    assert len(result["limit_up_stocks"]) == 1
+    up = result["limit_up_stocks"][0]
+    assert up["code"] == "1101"
+    assert up["official_sector"] == "水泥工業"
+    assert up["industry"] == ["水泥"]
+
+    assert len(result["limit_down_stocks"]) == 1
+    down = result["limit_down_stocks"][0]
+    assert down["code"] == "1102"
+    assert down["official_sector"] is None  # 沒有 upsert_stock，查不到官方產業別
+    assert down["industry"] is None  # 沒有細產業標籤
+
+
+def test_limit_up_stocks_sorted_by_change_pct_descending(tmp_path):
+    conn = get_connection(tmp_path / "test.db")
+    _seed(conn, {"1101": 9.5, "1102": 9.9, "1103": 9.7}, {})
+
+    result = compute_stock_change_distribution(conn, DATE)
+
+    assert [s["code"] for s in result["limit_up_stocks"]] == ["1102", "1103", "1101"]
