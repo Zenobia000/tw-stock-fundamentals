@@ -181,6 +181,37 @@ def test_default_model_matches_sunny_workbook_2330_golden_chain():
     assert result.projected_earnings_growth == pytest.approx(0.35691815202352295)
     assert result.peg == pytest.approx(0.5731563302682037)
     assert result.total_return_pe_score == pytest.approx(1.8278213703841817)
+    assert result.current_target_upside_pct == pytest.approx(2723.3471867322437 / 2395 - 1)
+    assert result.pe_target_upside_pct["+0sigma"] == pytest.approx(
+        2267.036032050901 / 2395 - 1
+    )
+
+
+def test_upside_pct_is_none_when_current_price_is_zero():
+    """current_price=0 不可拿來除；upside 相關欄位要回傳 None，不是 0 或例外。"""
+    result = calculate_valuation(
+        monthly_revenues_latest_first=[
+            467580.544,
+            442679.968,
+            416975.168,
+            410725.088,
+            415191.712,
+            317656.608,
+            401255.104,
+            335003.584,
+            343613.792,
+            367473.088,
+            330980.896,
+            335771.712,
+        ],
+        quarters_latest_first=_tsmc_quarters(),
+        current_price=0,
+        historical_monthly_pe=WORKBOOK_PE_VALUES,
+        payout_ratios_latest_first=[0.332, 0.376, 0.402, 0.281],
+    )
+    assert result.current_target_upside_pct is None
+    assert result.pe_target_prices
+    assert all(value is None for value in result.pe_target_upside_pct.values())
 
 
 def test_model_options_switch_all_core_branches():

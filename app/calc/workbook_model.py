@@ -84,7 +84,9 @@ class ValuationResult:
     annualized_estimated_pe: float | None
     pe_river: PeRiver | None
     pe_target_prices: dict[str, float]
+    pe_target_upside_pct: dict[str, float | None]
     current_pe_target_price: float | None
+    current_target_upside_pct: float | None
     selected_payout_ratio: float | None
     estimated_cash_dividend: float | None
     estimated_dividend_yield: float | None
@@ -102,6 +104,13 @@ def round_half_away_from_zero(value: float, digits: int = 0) -> float:
     """財務模型採用的 half-away-from-zero 四捨五入。"""
     quantum = Decimal(1).scaleb(-digits)
     return float(Decimal(str(value)).quantize(quantum, rounding=ROUND_HALF_UP))
+
+
+def _upside_pct(target: float | None, current: float) -> float | None:
+    """target 相對 current 的漲跌幅；target 缺值或 current 為 0 時回傳 None，不可除以 0。"""
+    if target is None or not current:
+        return None
+    return target / current - 1
 
 
 def _mean(values: list[float | None]) -> float:
@@ -241,6 +250,10 @@ def calculate_valuation(
     current_pe_target_price = (
         current_ttm_pe * estimated_ttm_eps if current_ttm_pe is not None else None
     )
+    pe_target_upside_pct = {
+        name: _upside_pct(price, current_price) for name, price in pe_target_prices.items()
+    }
+    current_target_upside_pct = _upside_pct(current_pe_target_price, current_price)
 
     valid_payouts = [
         ratio
@@ -319,7 +332,9 @@ def calculate_valuation(
         annualized_estimated_pe=annualized_estimated_pe,
         pe_river=pe_river,
         pe_target_prices=pe_target_prices,
+        pe_target_upside_pct=pe_target_upside_pct,
         current_pe_target_price=current_pe_target_price,
+        current_target_upside_pct=current_target_upside_pct,
         selected_payout_ratio=payout_ratio,
         estimated_cash_dividend=estimated_cash_dividend,
         estimated_dividend_yield=estimated_dividend_yield,
