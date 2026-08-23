@@ -78,6 +78,7 @@ SOURCES = {
         DataSource("twse-stock-day-all", "TWSE STOCK_DAY_ALL", "official"),
         DataSource("twse-capital-reduction", "TWSE 減資預告表", "official"),
         DataSource("twse-mi-index", "TWSE MI_INDEX", "official"),
+        DataSource("twse-mi-5mins-hist", "TWSE MI_5MINS_HIST（加權指數開高低收）", "official"),
         DataSource("twse-mi-index-all", "TWSE MI_INDEX 全市場個股收盤行情", "official"),
         DataSource(
             "tpex-mainboard-daily-close-quotes",
@@ -792,6 +793,20 @@ _POLICIES = (
         merge_rule="primary_same_period_wins",
         source_column="source",
         minimum_rows=3600,
+    ),
+    _market(
+        "sector_index_daily_ohlc",
+        "加權指數開高低收",
+        "sector_index_daily",
+        "date",
+        "日×指數",
+        "指數點",
+        "交易日",
+        36,
+        "twse-mi-5mins-hist",
+        scope_column="index_name",
+        scope_value="發行量加權股價指數",
+        minimum_rows=1,
     ),
     _market(
         "market_stock_snapshot_daily",

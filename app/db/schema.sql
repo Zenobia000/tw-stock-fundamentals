@@ -178,6 +178,9 @@ CREATE TABLE IF NOT EXISTS sector_index_daily (
     change_points REAL,
     change_pct REAL,
     remark TEXT,
+    open_index REAL,               -- 只有「發行量加權股價指數」有值（TWSE MI_5MINS_HIST 官方來源，
+    high_index REAL,                -- 逐月回傳；見 app.scrapers.twse_index_ohlc）；其餘板塊指數
+    low_index REAL,                 -- 官方沒有逐日開高低資料，維持 NULL，不得回推假造
     source TEXT NOT NULL,          -- 'twse-mi-index'
     fetched_at TEXT NOT NULL,
     PRIMARY KEY (date, index_name)

@@ -33,6 +33,7 @@ from app.db.repository import (
     upsert_finmind_cashflow_history,
     upsert_futures_oi,
     upsert_futures_price,
+    upsert_index_ohlc,
     upsert_industry_capital_flow,
     upsert_institutional_trading,
     upsert_large_trader_oi,
@@ -97,6 +98,7 @@ from app.scrapers.tpex_market_snapshot import (
 from app.scrapers.twse_board_holdings import fetch_board_holdings
 from app.scrapers.twse_capital_reduction import fetch_capital_reductions
 from app.scrapers.twse_financials import fetch_financial_health
+from app.scrapers.twse_index_ohlc import fetch_index_ohlc_month
 from app.scrapers.twse_insider_transfer import (
     fetch_insider_transfers,
 )
@@ -604,6 +606,15 @@ _MARKET_STEPS = (
         lambda conn, client: upsert_sector_indices(
             conn,
             fetch_sector_index(_latest_market_date(conn), client=client),
+        ),
+    ),
+    (
+        "加權指數開高低收",
+        "sector_index_daily_ohlc",
+        "twse-mi-5mins-hist",
+        lambda conn, client: upsert_index_ohlc(
+            conn,
+            fetch_index_ohlc_month(_latest_market_date(conn), client=client),
         ),
     ),
     (

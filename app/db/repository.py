@@ -30,6 +30,8 @@ from app.scrapers.tpex_market_institutional import (
 )
 from app.scrapers.tpex_market_margin import MarketMarginShort as TpexMarketMarginShort
 from app.scrapers.twse_financials import FinancialHealthQuarter
+from app.scrapers.twse_index_ohlc import INDEX_NAME as TWSE_INDEX_OHLC_NAME
+from app.scrapers.twse_index_ohlc import IndexOhlc
 from app.scrapers.twse_isin import StockIsinInfo
 from app.scrapers.twse_market_institutional import (
     MarketInstitutionalTrading as TwseMarketInstitutionalTrading,
@@ -907,6 +909,44 @@ def upsert_sector_indices(
                 row.change_points,
                 row.change_pct,
                 row.remark,
+                source,
+                fetched_at,
+            )
+            for row in rows
+        ],
+    )
+    conn.commit()
+
+
+def upsert_index_ohlc(
+    conn: sqlite3.Connection,
+    rows: list[IndexOhlc],
+    source: str = "twse-mi-5mins-hist",
+) -> None:
+    """只補 sector_index_daily 的 open/high/low 三欄，不動 close_index／change_*／
+    source 欄位 — 那些是 upsert_sector_indices（twse-mi-index 來源）的責任。兩支
+    scraper 各自只 UPDATE 自己負責的欄位，才不會互相覆蓋掉對方寫的資料（同一張表、
+    同一個 PK，但欄位來源不同）。"""
+    fetched_at = datetime.now(UTC).isoformat()
+    conn.executemany(
+        """
+        INSERT INTO sector_index_daily (
+            date, index_name, open_index, high_index, low_index, source, fetched_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(date, index_name) DO UPDATE SET
+            open_index = excluded.open_index,
+            high_index = excluded.high_index,
+            low_index = excluded.low_index,
+            fetched_at = excluded.fetched_at
+        """,
+        [
+            (
+                row.date,
+                TWSE_INDEX_OHLC_NAME,
+                row.open_index,
+                row.high_index,
+                row.low_index,
                 source,
                 fetched_at,
             )
