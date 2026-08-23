@@ -33,6 +33,19 @@ def _insert_trade(conn, code: str, date: str, institution: str, net: float | Non
     )
 
 
+def _insert_snapshot(conn, code: str, date: str, market: str, turnover: float | None) -> None:
+    conn.execute(
+        """
+        INSERT INTO market_stock_snapshot_daily (
+            date, market, code, name, open, high, low, close, change_pct,
+            volume, transaction_count, turnover, pe_ratio, source, fetched_at
+        )
+        VALUES (?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?, NULL, 'test-fixture', ?)
+        """,
+        (date, market, code, code, turnover, datetime.now(UTC).isoformat()),
+    )
+
+
 def _insert_chain(conn, stock_id: str, industry: str, sub_industry: str) -> None:
     conn.execute(
         """
@@ -89,18 +102,63 @@ def test_compute_industry_capital_flow_golden_values(tmp_path):
     semiconductor = by_industry["半導體"]
     assert semiconductor["net_amount"] == 140.0
     assert semiconductor["member_count"] == 2
-    assert semiconductor["turnover_amount"] is None
+    # 這個測試沒有灌 market_stock_snapshot_daily 資料，該產業當日查無成交金額，
+    # 加總結果是 0.0（不是 None——資料來源現在存在，只是這個 fixture 沒有資料）。
+    assert semiconductor["turnover_amount"] == 0.0
     assert semiconductor["formula_version"] == "v1"
     assert semiconductor["date"] == _DATE
 
     plastics = by_industry["塑膠"]
     assert plastics["net_amount"] == 200.0
     assert plastics["member_count"] == 1
-    assert plastics["turnover_amount"] is None
+    assert plastics["turnover_amount"] == 0.0
 
     # 依 net_amount 由大到小排序
     assert rows[0]["industry"] == "塑膠"
     assert rows[1]["industry"] == "半導體"
+
+    conn.close()
+
+
+def test_compute_industry_capital_flow_computes_turnover_amount_from_market_snapshot(tmp_path):
+    """turnover_amount 現在應該從 market_stock_snapshot_daily 加總算出真的金額，不再是 None。
+
+    刻意讓 institutional_trading_daily 跟 market_stock_snapshot_daily 的覆蓋股票數不同
+    （2454 只有成交金額快照、沒有法人買賣超資料），驗證 turnover_amount 是獨立的第二次
+    加總，不受 member_count（法人買賣超那邊的語意）影響。
+    """
+    conn = get_connection(tmp_path / "test.db")
+
+    for code, name in [("2330", "台積電"), ("2454", "聯發科"), ("1301", "台塑")]:
+        _insert_stock(conn, code, name)
+
+    _insert_chain(conn, "2330", "半導體", "晶圓代工")
+    _insert_chain(conn, "2454", "半導體", "IC設計")
+    _insert_chain(conn, "1301", "塑膠", "泛用樹脂")
+
+    # 法人買賣超：2454 當日沒有資料
+    _insert_trade(conn, "2330", _DATE, "外資", 100.0)
+    _insert_trade(conn, "1301", _DATE, "外資", 50.0)
+
+    # 成交金額快照：2330、2454、1301 當日都有資料
+    _insert_snapshot(conn, "2330", _DATE, "TWSE", 1000.0)
+    _insert_snapshot(conn, "2454", _DATE, "TWSE", 500.0)
+    _insert_snapshot(conn, "1301", _DATE, "TWSE", 300.0)
+
+    conn.commit()
+
+    rows = compute_industry_capital_flow(conn, _DATE)
+    by_industry = {row["industry"]: row for row in rows}
+
+    semiconductor = by_industry["半導體"]
+    assert semiconductor["turnover_amount"] == 1500.0
+    assert semiconductor["net_amount"] == 100.0
+    assert semiconductor["member_count"] == 1  # 只有 2330 有法人買賣超資料
+
+    plastics = by_industry["塑膠"]
+    assert plastics["turnover_amount"] == 300.0
+    assert plastics["net_amount"] == 50.0
+    assert plastics["member_count"] == 1
 
     conn.close()
 

@@ -13,10 +13,14 @@
    契約 3.3 節訂的 `net_amount` 命名把它加總，但這其實是「買賣超張數加總」，
    不是金額；除非之後 `institutional_trading_daily` 換成金額口徑的來源，否則
    前端呈現與後續公式（4.5 節排名）都要知道這個口徑落差。
-2. `turnover_amount`（成分股當日成交金額加總）：目前資料庫沒有任何個股「成交
-   金額」欄位可用——`stock_prices_daily` 只有 `volume`（股數），沒有成交值；
-   `stock_valuation_daily` 也沒有。因此這裡固定回傳 `None`，不用
-   `volume × close` 這種近似值假裝有成交金額。
+
+`turnover_amount`（成分股當日成交金額加總）的資料來源是 `market_stock_snapshot_daily`
+（TWSE + TPEX 全市場個股快照的 `turnover` 欄位，新台幣金額），跟 `net_amount`
+（`institutional_trading_daily` 分組加總）是各自獨立的第二次查詢再合併結果——
+兩張表覆蓋的股票範圍不一定一樣，`member_count` 語意維持「當日有
+`institutional_trading_daily` 資料」的股數不變，不因為新增 turnover 查詢而改變；
+turnover_amount 找不到任一成分股當日成交金額時回傳 `0.0`（查得到資料來源、只是
+沒有資料，不是「未知」），不是 `None`。
 """
 
 import sqlite3
@@ -33,16 +37,19 @@ def compute_industry_capital_flow(conn: sqlite3.Connection, date: str) -> list[d
     - `net_amount`：該產業當日 `institutional_trading_daily.net` 加總（先加總
       同一檔股票跨三大法人身份別的 net，再加總同產業所有成分股）。單位沿用
       來源欄位，見模組 docstring 已知缺口 1。
-    - `turnover_amount`：固定 `None`，見模組 docstring 已知缺口 2。
+    - `turnover_amount`：該產業當日 `market_stock_snapshot_daily.turnover` 加總，
+      見模組 docstring 說明；查無資料回傳 `0.0`。
     - `member_count`：當日「實際有 institutional_trading_daily 資料」且能對應到
       這個 industry 的個股數——不是 `stock_industry_chain` 裡掛在該產業下的
-      全部股票數，當日沒交易/沒資料的成分股不計入。
+      全部股票數，當日沒交易/沒資料的成分股不計入。這個語意只跟 `net_amount`
+      綁定，不受 `turnover_amount` 查詢影響（兩張來源表覆蓋的股票範圍不一定
+      一樣，member 數量可能不同是正常的）。
     - `formula_version`：固定常數 `"v1"`。
 
     一檔股票在 `stock_industry_chain` 可能有多個 `(industry, sub_industry)`
-    標籤（同一 industry 底下掛多個 sub_industry），這裡先用 `DISTINCT` 收斂成
-    `(industry, stock_id)` 再 join，避免同一檔股票的買賣超在同一個 industry
-    裡被重複加總。
+    標籤（同一 industry 底下掛多個 sub_industry），`net_amount` 與
+    `turnover_amount` 各自的查詢都先用 `DISTINCT` 收斂成 `(industry, stock_id)`
+    再 join，避免同一檔股票被重複加總。
     """
     rows = conn.execute(
         """
@@ -68,12 +75,34 @@ def compute_industry_capital_flow(conn: sqlite3.Connection, date: str) -> list[d
         bucket["net_amount"] += row["stock_net"]
         bucket["member_count"] += 1
 
+    turnover_rows = conn.execute(
+        """
+        SELECT chain.industry AS industry,
+               snap.code AS code,
+               SUM(snap.turnover) AS stock_turnover
+        FROM market_stock_snapshot_daily AS snap
+        JOIN (
+            SELECT DISTINCT industry, stock_id FROM stock_industry_chain
+        ) AS chain ON chain.stock_id = snap.code
+        WHERE snap.date = ? AND snap.turnover IS NOT NULL
+        GROUP BY chain.industry, snap.code
+        """,
+        (date,),
+    ).fetchall()
+
+    turnover_by_industry: dict[str, float] = {}
+    for row in turnover_rows:
+        industry = row["industry"]
+        turnover_by_industry[industry] = (
+            turnover_by_industry.get(industry, 0.0) + row["stock_turnover"]
+        )
+
     results = [
         {
             "date": date,
             "industry": industry,
             "net_amount": bucket["net_amount"],
-            "turnover_amount": None,
+            "turnover_amount": turnover_by_industry.get(industry, 0.0),
             "member_count": bucket["member_count"],
             "formula_version": FORMULA_VERSION,
         }
