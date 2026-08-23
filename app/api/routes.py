@@ -20,6 +20,7 @@ from app.dashboard_v2_service import (
     build_nine_grid,
     build_sector_momentum,
     build_sub_industry_momentum,
+    build_valuation_benchmark,
 )
 from app.data_health_service import build_data_health
 from app.data_strategy import strategy_payload
@@ -162,6 +163,12 @@ def get_target_price(code: str, conn: Db):
     if stock is None:
         raise HTTPException(status_code=404, detail=f"查無股票代碼 {code}")
     return build_valuation_snapshot(conn, code).__dict__
+
+
+@router.get("/stocks/{code}/valuation-benchmark")
+def get_valuation_benchmark(code: str, conn: Db):
+    """個股本益比／殖利率相對全市場中位數的比較基準；查無資料時欄位回 None。"""
+    return build_valuation_benchmark(conn, code)
 
 
 @router.get("/stocks/{code}/dashboard")

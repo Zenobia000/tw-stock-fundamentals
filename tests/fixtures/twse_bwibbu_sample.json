@@ -1,0 +1,7 @@
+[
+  {"Date": "1150821", "Code": "1101", "Name": "台泥", "PEratio": "", "DividendYield": "3.22", "PBratio": "0.81"},
+  {"Date": "1150821", "Code": "1102", "Name": "亞泥", "PEratio": "9.65", "DividendYield": "6.58", "PBratio": "0.67"},
+  {"Date": "1150821", "Code": "2330", "Name": "台積電", "PEratio": "27.94", "DividendYield": "0.91", "PBratio": "9.72"},
+  {"Date": "1150821", "Code": "2603", "Name": "長榮", "PEratio": "5.12", "DividendYield": "0.00", "PBratio": "1.34"},
+  {"Date": "1150821", "Code": "9999", "Name": "測試無效列", "PEratio": "", "DividendYield": "", "PBratio": ""}
+]

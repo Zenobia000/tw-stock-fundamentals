@@ -11,10 +11,10 @@
 |---|---|---|
 | 決策總覽 | 估值與公司事件 | 八個模型選項、估值鏈、中間值、預估季/TTM EPS、PE 河流、目標價、PEG、股利、殖利率、總報酬、減資警示、紅綠訊號 |
 | 營運基本面 | 營收、獲利與 EPS | 月營收與 YoY、3/12 月動能、八季損益、毛利/營益、業外、本業比率、推銷/管理/研發費、季與 TTM EPS |
-| 財務品質與股東回報 | 財務結構與現金回報 | 資產負債、收款/存貨/付款天數、負債與流動比、三大現金流、自由現金流、股利/發放率/殖利率/填息 |
+| 財務品質與股東回報 | 財務結構與現金回報 | 資產負債、收款/存貨/付款天數、負債與流動比、三大現金流、自由現金流、股利/發放率/殖利率/填息、公司事件（重大訊息/內部人持股轉讓）與減資、董監事持股與質押比例、大股東名單 |
 | 翁氏九宮格 | 九項核心品質指標 | 九張八季核心比較圖、月營收布林、合約負債、K 線；共用季度軸、單位與紅綠判讀 |
 | 籌碼與市場雷達 | 個股與全市場籌碼 | 法人/大戶/董監、融資券、券資比、分點、期貨日夜盤、上市櫃排行榜與市值占比 |
-| 板塊動能觀察 | 全市場板塊輪動 | TWSE 官方類股指數 20/60/120 日報酬同組百分位排名、對大盤超額報酬、綜合 Rank；不需先選股票，獨立頁籤；內含「細產業」子分頁（FinMind industry→sub_industry 兩層可展開樞紐表，台灣前100大成分股動能排名，含走勢 sparkline、可排序欄位、無 REL） |
+| 板塊動能觀察 | 全市場板塊輪動 | TWSE 官方類股指數 20/60/120 日報酬同組百分位排名、對大盤超額報酬、20/40/40 加權綜合 Rank；不需先選股票，獨立頁籤；內含「細產業」子分頁（FinMind industry→sub_industry 兩層可展開樞紐表，台灣前100大成分股動能排名，含 120 日走勢 sparkline、可排序欄位、無 REL） |
 
 ## 跨頁能力
 
@@ -41,7 +41,7 @@
 
 ## 資料領域
 
-- 公司與事件：`stocks`、`stock_info`、`stock_events`、`capital_reductions`、`dividend_annual`、`etf_holdings`
+- 公司與事件：`stocks`、`stock_info`、`stock_events`（含 `material_news`、`insider_transfer`）、`capital_reductions`、`board_holdings_monthly`、`major_shareholders`、`dividend_annual`、`etf_holdings`
 - 月資料：`revenue_monthly`、`pe_monthly`
 - 季資料：`income_statement_quarterly`、`financial_health_quarterly`、
   `cashflow_quarterly`、`operating_efficiency_quarterly`

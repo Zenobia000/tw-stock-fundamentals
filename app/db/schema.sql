@@ -216,6 +216,17 @@ CREATE TABLE IF NOT EXISTS market_cap_daily (
     PRIMARY KEY (date, code)
 );
 
+CREATE TABLE IF NOT EXISTS stock_valuation_daily (
+    date TEXT NOT NULL,
+    code TEXT NOT NULL,
+    pe_ratio REAL,
+    dividend_yield_pct REAL,
+    pb_ratio REAL,
+    source TEXT NOT NULL DEFAULT 'twse-bwibbu-all',
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (date, code)
+);
+
 CREATE TABLE IF NOT EXISTS capital_reductions (
     name TEXT NOT NULL,
     code TEXT,
@@ -227,6 +238,28 @@ CREATE TABLE IF NOT EXISTS capital_reductions (
     source TEXT,
     fetched_at TEXT,
     PRIMARY KEY (name)
+);
+
+CREATE TABLE IF NOT EXISTS board_holdings_monthly (
+    code TEXT NOT NULL REFERENCES stocks(code),
+    report_month TEXT NOT NULL,
+    title TEXT NOT NULL,
+    person_name TEXT NOT NULL,
+    shares_held INTEGER,
+    pledged_shares INTEGER,
+    pledged_ratio REAL,
+    source TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (code, report_month, title, person_name)
+);
+
+CREATE TABLE IF NOT EXISTS major_shareholders (
+    code TEXT NOT NULL REFERENCES stocks(code),
+    as_of_date TEXT NOT NULL,
+    shareholder_name TEXT NOT NULL,
+    source TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (code, as_of_date, shareholder_name)
 );
 
 -- Website v2 domain tables. These normalized tables cover the research capabilities
@@ -423,3 +456,7 @@ CREATE INDEX IF NOT EXISTS idx_etf_holdings_code_date
     ON etf_holdings(code, as_of_date DESC, holding_ratio DESC);
 CREATE INDEX IF NOT EXISTS idx_sector_index_name_date
     ON sector_index_daily(index_name, date DESC);
+CREATE INDEX IF NOT EXISTS idx_board_holdings_code_month
+    ON board_holdings_monthly(code, report_month DESC);
+CREATE INDEX IF NOT EXISTS idx_major_shareholders_code_date
+    ON major_shareholders(code, as_of_date DESC);

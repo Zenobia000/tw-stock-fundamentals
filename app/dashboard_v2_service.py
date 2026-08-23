@@ -4,6 +4,7 @@ import sqlite3
 from collections import defaultdict
 from dataclasses import asdict
 
+from app.calc.market_valuation import market_median, relative_premium_pct
 from app.calc.nine_grid import compute_revenue_bollinger
 from app.calc.revenue import compute_revenue_signals
 from app.calc.sector_momentum import (
@@ -16,9 +17,11 @@ from app.calc.valuation import quarter_over_quarter_signal
 from app.calc.workbook_model import ValuationModelOptions
 from app.db import queries
 from app.db.capital_reductions import get_capital_reduction_by_code
+from app.db.governance import get_board_holdings_by_code, get_major_shareholders_by_code
 from app.workbook_service import build_valuation_snapshot
 
 _SECTOR_BENCHMARK_INDEX_NAME = "發行量加權股價指數"
+_SECTOR_TREND_WINDOW = 120
 
 
 def _dicts(rows: list[sqlite3.Row]) -> list[dict]:
@@ -320,6 +323,15 @@ def build_financial_quality(conn: sqlite3.Connection, code: str) -> dict:
     }
 
 
+def build_governance(conn: sqlite3.Connection, code: str) -> dict:
+    return {
+        "board_holdings": [asdict(row) for row in get_board_holdings_by_code(conn, code)],
+        "major_shareholders": [
+            asdict(row) for row in get_major_shareholders_by_code(conn, code)
+        ],
+    }
+
+
 def build_chips_market(conn: sqlite3.Connection, code: str) -> dict:
     return {
         "holdings": _dicts(queries.get_chips_daily(conn, code)),
@@ -388,6 +400,7 @@ def build_dashboard_v2(
         "financial_quality": build_financial_quality(conn, code),
         "nine_grid": build_nine_grid(conn, code),
         "chips_market": build_chips_market(conn, code),
+        "governance": build_governance(conn, code),
         "freshness": build_data_freshness(conn, code),
     }
 
@@ -423,7 +436,7 @@ def build_market_radar(conn: sqlite3.Connection) -> dict:
 def build_sector_momentum(conn: sqlite3.Connection) -> list[dict]:
     """板塊動能排名 — 仿 TheMarketMemo「全市場動量觀察表」邏輯的台股板塊版。
     母體是 TWSE 官方「XX類指數」（不含大盤/規模指數），benchmark 是發行量加權股價指數。
-    rank 是我方近似值，非精確復刻，詳見 app.calc.sector_momentum 模組說明。
+    Rank 採原表公開的 20%/40%/40% 權重，詳見 app.calc.sector_momentum 模組說明。
     """
     names = queries.get_sector_index_names(conn)
     sector_names = sorted(name for name in names if name.endswith("類指數"))
@@ -451,6 +464,7 @@ def build_sector_momentum(conn: sqlite3.Connection) -> list[dict]:
                 "close_index": closes[0] if closes else None,
                 "date": latest["date"] if latest else None,
                 "change_pct_1d": latest["change_pct"] if latest else None,
+                "trend": list(reversed(closes[:_SECTOR_TREND_WINDOW])),
                 "return_20d": r20,
                 "return_60d": r60,
                 "return_120d": r120,
@@ -461,12 +475,12 @@ def build_sector_momentum(conn: sqlite3.Connection) -> list[dict]:
         )
 
     for horizon in ("20d", "60d", "120d"):
-        return_key, rank_key = f"return_{horizon}", f"rank_{horizon}"
-        pool = [e[return_key] for e in entries if e[return_key] is not None]
+        relative_key, rank_key = f"rel_{horizon}", f"rank_{horizon}"
+        pool = [e[relative_key] for e in entries if e[relative_key] is not None]
         for e in entries:
             e[rank_key] = (
-                percentile_rank(pool, e[return_key])
-                if e[return_key] is not None and pool
+                percentile_rank(pool, e[relative_key])
+                if e[relative_key] is not None and pool
                 else None
             )
 
@@ -477,7 +491,7 @@ def build_sector_momentum(conn: sqlite3.Connection) -> list[dict]:
     return entries
 
 
-_SUB_INDUSTRY_TREND_WINDOW = 20
+_SUB_INDUSTRY_TREND_WINDOW = 120
 
 
 def _aggregate_momentum(member_ids: set[str], price_series: dict[str, list[float]]) -> dict:
@@ -563,3 +577,41 @@ def build_sub_industry_momentum(conn: sqlite3.Connection) -> list[dict]:
         )
     industries.sort(key=lambda e: (e["rank"] is None, -(e["rank"] or 0)))
     return industries
+
+
+def build_valuation_benchmark(conn: sqlite3.Connection, code: str) -> dict:
+    """個股本益比／殖利率相對全市場中位數的比較基準（見
+    app.calc.market_valuation 對「中位數近似，不是官方加權指數」的說明）。
+
+    查無當日資料時所有欄位回 None，不清空整頁；這是獨立面板，不影響其他既有資料。
+    """
+    date = queries.get_latest_valuation_date(conn)
+    empty = {
+        "date": None,
+        "stock_pe": None,
+        "stock_yield": None,
+        "market_pe_median": None,
+        "market_yield_median": None,
+        "pe_vs_market_pct": None,
+        "yield_vs_market_pct": None,
+    }
+    if date is None:
+        return empty
+
+    snapshot = queries.get_market_valuation_snapshot(conn, date)
+    market_pe_median = market_median([row["pe_ratio"] for row in snapshot])
+    market_yield_median = market_median([row["dividend_yield_pct"] for row in snapshot])
+
+    stock_row = queries.get_stock_valuation(conn, code, date)
+    stock_pe = stock_row["pe_ratio"] if stock_row else None
+    stock_yield = stock_row["dividend_yield_pct"] if stock_row else None
+
+    return {
+        "date": date,
+        "stock_pe": stock_pe,
+        "stock_yield": stock_yield,
+        "market_pe_median": market_pe_median,
+        "market_yield_median": market_yield_median,
+        "pe_vs_market_pct": relative_premium_pct(stock_pe, market_pe_median),
+        "yield_vs_market_pct": relative_premium_pct(stock_yield, market_yield_median),
+    }

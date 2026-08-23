@@ -122,6 +122,8 @@ def _patch_all_sources(**overrides):
                 insider_holding_pct=5.3,
             )
         ],
+        "app.ingest.fetch_balance_history": lambda code, start_date, client: [],
+        "app.ingest.fetch_cashflow_history": lambda code, start_date, client: [],
         "app.ingest.fetch_detailed_income": lambda code, client: [],
         "app.ingest.fetch_detailed_balance": lambda code, client: [],
         "app.ingest.fetch_detailed_cashflow": lambda code, client: [],

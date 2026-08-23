@@ -21,3 +21,41 @@ def operating_cycle_days(
     if ar_days is None or inventory_days is None:
         return None
     return ar_days + inventory_days
+
+
+def statement_turnover_days(
+    opening_balance: float | None,
+    closing_balance: float | None,
+    quarterly_flow: float | None,
+) -> float | None:
+    """以季初／季末平均餘額和單季流量換算週轉天數（每季 90 天）。"""
+    if (
+        opening_balance is None
+        or closing_balance is None
+        or quarterly_flow is None
+        or quarterly_flow <= 0
+    ):
+        return None
+    return round(((opening_balance + closing_balance) / 2) / quarterly_flow * 90, 2)
+
+
+def statement_operating_efficiency(
+    *,
+    opening_receivable: float | None,
+    closing_receivable: float | None,
+    opening_inventory: float | None,
+    closing_inventory: float | None,
+    revenue: float | None,
+    cost_of_goods_sold: float | None,
+) -> tuple[float, float, float] | None:
+    """由已公布財報推導收款、存貨與營運週轉天數。"""
+    ar_days = statement_turnover_days(
+        opening_receivable, closing_receivable, revenue
+    )
+    inventory_days = statement_turnover_days(
+        opening_inventory, closing_inventory, cost_of_goods_sold
+    )
+    cycle_days = operating_cycle_days(ar_days, inventory_days)
+    if ar_days is None or inventory_days is None or cycle_days is None:
+        return None
+    return ar_days, inventory_days, round(cycle_days, 2)

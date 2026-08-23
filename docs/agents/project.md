@@ -26,18 +26,23 @@
 | 股票資訊 | 股價/股本/市值/Beta/發布日/ETF持股 | Fubon eBroker DJ | 券商 |
 | 營收 | 月營收、YoY、長短期擴張收斂 | histock 財務報表、Fubon 月營收 | 券商/入口 |
 | 毛利率&業外 | 毛利率/營益率/業外占比 | Fubon 獲利能力分析、histock 利潤比率 | 券商/入口 |
-| 營業費用 | 損益表季度拆解、稅率、週轉天數 | histock、money-link | 入口 |
+| 營業費用 | 損益表季度拆解、稅率、週轉天數 | histock 週轉天數優先；MoneyLink 已公布財報推導最新缺口 | 入口／財報回補 |
 | 每股盈餘(EPS) | EPS成長率、PE分位目標價矩陣 | Fubon 經營績效、histock | 券商/入口 |
 | 財報健檢 | 資產負債表/損益表/獲利率摘要 | TWSE OpenAPI 官方資料集（t187ap06/07_L_ci, t187ap17_L） | 官方，優先 |
-| 股息&現金流 | 除權息歷史、現金流量表 | histock 除權息、現金流量表 | 入口 |
+| 股息&現金流 | 除權息歷史、現金流量表 | histock 除權息；MoneyLink 當期現金流、FinMind 歷史回補、histock 簡表 fallback | 當期正式來源優先／歷史補充 |
 | 籌碼 | 法人買賣超、大戶比、融資券、分點 | histock、Fubon | 入口/券商 |
 | 期貨籌碼 | 三大法人期貨未平倉 | `taifex.com.tw`（官方） | 官方，優先 |
 | 排行榜 | 上市櫃成交值、券資比、週轉率股池 | TWSE OpenAPI STOCK_DAY_ALL；Fubon eBroker DJ 補上櫃與另兩種指標，並補官方源延遲日 | 官方優先／券商補充 |
 | 板塊動能排名 | 類股輪動觀察（20/60/120日相對強度百分位排名） | TWSE MI_INDEX（官方，每日增量）／FinMind TaiwanStockPrice（入口，僅一次性歷史回補用） | 官方優先，FinMind 僅回補用 |
 | 細產業動能排名 | 台灣前100大成分股依細產業分組的動能排名 | TAIFEX 月市值權重（股票池，官方）／FinMind TaiwanStockIndustryChain（標籤，需付費）／TaiwanStockPrice（僅歷史回補） | 股票池官方優先；FinMind 欄位依契約受限；見 `docs/specs/sector-momentum-formula-contract.md` |
-| 減資一覽表 | 減資股 EPS 校正值 | 手動維護（原資料源已停用） | 手動 |
+| 減資一覽表 | 減資股 EPS 校正值 | `www.twse.com.tw/rwd/zh/reducation/TWTAVU`（官方減資預告表） | 官方，優先 |
+| 重大訊息 | 個股每日重大訊息公告 | TWSE OpenAPI `t187ap04_L`；歷史回補用 MOPS `t05st01`（依代號查詢） | 官方，優先 |
+| 內部人持股轉讓（大額賣股） | 董監/大股東持股轉讓事前申報 | TWSE OpenAPI `t187ap12_L`／`t187ap13_L` | 官方，優先 |
+| 董監事持股與質押 | 董事長/董監事名單、持股、設質比例 | TWSE OpenAPI `t187ap11_L` | 官方，優先 |
+| 大股東名單 | 持股逾 10% 大股東 | TWSE OpenAPI `t187ap02_L` | 官方，優先 |
+| 個股 vs 大盤估值比較 | 個股本益比／殖利率相對全市場中位數的溢價／折價 % | TWSE OpenAPI `BWIBBU_ALL`（官方，全市場單一請求快照） | 官方，優先；上市限定，見 `docs/specs/valuation-benchmark-contract.md` |
 
-**資料覆蓋缺口**：網站能力與資料表已保留市值排行、完整損益、資產負債細目、日股價、法人、融資券、券商分點與 ETF 持股；尚未接妥來源時 API 回傳空陣列，前端顯示「待補資料源」。估值在缺少 `income_statement_quarterly` 時可用 `margin_quarterly` 推回營業費用，但會附警告；缺少 65 個月 `pe_monthly` 時可用季底股價／TTM EPS 暫代，並標示為非正式月 PE 河流口徑。這兩種 fallback 不得視為正式驗收完成。
+**資料覆蓋缺口**：網站能力與資料表已保留市值排行、完整損益、資產負債細目、日股價、法人、融資券、券商分點與 ETF 持股。資產負債與現金流細目由 MoneyLink 提供當期資料，FinMind 回補歷史季度；同季一律保留 MoneyLink。HiStock 尚未提供最新週轉天數時，可由已公布的 MoneyLink 資產負債表與損益表依相同口徑回補。來源仍未發布的季度維持 `null`，前端標明目前截至季度，不得補零或推估。其他尚未接妥來源時 API 回傳空陣列，前端顯示「待補資料源」。估值在缺少 `income_statement_quarterly` 時可用 `margin_quarterly` 推回營業費用，但會附警告；缺少 65 個月 `pe_monthly` 時可用季底股價／TTM EPS 暫代，並標示為非正式月 PE 河流口徑。這兩種 fallback 不得視為正式驗收完成。
 
 ## 資料庫（SQLite，`data/app.db`）
 
@@ -62,11 +67,14 @@
 - `stock_industry_chain(stock_id, industry, sub_industry, tagged_at, fetched_at)` — 股票↔細產業標籤，慢變動維度表非時序
 - `stock_universe_top100(as_of_date, rank, stock_id, stock_name, market_value, source, fetched_at)` — 台灣前100大股票池；canonical 來源為 TAIFEX 月市值權重
 - `capital_reductions(name PK, code, stop_date, resume_date, exchange_ratio, adjust_factor, reason, source, fetched_at)`
+- `board_holdings_monthly(code, report_month, title, person_name, shares_held, pledged_shares, pledged_ratio, source, fetched_at)` — TWSE 董監事持股與設質明細
+- `major_shareholders(code, as_of_date, shareholder_name, source, fetched_at)` — TWSE 持股逾 10% 大股東名單
+- `stock_valuation_daily(date, code, pe_ratio, dividend_yield_pct, pb_ratio, source, fetched_at)` — TWSE 官方全市場本益比／殖利率／PBR 快照，用來算大盤中位數比較基準，見 `docs/specs/valuation-benchmark-contract.md`
 - `ingestion_runs(dataset_id, scope_key, source, started_at, finished_at, status, data_as_of, row_count, error)` — 每次 ETL 稽核紀錄
 - `dataset_watermarks(dataset_id, scope_key, canonical_source, data_as_of, last_success_at, row_count)` — 經來源裁決後的供應水位
 - `income_statement_quarterly`、`balance_sheet_quarterly`、`operating_efficiency_quarterly` — 完整季度領域
 - `pe_monthly`、`stock_prices_daily` — PE 河流與 K 線歷史
-- `stock_events`、`dividend_annual`、`etf_holdings`、`institutional_trading_daily`、`margin_short_daily`、`broker_branches_daily` — 事件、年度股利與籌碼領域
+- `stock_events`、`dividend_annual`、`etf_holdings`、`institutional_trading_daily`、`margin_short_daily`、`broker_branches_daily` — 事件、年度股利與籌碼領域；`stock_events` 的 `event_type` 含 `material_news`（重大訊息，TWSE `t187ap04_L`）、`insider_transfer`（內部人持股轉讓，TWSE `t187ap12_L`/`t187ap13_L`）
 
 ## 驗收標準
 

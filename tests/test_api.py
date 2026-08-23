@@ -139,6 +139,14 @@ def test_sub_industry_momentum_endpoint_returns_empty_list_without_data(client):
     assert resp.json() == []
 
 
+def test_valuation_benchmark_endpoint_returns_none_fields_without_data(client):
+    resp = client.get("/api/stocks/2330/valuation-benchmark")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["date"] is None
+    assert body["pe_vs_market_pct"] is None
+
+
 def test_sub_industry_momentum_refresh_endpoints_start_and_report_background_job(
     client, monkeypatch
 ):
@@ -171,12 +179,15 @@ def test_dashboard_v2_exposes_five_integrated_areas(client):
         "financial_quality",
         "nine_grid",
         "chips_market",
+        "governance",
         "freshness",
     }
     assert body["decision"]["available"] is False
     assert body["decision"]["coverage"]["revenue_months"] == 1
     assert body["nine_grid"]["daily_prices"] == []
     assert body["financial_quality"]["capital_reduction"] is None
+    assert body["governance"]["board_holdings"] == []
+    assert body["governance"]["major_shareholders"] == []
     assert body["freshness"]["revenue_month"] == "2026-07"
     assert body["freshness"]["market_date"] is None
 

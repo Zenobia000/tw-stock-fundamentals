@@ -15,8 +15,10 @@ import httpx
 
 from app.db.capital_reductions import upsert_capital_reductions
 from app.db.connection import get_connection
+from app.db.governance import upsert_board_holdings, upsert_major_shareholders
 from app.db.lineage import run_ingestion_step
 from app.db.repository import (
+    backfill_operating_efficiency_from_statements,
     upsert_annual_dividends,
     upsert_broker_branches,
     upsert_daily_chips,
@@ -26,6 +28,8 @@ from app.db.repository import (
     upsert_dividends,
     upsert_etf_holdings,
     upsert_financial_health,
+    upsert_finmind_balance_history,
+    upsert_finmind_cashflow_history,
     upsert_futures_oi,
     upsert_institutional_trading,
     upsert_margin_quarters,
@@ -40,13 +44,19 @@ from app.db.repository import (
     upsert_sector_indices,
     upsert_stock,
     upsert_stock_info,
+    upsert_stock_valuation_daily,
 )
+from app.db.stock_events import upsert_stock_events
 from app.pricing import (
     fetch_missing_daily_prices,
     fetch_missing_quarterly_close_prices,
     recent_month_first_days,
 )
 from app.scrapers.cmoney_stock import fetch_annual_dividends, fetch_etf_holdings
+from app.scrapers.finmind_financials import (
+    fetch_balance_history,
+    fetch_cashflow_history,
+)
 from app.scrapers.fubon_eps import fetch_quarterly_eps
 from app.scrapers.fubon_institutional import fetch_institutional_trading
 from app.scrapers.fubon_margin import fetch_margin_quarters
@@ -65,11 +75,26 @@ from app.scrapers.moneylink_cashflow import fetch_detailed_cashflow
 from app.scrapers.moneylink_income import fetch_detailed_income
 from app.scrapers.taifex_futures import fetch_futures_oi
 from app.scrapers.taifex_market_cap import fetch_market_cap_weights
+from app.scrapers.twse_board_holdings import fetch_board_holdings
 from app.scrapers.twse_capital_reduction import fetch_capital_reductions
 from app.scrapers.twse_financials import fetch_financial_health
+from app.scrapers.twse_insider_transfer import (
+    fetch_insider_transfers,
+)
+from app.scrapers.twse_insider_transfer import (
+    to_stock_events as insider_transfers_to_stock_events,
+)
 from app.scrapers.twse_isin import fetch_stock_isin
+from app.scrapers.twse_major_shareholders import fetch_major_shareholders
+from app.scrapers.twse_material_news import (
+    fetch_material_news,
+)
+from app.scrapers.twse_material_news import (
+    to_stock_events as material_news_to_stock_events,
+)
 from app.scrapers.twse_rankings import fetch_turnover_rankings
 from app.scrapers.twse_sector_index import fetch_sector_index
+from app.scrapers.twse_valuation_stats import fetch_valuation_stats
 
 # Fubon eBroker DJ 的 WAF 會擋掉沒有瀏覽器 UA 的請求（httpx.Client() 預設 UA
 # 是 "python-httpx/x.y.z"，會直接 403）。個別 scraper 單獨測試時各自建立
@@ -77,6 +102,19 @@ from app.scrapers.twse_sector_index import fetch_sector_index
 # 手動帶上，否則 股票資訊/毛利率業外/EPS 這三個走 Fubon 的來源在整批刷新時
 # 會全部失敗（單獨測試時看不出來）。
 _SHARED_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 tw-stock-fundamentals/0.1"
+
+
+def _financial_history_start_date() -> str:
+    return f"{datetime.now(UTC).year - 3}-01-01"
+
+
+def _filter_known_codes(conn: sqlite3.Connection, entries: list):
+    """重大訊息/董監持股/大股東這幾個來源是全市場快照；stock_events、
+    board_holdings_monthly、major_shareholders 都有 REFERENCES stocks(code)，
+    只保留使用者已經查過（stocks 表裡有）的股票，避免整批因為外鍵失敗，
+    也避免囤積使用者根本不會看的公司資料。"""
+    known = {row[0] for row in conn.execute("SELECT code FROM stocks")}
+    return [entry for entry in entries if entry.code in known]
 
 # (顯示名稱, dataset id, source id, 抓取+寫入函式)。dataset/source 必須先在
 # app.data_strategy 登錄，否則 run_ingestion_step 會拒絕執行。
@@ -120,6 +158,16 @@ _STEPS = (
         ),
     ),
     (
+        "資產負債歷史回補",
+        "balance_sheet_quarterly",
+        "finmind-stock-history",
+        lambda conn, code, client: upsert_finmind_balance_history(
+            conn,
+            code,
+            fetch_balance_history(code, _financial_history_start_date(), client),
+        ),
+    ),
+    (
         "完整資產負債",
         "balance_sheet_quarterly",
         "moneylink-balance",
@@ -133,6 +181,14 @@ _STEPS = (
         "histock-turnover",
         lambda conn, code, client: upsert_quarterly_turnover(
             conn, code, fetch_quarterly_turnover(code, client)
+        ),
+    ),
+    (
+        "營運效率財報回補",
+        "operating_efficiency_quarterly",
+        "moneylink-balance",
+        lambda conn, code, client: backfill_operating_efficiency_from_statements(
+            conn, code
         ),
     ),
     (
@@ -173,6 +229,16 @@ _STEPS = (
         "cmoney-dividend",
         lambda conn, code, client: upsert_annual_dividends(
             conn, code, fetch_annual_dividends(code, client)
+        ),
+    ),
+    (
+        "現金流與資本支出歷史回補",
+        "cashflow_quarterly",
+        "finmind-stock-history",
+        lambda conn, code, client: upsert_finmind_cashflow_history(
+            conn,
+            code,
+            fetch_cashflow_history(code, _financial_history_start_date(), client),
         ),
     ),
     (
@@ -332,6 +398,16 @@ def refresh_stock(
     return results
 
 
+def _upsert_valuation_stats(conn: sqlite3.Connection, client: httpx.Client) -> None:
+    """單一請求拿全市場快照；批次日期優先用資料本身的 Date 欄位，
+    缺值時才退回今天，避免收假日或端點異常時把錯的日期寫進整批資料。"""
+    rows = fetch_valuation_stats(client=client)
+    batch_date = next((row.date for row in rows if row.date), None) or (
+        datetime.now(UTC).date().isoformat()
+    )
+    upsert_stock_valuation_daily(conn, batch_date, rows)
+
+
 _MARKET_STEPS = (
     (
         "證交所減資預告",
@@ -434,12 +510,57 @@ _MARKET_STEPS = (
         ),
     ),
     (
+        "個股本益比殖利率統計",
+        "stock_valuation_daily",
+        "twse-bwibbu-all",
+        _upsert_valuation_stats,
+    ),
+    (
         "板塊指數",
         "sector_index_daily",
         "twse-mi-index",
         lambda conn, client: upsert_sector_indices(
             conn,
             fetch_sector_index(_latest_market_date(conn), client=client),
+        ),
+    ),
+    (
+        "重大訊息",
+        "material_news",
+        "twse-material-news",
+        lambda conn, client: upsert_stock_events(
+            conn,
+            _filter_known_codes(
+                conn, material_news_to_stock_events(fetch_material_news(client))
+            ),
+        ),
+    ),
+    (
+        "內部人持股轉讓",
+        "insider_transfer",
+        "twse-insider-transfer",
+        lambda conn, client: upsert_stock_events(
+            conn,
+            _filter_known_codes(
+                conn,
+                insider_transfers_to_stock_events(fetch_insider_transfers(client)),
+            ),
+        ),
+    ),
+    (
+        "董監事持股與質押",
+        "board_holdings_monthly",
+        "twse-board-holdings",
+        lambda conn, client: upsert_board_holdings(
+            conn, _filter_known_codes(conn, fetch_board_holdings(client))
+        ),
+    ),
+    (
+        "大股東名單",
+        "major_shareholders",
+        "twse-major-shareholders",
+        lambda conn, client: upsert_major_shareholders(
+            conn, _filter_known_codes(conn, fetch_major_shareholders(client))
         ),
     ),
 )

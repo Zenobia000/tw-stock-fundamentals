@@ -115,6 +115,31 @@ def get_rankings(
     ).fetchall()
 
 
+def get_latest_valuation_date(conn: sqlite3.Connection) -> str | None:
+    row = conn.execute("SELECT MAX(date) AS date FROM stock_valuation_daily").fetchone()
+    return row["date"] if row else None
+
+
+def get_market_valuation_snapshot(conn: sqlite3.Connection, date: str) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT code, pe_ratio, dividend_yield_pct FROM stock_valuation_daily WHERE date = ?",
+        (date,),
+    ).fetchall()
+
+
+def get_stock_valuation(
+    conn: sqlite3.Connection, code: str, date: str
+) -> sqlite3.Row | None:
+    return conn.execute(
+        """
+        SELECT pe_ratio, dividend_yield_pct, pb_ratio
+        FROM stock_valuation_daily
+        WHERE date = ? AND code = ?
+        """,
+        (date, code),
+    ).fetchone()
+
+
 def get_sector_index_names(conn: sqlite3.Connection) -> list[str]:
     rows = conn.execute("SELECT DISTINCT index_name FROM sector_index_daily").fetchall()
     return [row["index_name"] for row in rows]

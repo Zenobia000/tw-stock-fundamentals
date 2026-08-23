@@ -2,6 +2,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from app.calc.opex import statement_operating_efficiency
 from app.scrapers.cmoney_stock import AnnualDividend, EtfHolding
 from app.scrapers.finmind_industry_chain import IndustryChainTag
 from app.scrapers.fubon_eps import QuarterlyEps
@@ -26,6 +27,7 @@ from app.scrapers.twse_isin import StockIsinInfo
 from app.scrapers.twse_rankings import RankingEntry
 from app.scrapers.twse_sector_index import SectorIndex
 from app.scrapers.twse_stock_day import DailyPrice
+from app.scrapers.twse_valuation_stats import StockValuationStat
 
 
 def upsert_stock(conn: sqlite3.Connection, info: StockIsinInfo) -> None:
@@ -166,7 +168,9 @@ def upsert_quarterly_cashflow(
             source = excluded.source,
             fetched_at = excluded.fetched_at
         WHERE cashflow_quarterly.source IS NULL
-           OR cashflow_quarterly.source NOT IN ('moneylink-cashflow', 'moneylink-iiam5')
+           OR cashflow_quarterly.source NOT IN (
+               'moneylink-cashflow', 'moneylink-iiam5', 'finmind-stock-history'
+           )
         """,
         [
             (
@@ -204,6 +208,48 @@ def upsert_detailed_cashflow(
             operating_plus_investing = excluded.operating_plus_investing,
             source = excluded.source,
             fetched_at = excluded.fetched_at
+        """,
+        [
+            (
+                code,
+                row.quarter,
+                row.operating,
+                row.investing,
+                row.financing,
+                row.capital_expenditure,
+                row.free_cash_flow,
+                row.operating_plus_investing,
+                fetched_at,
+            )
+            for row in rows
+        ],
+    )
+    conn.commit()
+
+
+def upsert_finmind_cashflow_history(
+    conn: sqlite3.Connection, code: str, rows: list[DetailedCashflowQuarter]
+) -> None:
+    """以 FinMind 補歷史缺口；MoneyLink 同季度資料永遠優先。"""
+    fetched_at = datetime.now(UTC).isoformat()
+    conn.executemany(
+        """
+        INSERT INTO cashflow_quarterly (
+            code, quarter, operating, investing, financing, capital_expenditure,
+            free_cash_flow, operating_plus_investing, source, fetched_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'finmind-stock-history', ?)
+        ON CONFLICT(code, quarter) DO UPDATE SET
+            operating = excluded.operating,
+            investing = excluded.investing,
+            financing = excluded.financing,
+            capital_expenditure = excluded.capital_expenditure,
+            free_cash_flow = excluded.free_cash_flow,
+            operating_plus_investing = excluded.operating_plus_investing,
+            source = excluded.source,
+            fetched_at = excluded.fetched_at
+        WHERE cashflow_quarterly.source IS NULL
+           OR cashflow_quarterly.source NOT IN ('moneylink-cashflow', 'moneylink-iiam5')
         """,
         [
             (
@@ -310,6 +356,92 @@ def upsert_quarterly_turnover(
         ],
     )
     conn.commit()
+
+
+def backfill_operating_efficiency_from_statements(
+    conn: sqlite3.Connection, code: str
+) -> int:
+    """用 MoneyLink 已公布財報補 HiStock 尚未提供的季度，不覆蓋既有資料。"""
+    rows = conn.execute(
+        """
+        SELECT i.quarter, i.revenue, i.gross_profit, i.source AS income_source,
+               b.accounts_receivable, b.inventory, b.source AS balance_source
+        FROM income_statement_quarterly AS i
+        JOIN balance_sheet_quarterly AS b
+          ON b.code = i.code AND b.quarter = i.quarter
+        WHERE i.code = ?
+        ORDER BY i.quarter
+        """,
+        (code,),
+    ).fetchall()
+    balances = {
+        row["quarter"]: (row["accounts_receivable"], row["inventory"])
+        for row in conn.execute(
+            """
+            SELECT quarter, accounts_receivable, inventory
+            FROM balance_sheet_quarterly
+            WHERE code = ?
+            """,
+            (code,),
+        ).fetchall()
+    }
+    existing = {
+        row["quarter"]
+        for row in conn.execute(
+            "SELECT quarter FROM opex_quarterly WHERE code = ?", (code,)
+        ).fetchall()
+    }
+    derived: list[tuple[str, str, float, float, float, str]] = []
+    fetched_at = datetime.now(UTC).isoformat()
+    for row in rows:
+        quarter = str(row["quarter"])
+        if quarter in existing:
+            continue
+        if row["income_source"] not in {"moneylink-income", "moneylink-iiam4"}:
+            continue
+        if row["balance_source"] not in {"moneylink-balance", "moneylink-iiam3"}:
+            continue
+        year = int(quarter[:4])
+        quarter_number = int(quarter[-1])
+        previous_quarter = (
+            f"{year - 1}Q4" if quarter_number == 1 else f"{year}Q{quarter_number - 1}"
+        )
+        previous_balance = balances.get(previous_quarter)
+        if previous_balance is None:
+            continue
+        revenue = row["revenue"]
+        gross_profit = row["gross_profit"]
+        cost_of_goods_sold = (
+            None
+            if revenue is None or gross_profit is None
+            else float(revenue) - float(gross_profit)
+        )
+        result = statement_operating_efficiency(
+            opening_receivable=previous_balance[0],
+            closing_receivable=row["accounts_receivable"],
+            opening_inventory=previous_balance[1],
+            closing_inventory=row["inventory"],
+            revenue=revenue,
+            cost_of_goods_sold=cost_of_goods_sold,
+        )
+        if result is None:
+            continue
+        ar_days, inventory_days, cycle_days = result
+        derived.append(
+            (code, quarter, ar_days, inventory_days, cycle_days, fetched_at)
+        )
+    before = conn.total_changes
+    conn.executemany(
+        """
+        INSERT INTO opex_quarterly (
+            code, quarter, ar_days, inventory_days, operating_cycle_days, fetched_at
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(code, quarter) DO NOTHING
+        """,
+        derived,
+    )
+    conn.commit()
+    return conn.total_changes - before
 
 
 def upsert_margin_quarters(
@@ -860,6 +992,39 @@ def upsert_market_cap_weights(
     conn.commit()
 
 
+def upsert_stock_valuation_daily(
+    conn: sqlite3.Connection, date: str, rows: list[StockValuationStat]
+) -> None:
+    """date 是回補當下鎖定的批次日期（多半沿用 rows 各列自己的 date，
+    但整批寫入時統一鎖定一個批次日避免混用不同交易日的殘留列）。"""
+    fetched_at = datetime.now(UTC).isoformat()
+    conn.executemany(
+        """
+        INSERT INTO stock_valuation_daily (
+            date, code, pe_ratio, dividend_yield_pct, pb_ratio, source, fetched_at
+        )
+        VALUES (?, ?, ?, ?, ?, 'twse-bwibbu-all', ?)
+        ON CONFLICT(date, code) DO UPDATE SET
+            pe_ratio = excluded.pe_ratio,
+            dividend_yield_pct = excluded.dividend_yield_pct,
+            pb_ratio = excluded.pb_ratio,
+            fetched_at = excluded.fetched_at
+        """,
+        [
+            (
+                row.date or date,
+                row.code,
+                row.pe_ratio,
+                row.dividend_yield_pct,
+                row.pb_ratio,
+                fetched_at,
+            )
+            for row in rows
+        ],
+    )
+    conn.commit()
+
+
 def upsert_detailed_balance(
     conn: sqlite3.Connection, code: str, rows: list[DetailedBalanceQuarter]
 ) -> None:
@@ -893,6 +1058,71 @@ def upsert_detailed_balance(
             roe_ratio = excluded.roe_ratio,
             source = excluded.source,
             fetched_at = excluded.fetched_at
+        """,
+        [
+            (
+                code,
+                row.quarter,
+                row.cash_and_securities,
+                row.accounts_receivable,
+                row.inventory,
+                row.long_term_investments,
+                row.property_plant_equipment,
+                row.current_assets,
+                row.total_assets,
+                row.accounts_payable,
+                row.contract_liabilities,
+                row.current_liabilities,
+                row.interest_bearing_debt,
+                row.total_liabilities,
+                row.total_equity,
+                row.capital,
+                row.book_value_per_share,
+                row.roe_ratio,
+                fetched_at,
+            )
+            for row in rows
+        ],
+    )
+    conn.commit()
+
+
+def upsert_finmind_balance_history(
+    conn: sqlite3.Connection, code: str, rows: list[DetailedBalanceQuarter]
+) -> None:
+    """以 FinMind 補資產負債歷史；MoneyLink 同季度資料永遠優先。"""
+    fetched_at = datetime.now(UTC).isoformat()
+    conn.executemany(
+        """
+        INSERT INTO balance_sheet_quarterly (
+            code, quarter, cash_and_securities, accounts_receivable, inventory,
+            long_term_investments, property_plant_equipment, current_assets,
+            total_assets, accounts_payable, contract_liabilities, current_liabilities,
+            interest_bearing_debt, total_liabilities, total_equity, capital,
+            book_value_per_share, roe_ratio, source, fetched_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'finmind-stock-history', ?)
+        ON CONFLICT(code, quarter) DO UPDATE SET
+            cash_and_securities = excluded.cash_and_securities,
+            accounts_receivable = excluded.accounts_receivable,
+            inventory = excluded.inventory,
+            long_term_investments = excluded.long_term_investments,
+            property_plant_equipment = excluded.property_plant_equipment,
+            current_assets = excluded.current_assets,
+            total_assets = excluded.total_assets,
+            accounts_payable = excluded.accounts_payable,
+            contract_liabilities = excluded.contract_liabilities,
+            current_liabilities = excluded.current_liabilities,
+            interest_bearing_debt = excluded.interest_bearing_debt,
+            total_liabilities = excluded.total_liabilities,
+            total_equity = excluded.total_equity,
+            capital = excluded.capital,
+            book_value_per_share = excluded.book_value_per_share,
+            roe_ratio = excluded.roe_ratio,
+            source = excluded.source,
+            fetched_at = excluded.fetched_at
+        WHERE balance_sheet_quarterly.source IS NULL
+           OR balance_sheet_quarterly.source NOT IN ('moneylink-balance', 'moneylink-iiam3')
         """,
         [
             (

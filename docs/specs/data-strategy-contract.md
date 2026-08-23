@@ -34,7 +34,12 @@
 
 - 上市成交值：TWSE 同日排行優先；Fubon 只寫入比現有官方水位更新的交易日。
 - 板塊指數：FinMind 只做歷史回補；同一日期已有 TWSE MI_INDEX 時不可覆蓋。
-- 現金流：MoneyLink 完整現金流優先；HiStock 簡表不能把既有完整欄位降級成空值。
+- 資產負債與現金流：MoneyLink 同季資料優先；FinMind
+  `TaiwanStockBalanceSheet`／`TaiwanStockCashFlowsStatement` 僅做歷史回補，HiStock
+  現金流簡表為最低優先，任何回補來源都不能把既有完整欄位降級成空值。
+- 營運效率：HiStock 週轉天數優先；若已公布的 MoneyLink 資產負債表與損益表
+  比 HiStock 更新，可用季初／季末平均餘額與 90 天單季口徑補缺口，且不得覆蓋
+  已有 HiStock 數值。
 - 前百大股票池：TAIFEX 月市值權重為正式來源；FinMind MarketValue 權限驗證失敗時只記錄
   `failed`，不得推進 canonical watermark。
 

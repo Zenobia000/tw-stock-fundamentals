@@ -28,6 +28,8 @@ EXPECTED_TABLES = {
     "institutional_trading_daily",
     "margin_short_daily",
     "broker_branches_daily",
+    "board_holdings_monthly",
+    "major_shareholders",
 }
 
 
