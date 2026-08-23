@@ -11,3 +11,6 @@ data/*.db-shm
 .env
 .DS_Store
 Thumbs.db
+.impeccable/
+artifacts/
+參考/

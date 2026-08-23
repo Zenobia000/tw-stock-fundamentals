@@ -6,7 +6,7 @@
 
 資料來源角色、同期間衝突裁決、新鮮度與升級門檻以 `docs/specs/data-strategy-contract.md` 為準；可執行的單一真實來源是 `app/data_strategy.py`，未登錄的 dataset/source 不得接入正式 ETL。
 
-產品資訊架構及 API 邊界見 `docs/specs/site-information-architecture.md`；估值與 PE 河流的逐步公式見 `docs/specs/workbook-formula-contract.md`。兩者都是本專案自身的契約，不依賴任何外部應用程式執行。
+產品資訊架構及 API 邊界見 `docs/specs/site-information-architecture.md`；估值與 PE 河流的逐步公式見 `docs/specs/workbook-formula-contract.md`；大盤日報（盤後選股用的三層籌碼同步判讀與候選清單）見 `docs/specs/market-daily-digest-contract.md`。三者都是本專案自身的契約，不依賴任何外部應用程式執行。
 
 估值方法論代號「翁氏」，核心邏輯：
 
@@ -32,6 +32,8 @@
 | 股息&現金流 | 除權息歷史、現金流量表 | histock 除權息；MoneyLink 當期現金流、FinMind 歷史回補、histock 簡表 fallback | 當期正式來源優先／歷史補充 |
 | 籌碼（個股層級） | 法人買賣超、大戶比、融資券、分點 | histock、Fubon | 入口/券商 |
 | 期貨籌碼（大盤層級） | 三大法人期貨未平倉 | `taifex.com.tw`（官方） | 官方，優先 |
+| 期貨大戶集中度（大盤層級，規劃中） | 十大交易人／十大特定人淨未平倉，用於三層同步判讀的大戶集中度驗證 | TAIFEX 大額交易人未沖銷部位結構表（官方；實際欄位待 WebFetch／瀏覽器核對，不得依契約描述臆測寫 parser） | 官方，優先；見 `docs/specs/market-daily-digest-contract.md` |
+| 產業資金流向／依金額（規劃中） | 依三大法人買賣超金額彙總的產業資金流向，跟板塊動能的報酬排名口徑不同、互補 | 由既有 `institutional_trading_daily` 依 `stock_industry_chain` 彙總，非新爬蟲來源，屬衍生計算 | 見 `docs/specs/market-daily-digest-contract.md` |
 | 三大法人買賣超（大盤層級） | 上市／上櫃全市場三大法人買賣金額合計 | TWSE `rwd/zh/fund/BFI82U`；TPEX 開放 API `tpex_3insti_summary`（皆官方） | 官方，優先 |
 | 融資融券增減（大盤層級） | 上市／上櫃全市場融資融券餘額 | TWSE `rwd/zh/marginTrading/MI_MARGN`（官方合計端點）；TPEX 無官方合計端點，改用開放 API `tpex_mainboard_margin_balance` 逐股資料在 scraper 內加總（仍為官方數字） | 官方，優先 |
 | 排行榜 | 上市櫃成交值、券資比、週轉率股池 | TWSE OpenAPI STOCK_DAY_ALL；Fubon eBroker DJ 補上櫃與另兩種指標，並補官方源延遲日 | 官方優先／券商補充 |
