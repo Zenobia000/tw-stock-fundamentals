@@ -431,3 +431,10 @@ def get_latest_industry_capital_flow_date(conn: sqlite3.Connection) -> str | Non
         "SELECT MAX(date) AS d FROM industry_capital_flow_daily"
     ).fetchone()
     return row["d"] if row else None
+
+
+def get_latest_market_stock_snapshot_date(conn: sqlite3.Connection) -> str | None:
+    row = conn.execute(
+        "SELECT MAX(date) AS d FROM market_stock_snapshot_daily"
+    ).fetchone()
+    return row["d"] if row else None

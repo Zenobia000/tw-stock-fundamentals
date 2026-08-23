@@ -158,6 +158,10 @@ def test_market_overview_endpoint_returns_shape_without_data(client):
         "industry_capital_flow",
         "sync_signal",
         "stock_candidates",
+        "stock_change_distribution",
+        "industry_turnover_share",
+        "index_contribution",
+        "market_order_book",
     }
     assert body["index_trend"] == []
     assert body["institutional_trading"] == []
@@ -167,6 +171,17 @@ def test_market_overview_endpoint_returns_shape_without_data(client):
     assert body["industry_capital_flow"] == []
     assert body["sync_signal"]["signal"] == "YELLOW"
     assert body["sync_signal"]["insufficient_data"] is True
+    assert body["stock_change_distribution"] is None
+    assert body["industry_turnover_share"] == []
+    assert body["index_contribution"] == {
+        "weight_data_date": None,
+        "index_prev_close": None,
+        "top_positive": [],
+        "top_negative": [],
+    }
+    assert body["market_order_book"] == {
+        "date": None, "market": "TWSE", "total_bid_volume": None, "total_ask_volume": None,
+    }
     assert body["stock_candidates"] == []
 
 

@@ -5,6 +5,9 @@ from collections import defaultdict
 from dataclasses import asdict
 
 from app.calc import market_sync
+from app.calc.index_contribution import compute_index_contribution
+from app.calc.industry_turnover_share import compute_industry_turnover_share
+from app.calc.market_order_book import compute_market_order_book
 from app.calc.market_valuation import market_median, relative_premium_pct
 from app.calc.nine_grid import compute_revenue_bollinger
 from app.calc.revenue import compute_revenue_signals
@@ -15,6 +18,7 @@ from app.calc.sector_momentum import (
     percentile_rank,
 )
 from app.calc.stock_candidates import compute_stock_candidates
+from app.calc.stock_change_distribution import compute_stock_change_distribution
 from app.calc.valuation import quarter_over_quarter_signal
 from app.calc.workbook_model import ValuationModelOptions
 from app.db import queries
@@ -536,6 +540,14 @@ def build_market_overview(conn: sqlite3.Connection) -> dict:
     `futures_large_trader`、`index_ohlc`、`industry_capital_flow`、
     `sync_signal`、`stock_candidates`。缺資料一律回傳 `null`/空陣列，不省略
     欄位、不用 0 偽裝。
+
+    這輪（籌碼K線大盤頁排版重做）新增的全市場快照衍生欄位：
+    `stock_change_distribution`（個股漲跌分佈）、`industry_turnover_share`
+    （類股成交金額比重）、`index_contribution`（指數貢獻排行，近似值）、
+    `market_order_book`（尾盤最後揭示委買委賣，僅 TWSE，不是即時委託簿）。
+    這些都依賴 `market_stock_snapshot_daily`，該表沒資料時前三者回傳
+    `null`/空陣列，`index_contribution` 本身已對缺資料情況做防禦（見
+    `app.calc.index_contribution` docstring）。
     """
     radar = build_market_radar(conn)
     sync_signal = build_market_sync_signal(conn)
@@ -545,6 +557,7 @@ def build_market_overview(conn: sqlite3.Connection) -> dict:
         if candidates_date is not None
         else []
     )
+    snapshot_date = queries.get_latest_market_stock_snapshot_date(conn)
     return {
         "index_trend": _dicts(
             queries.get_sector_index_series(conn, _SECTOR_BENCHMARK_INDEX_NAME)
@@ -567,6 +580,22 @@ def build_market_overview(conn: sqlite3.Connection) -> dict:
         "industry_capital_flow": _dicts(queries.get_industry_capital_flow_latest(conn)),
         "sync_signal": sync_signal,
         "stock_candidates": candidates,
+        "stock_change_distribution": (
+            compute_stock_change_distribution(conn, snapshot_date)
+            if snapshot_date is not None
+            else None
+        ),
+        "industry_turnover_share": (
+            compute_industry_turnover_share(conn, snapshot_date)
+            if snapshot_date is not None
+            else []
+        ),
+        "index_contribution": compute_index_contribution(conn),
+        "market_order_book": (
+            compute_market_order_book(conn, snapshot_date)
+            if snapshot_date is not None
+            else {"date": None, "market": "TWSE", "total_bid_volume": None, "total_ask_volume": None}
+        ),
     }
 
 
