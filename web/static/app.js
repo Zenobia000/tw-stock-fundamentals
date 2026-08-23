@@ -1526,15 +1526,23 @@ function taggedStockRow(row) {
     `<td>${escapeHtml(industryText)}</td></tr>`;
 }
 
+const CHANGE_DISTRIBUTION_DRILL_META = {
+  limit_up: { field: "limit_up_stocks", label: "漲停" },
+  limit_down: { field: "limit_down_stocks", label: "跌停" },
+  monthly_high: { field: "monthly_high_stocks", label: "股價月新高" },
+  monthly_low: { field: "monthly_low_stocks", label: "股價月新低" },
+};
+
 function openChangeDistributionDrawer(key) {
   const data = state.marketOverview?.stock_change_distribution;
-  const rows = key === "limit_up" ? data?.limit_up_stocks : data?.limit_down_stocks;
-  const label = key === "limit_up" ? "漲停" : "跌停";
+  const meta = CHANGE_DISTRIBUTION_DRILL_META[key];
+  if (!meta) return;
+  const rows = data?.[meta.field];
   const body = rows?.length
     ? `<table class="data-table"><thead><tr><th>代碼</th><th>名稱</th><th>漲跌幅</th><th>官方產業別</th><th>細產業</th></tr></thead>` +
       `<tbody>${rows.map(taggedStockRow).join("")}</tbody></table>`
-    : emptyHtml(`今日無${label}個股`);
-  openDrawer(`${label}個股（共 ${rows?.length || 0} 檔）`, body);
+    : emptyHtml(`今日無${meta.label}個股`);
+  openDrawer(`${meta.label}個股（共 ${rows?.length || 0} 檔）`, body);
 }
 
 // index 5 是 "0%" 那一桶；離中心越遠（>5%／<-5% 那兩端）heat-tier 越深，
@@ -1561,12 +1569,18 @@ function renderStockChangeDistribution(data) {
     return;
   }
   if (dateNote) dateNote.textContent = `資料日 ${data.date || "-"}`;
-  const newHighNote = "資料庫目前累積的歷史交易日還不夠計算「股價月新高」，需要更多交易日歷史才能提供，不是 0 檔";
-  const newLowNote = "資料庫目前累積的歷史交易日還不夠計算「股價月新低」，需要更多交易日歷史才能提供，不是 0 檔";
+  const newHighNote = "資料庫目前累積的歷史交易日還不夠計算「股價月新高」（需要近 20 個交易日），需要更多交易日歷史才能提供，不是 0 檔";
+  const newLowNote = "資料庫目前累積的歷史交易日還不夠計算「股價月新低」（需要近 20 個交易日），需要更多交易日歷史才能提供，不是 0 檔";
+  const monthlyHighReady = data.monthly_high_count !== null && data.monthly_high_count !== undefined;
+  const monthlyLowReady = data.monthly_low_count !== null && data.monthly_low_count !== undefined;
   statsEl.innerHTML = [
     changeStatTile("漲停", fmt(data.limit_up_count, 0), "positive", null, data.limit_up_count > 0 ? "limit_up" : null),
-    changeStatTile("股價月新高", "資料累積中", "pending", newHighNote),
-    changeStatTile("股價月新低", "資料累積中", "pending", newLowNote),
+    monthlyHighReady
+      ? changeStatTile("股價月新高", fmt(data.monthly_high_count, 0), "positive", null, data.monthly_high_count > 0 ? "monthly_high" : null)
+      : changeStatTile("股價月新高", "資料累積中", "pending", newHighNote),
+    monthlyLowReady
+      ? changeStatTile("股價月新低", fmt(data.monthly_low_count, 0), "negative", null, data.monthly_low_count > 0 ? "monthly_low" : null)
+      : changeStatTile("股價月新低", "資料累積中", "pending", newLowNote),
     changeStatTile("跌停", fmt(data.limit_down_count, 0), "negative", null, data.limit_down_count > 0 ? "limit_down" : null),
   ].join("");
   $$("#stock-change-stats .change-stat-tile.clickable").forEach((tile) => {

@@ -26,6 +26,14 @@ def _row(code: str, change_pct: float | None) -> MarketStockSnapshot:
     )
 
 
+def _row_on(date: str, code: str, close: float, change_pct: float | None) -> MarketStockSnapshot:
+    return MarketStockSnapshot(
+        date=date, code=code, name=f"stock-{code}", open=None, high=None, low=None,
+        close=close, change_pct=change_pct, volume=None, transaction_count=None,
+        turnover=None, pe_ratio=None,
+    )
+
+
 def _seed(conn, twse_pcts: dict[str, float | None], tpex_pcts: dict[str, float | None]):
     if twse_pcts:
         upsert_market_stock_snapshot(
@@ -199,18 +207,53 @@ def test_only_matching_date_is_included(tmp_path):
     assert result["date"] == DATE
 
 
-def test_result_has_no_new_high_low_keys(tmp_path):
-    # 契約明講：資料只有 1 天歷史，算不出「近一個月新高/新低」，
-    # 這兩個 key 這次不假造 null 出來，直接不放。
+def test_monthly_high_low_is_none_when_market_history_under_20_days(tmp_path):
+    # 全市場只有 1 天歷史，還不到 MONTHLY_WINDOW_DAYS(20) 門檻，
+    # monthly_high_count/monthly_low_count 回傳 None（不是 0，不是缺 key）。
     conn = get_connection(tmp_path / "test.db")
     _seed(conn, {"1101": 1.0}, {})
 
     result = compute_stock_change_distribution(conn, DATE)
 
-    assert "monthly_high_count" not in result
-    assert "monthly_low_count" not in result
-    assert "new_high_count" not in result
-    assert "new_low_count" not in result
+    assert result["monthly_high_count"] is None
+    assert result["monthly_low_count"] is None
+    assert result["monthly_high_stocks"] == []
+    assert result["monthly_low_stocks"] == []
+
+
+def test_monthly_high_low_computed_once_market_has_20_days_history(tmp_path):
+    conn = get_connection(tmp_path / "test.db")
+    # 1101 收盤價逐日走高（20天新高在最後一天）；1102 逐日走低（20天新低）；
+    # 1103 中段震盪，最後一天既非新高也非新低，不應該出現在任一清單。
+    dates = [f"2026-07-{d:02d}" for d in range(1, 21)]
+    for i, d in enumerate(dates):
+        upsert_market_stock_snapshot(conn, [
+            _row_on(d, "1101", close=100.0 + i, change_pct=0.5 if i == 19 else None),
+            _row_on(d, "1102", close=200.0 - i, change_pct=-0.5 if i == 19 else None),
+            _row_on(d, "1103", close=50.0 + (i % 3), change_pct=0.1 if i == 19 else None),
+        ])
+
+    result = compute_stock_change_distribution(conn, dates[-1])
+
+    assert result["monthly_high_count"] == 1
+    assert result["monthly_low_count"] == 1
+    assert [s["code"] for s in result["monthly_high_stocks"]] == ["1101"]
+    assert [s["code"] for s in result["monthly_low_stocks"]] == ["1102"]
+
+
+def test_monthly_high_low_excludes_stock_with_insufficient_individual_history(tmp_path):
+    conn = get_connection(tmp_path / "test.db")
+    dates = [f"2026-07-{d:02d}" for d in range(1, 21)]
+    for i, d in enumerate(dates):
+        upsert_market_stock_snapshot(conn, [_row_on(d, "1101", close=100.0 + i, change_pct=0.5 if i == 19 else None)])
+    # 1102 只在最後 3 天有資料（例如當月剛上市），全市場天數夠了，但這檔自己不夠。
+    for d in dates[-3:]:
+        upsert_market_stock_snapshot(conn, [_row_on(d, "1102", close=999.0, change_pct=0.1)])
+
+    result = compute_stock_change_distribution(conn, dates[-1])
+
+    codes = {s["code"] for s in result["monthly_high_stocks"]}
+    assert "1102" not in codes
 
 
 def test_empty_date_returns_zeroed_result(tmp_path):
