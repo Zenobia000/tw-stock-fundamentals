@@ -6,6 +6,10 @@ const state = {
   radar: null,
   marketOverview: null,
   marketOverviewActive: false,
+  indexComparisonActive: false,
+  indexComparisonScale: "percent",
+  indexComparisonRange: "30",
+  indexComparisonHidden: new Set(),
   stockRankings: null,
   stockRankingsTab: "top_gainers",
   industryRankings: null,
@@ -736,6 +740,223 @@ function openOtcDetailDrawer() {
   ], trend.map((row) => row.date), { labelCount: 8 });
 }
 
+// 三指數對照（獨立頁面，不是抽屜——使用者要求要有更大畫面塞疊圖+矩陣表）。
+// 三個來源的絕對量級差很多（加權指數/台指期貨約4萬點、櫃買指數約400點），
+// 疊在同一張線性軸上櫃買指數會貼底看不到，所以核心是「百分比」模式：
+// 每條線各自以可視範圍內第一個有資料的交易日收盤價為基準（=0%），不是三者
+// 對齊到同一天的絕對水準。log 模式只套用在原始值（一般/log），百分比模式
+// 本身量級已經可比，不需要 log。
+const INDEX_COMPARISON_SERIES = [
+  { key: "twse", name: "加權指數" },
+  { key: "otc", name: "櫃買指數" },
+  { key: "futures", name: "台指期貨(日盤)" },
+];
+const INDEX_COMPARISON_RANGE_DAYS = { "30": 30, "90": 90, "180": 180 };
+const INDEX_COMPARISON_HORIZONS = [
+  { key: "1d", label: "今日", days: 1 },
+  { key: "1w", label: "1週", days: 5 },
+  { key: "1m", label: "1月", days: 20 },
+  { key: "3m", label: "3月", days: 60 },
+];
+
+function alignedIndexSeries(overview) {
+  return {
+    twse: chronological(overview.index_trend || [], "date")
+      .map((r) => ({ date: r.date, close: r.close_index })),
+    otc: chronological(overview.index_ohlc?.otc_trend || [], "date")
+      .map((r) => ({ date: r.date, close: r.close_index })),
+    futures: chronological(overview.index_ohlc?.futures_series || [], "date")
+      .map((r) => ({ date: r.date, close: r.close })),
+  };
+}
+
+function filterSeriesByRange(rows, range) {
+  if (range === "all" || !rows.length) return rows;
+  const days = INDEX_COMPARISON_RANGE_DAYS[range] || 30;
+  const cutoff = new Date(rows[rows.length - 1].date);
+  cutoff.setDate(cutoff.getDate() - days);
+  const cutoffIso = cutoff.toISOString().slice(0, 10);
+  return rows.filter((r) => r.date >= cutoffIso);
+}
+
+function formatSignedPercent(value, digits = 2) {
+  if (!isValue(value)) return "-";
+  const num = Number(value);
+  return `${num >= 0 ? "+" : ""}${nf(digits).format(num)}%`;
+}
+
+function tradingDayReturn(rows, daysBack) {
+  if (rows.length < daysBack + 1) return null;
+  const latest = rows[rows.length - 1].close;
+  const base = rows[rows.length - 1 - daysBack].close;
+  if (!isValue(latest) || !isValue(base) || Number(base) === 0) return null;
+  return (Number(latest) / Number(base) - 1) * 100;
+}
+
+// 通用多線疊圖，跟既有 drawChart() 分開實作（不共用）：這裡需要 log 軸與
+// 「隱藏個別數列」，drawChart() 是全站共用的既有函式，改它風險外溢到其他
+// 圖表；獨立一份只給這個對照頁用，範圍可控。
+function drawMultiLineChart(canvas, series, labels, opts = {}) {
+  const theme = opts.theme || "light";
+  const palette = CHART_THEME[theme] || CHART_THEME.light;
+  const { ctx, width, height } = canvasFrame(canvas);
+  const hidden = opts.hidden || new Set();
+  const scale = opts.scale === "log" ? "log" : "linear";
+  const toDomainSpace = scale === "log" ? (v) => Math.log10(v) : (v) => v;
+  const fromDomainSpace = scale === "log" ? (v) => Math.pow(10, v) : (v) => v;
+
+  const visible = series.filter((_, index) => !hidden.has(index));
+  const rawValues = visible.flatMap((item) => item.values || [])
+    .filter((v) => isValue(v) && (scale !== "log" || Number(v) > 0)).map(Number);
+  if (!rawValues.length) { noChartData(ctx, width, height, undefined, theme); return; }
+
+  let min = Math.min(...rawValues.map(toDomainSpace));
+  let max = Math.max(...rawValues.map(toDomainSpace));
+  if (min === max) {
+    const bump = scale === "log" ? 0.05 : Math.max(Math.abs(min) * 0.1, 1);
+    min -= bump; max += bump;
+  }
+  const pad = (max - min) * 0.06 || 1;
+  const domain = { min: min - pad, max: max + pad };
+
+  const compact = width < 370;
+  const showEveryLabel = labels.length <= (compact ? 8 : 12);
+  const targetLabelCount = opts.labelCount || 8;
+  const rotatedLabels = showEveryLabel ? labels.length > 8 : labels.length > targetLabelCount;
+  const padding = { left: compact ? 50 : 62, right: 14, top: 14, bottom: rotatedLabels ? 48 : 29 };
+  const axisFontSize = compact ? 9 : 11;
+  const axisFont = `600 ${axisFontSize}px ui-monospace, monospace`;
+  const plotW = width - padding.left - padding.right;
+  const plotH = height - padding.top - padding.bottom;
+
+  ctx.strokeStyle = palette.grid; ctx.lineWidth = 1;
+  for (let i = 0; i <= 3; i += 1) {
+    const y = padding.top + (plotH * i) / 3;
+    ctx.beginPath(); ctx.moveTo(padding.left, y); ctx.lineTo(width - padding.right, y); ctx.stroke();
+    const realValue = fromDomainSpace(domain.max - ((domain.max - domain.min) * i) / 3);
+    ctx.fillStyle = palette.axisText; ctx.font = axisFont; ctx.textAlign = "right";
+    const label = opts.suffix === "%" ? `${nf(1).format(realValue)}%` : axisValue(realValue);
+    ctx.fillText(label, padding.left - 6, y + 3);
+  }
+
+  const count = labels.length;
+  const labelIndexes = showEveryLabel
+    ? labels.map((_, index) => index)
+    : [...new Set(Array.from({ length: Math.min(targetLabelCount, count) }, (_, i) =>
+        Math.round((i * (count - 1)) / Math.max(Math.min(targetLabelCount, count) - 1, 1))))];
+  ctx.textAlign = "center"; ctx.fillStyle = palette.axisText; ctx.font = axisFont;
+  labelIndexes.forEach((index) => {
+    if (index < 0 || !labels[index]) return;
+    const x = chartX(index, count, padding.left, plotW, false);
+    const label = shortAxisLabel(labels[index]);
+    if (rotatedLabels) {
+      ctx.save(); ctx.translate(x, height - padding.bottom + 12); ctx.rotate(-Math.PI / 3);
+      ctx.textAlign = "right"; ctx.fillText(label, 0, 0); ctx.restore();
+    } else {
+      ctx.fillText(label, x, height - 5);
+    }
+  });
+
+  const maxLength = Math.max(...series.map((item) => item.values.length), 1);
+  const xOf = (index) => chartX(index, maxLength, padding.left, plotW, false);
+  const yOf = (value) => padding.top + ((domain.max - toDomainSpace(Number(value))) / (domain.max - domain.min)) * plotH;
+
+  if (opts.emphasizeZero && domain.min < 0 && domain.max > 0) {
+    const zeroY = yOf(0);
+    ctx.save();
+    ctx.strokeStyle = palette.axisText; ctx.setLineDash([4, 3]); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(padding.left, zeroY); ctx.lineTo(width - padding.right, zeroY); ctx.stroke();
+    ctx.restore();
+  }
+
+  series.forEach((item, seriesIndex) => {
+    if (hidden.has(seriesIndex)) return;
+    const color = item.color || COLORS[seriesIndex % COLORS.length];
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+    let started = false;
+    item.values.forEach((value, index) => {
+      if (!isValue(value) || (scale === "log" && Number(value) <= 0)) { started = false; return; }
+      const x = xOf(index); const y = yOf(value);
+      if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
+    });
+    ctx.stroke();
+  });
+
+  installChartInteraction(canvas, { labels, series: visible, padding, banded: false });
+}
+
+function renderIndexComparisonLegend(series) {
+  const el = byId("index-comparison-legend");
+  if (!el) return;
+  el.innerHTML = series.map((item, index) => {
+    const isHidden = state.indexComparisonHidden.has(index);
+    return `<button type="button" class="${isHidden ? "hidden-series" : ""}" data-comparison-legend-index="${index}"><i style="--legend-color:${item.color}"></i>${escapeHtml(item.name)}</button>`;
+  }).join("");
+  $$('#index-comparison-legend [data-comparison-legend-index]').forEach((button) => button.addEventListener("click", () => {
+    const index = Number(button.dataset.comparisonLegendIndex);
+    if (state.indexComparisonHidden.has(index)) state.indexComparisonHidden.delete(index);
+    else state.indexComparisonHidden.add(index);
+    renderIndexComparison(state.marketOverview);
+  }));
+}
+
+function renderIndexComparisonMatrix(aligned) {
+  const table = byId("index-comparison-matrix");
+  if (!table) return;
+  const thead = `<thead><tr><th>指數</th>${INDEX_COMPARISON_HORIZONS.map((h) => `<th>${h.label}</th>`).join("")}</tr></thead>`;
+  const rows = INDEX_COMPARISON_SERIES.map(({ key, name }) => {
+    const cells = INDEX_COMPARISON_HORIZONS.map((h) => {
+      const value = tradingDayReturn(aligned[key], h.days);
+      const cls = isValue(value) ? (value >= 0 ? "positive" : "negative") : "";
+      return `<td class="${cls}">${formatSignedPercent(value)}</td>`;
+    }).join("");
+    return `<tr><td>${escapeHtml(name)}</td>${cells}</tr>`;
+  }).join("");
+  table.innerHTML = `${thead}<tbody>${rows}</tbody>`;
+}
+
+function renderIndexComparison(overview) {
+  if (!overview) return;
+  const aligned = alignedIndexSeries(overview);
+  const filtered = {
+    twse: filterSeriesByRange(aligned.twse, state.indexComparisonRange),
+    otc: filterSeriesByRange(aligned.otc, state.indexComparisonRange),
+    futures: filterSeriesByRange(aligned.futures, state.indexComparisonRange),
+  };
+  const dateSet = new Set();
+  INDEX_COMPARISON_SERIES.forEach(({ key }) => filtered[key].forEach((r) => dateSet.add(r.date)));
+  const labels = [...dateSet].sort();
+
+  const scale = state.indexComparisonScale;
+  const series = INDEX_COMPARISON_SERIES.map(({ key, name }, index) => {
+    const byDate = new Map(filtered[key].map((r) => [r.date, r.close]));
+    let values = labels.map((date) => (byDate.has(date) && isValue(byDate.get(date)) ? Number(byDate.get(date)) : null));
+    if (scale === "percent") {
+      const baseIndex = values.findIndex(isValue);
+      const base = baseIndex >= 0 ? values[baseIndex] : null;
+      values = values.map((v) => (isValue(v) && isValue(base) ? ((v / base) - 1) * 100 : null));
+    }
+    return {
+      name, values, color: COLORS[index % COLORS.length],
+      digits: scale === "percent" ? 2 : 0,
+      suffix: scale === "percent" ? "%" : "",
+    };
+  });
+
+  drawMultiLineChart(byId("chart-index-comparison"), series, labels, {
+    scale: scale === "log" ? "log" : "linear",
+    hidden: state.indexComparisonHidden,
+    suffix: scale === "percent" ? "%" : "",
+    emphasizeZero: scale === "percent",
+    labelCount: 8,
+  });
+  renderIndexComparisonLegend(series);
+  renderIndexComparisonMatrix(aligned);
+
+  const scaleLabel = scale === "percent" ? "百分比（相對強弱）" : scale === "log" ? "Log" : "一般";
+  byId("index-comparison-meta").textContent = `資料至 ${labels[labels.length - 1] || "待補"}｜Y軸：${scaleLabel}`;
+}
+
 function renderStockHeader(stock, freshness = {}, valuationBenchmark = {}) {
   byId("stock-name").textContent = stock.name || stock.code;
   byId("stock-code").textContent = stock.code;
@@ -1365,21 +1586,23 @@ function openStockRankingsDrawer() {
   `);
 }
 
-// Reuses the existing gain-heat/loss-heat/heat-tier-N tokens (see signedHeatClass) so the
-// treemap's color channel stays on the same red=inflow/green=outflow scale as every other
-// table in this app, instead of inventing a new palette.
-function flowHeatClass(value, maxAbs) {
-  if (!isValue(value) || !maxAbs) return "is-empty";
-  const ratio = Math.abs(Number(value)) / maxAbs;
-  const tier = ratio >= 0.66 ? 3 : ratio >= 0.33 ? 2 : 1;
-  return Number(value) >= 0 ? `gain-heat heat-tier-${tier}` : `loss-heat heat-tier-${tier}`;
+// 長條圖的 fill 是實色（不是大面積色塊），只需要紅漲/綠跌兩態，不需要舊版方塊熱力圖
+// 那種 3 階透明度分層（那是為了在大面積色塊上做強度漸層設計的，細長條上會顯得很淡、
+// 看不清楚），維持紅=買超/漲、綠=賣超/跌的全站色彩慣例（跟 .positive/.negative 一致）。
+function flowHeatClass(value) {
+  if (!isValue(value)) return "is-empty";
+  return Number(value) >= 0 ? "is-gain" : "is-loss";
 }
 
-// Hand-rolled treemap: flex-wrap row of tiles, flex-grow = 成交金額 share so tile width
-// approximates area (fixed row height per wrapped line). Color/tier = change_pct sign +
-// relative strength (see flowHeatClass). net_amount (三大法人買賣超張數) is shown as a
-// separate metric only, not tied to color — most industries have no institutional data
-// at all (null, not 0), so existence must be checked on turnover, never on net_amount.
+// 橫向長條圖，不是方塊熱力圖——原本用 flexbox flex-grow 排 tile 想模擬「面積＝成交值」，
+// 但 flexbox 是一維排版，flex-wrap 換行後每一行各自重新分配寬度比例，行與行之間的比例
+// 基準不一致，加上先前為了讓中文產業名不被截斷而加的 min-width 下限，實際視覺上大小
+// 差異遠小於真實成交值的差異（使用者反饋「面積沒有如實地呈現」，這是真的，不是誤會）。
+// 長條圖用 width:X% 直接對應 turnover/maxTurnover，是唯一能保證線性比例、不受版面
+// 換行影響的做法；文字標籤放在固定寬度欄位，不會被長條長度擠壓。
+// 顏色 = change_pct 正負與相對強度（紅漲／綠跌，見 flowHeatClass）。net_amount（三大
+// 法人買賣超張數）是輔助數字，不是顏色/長度依據——大部分產業沒有法人資料（null，不是
+// 0），存在性判斷只能看 turnover，不能看 net_amount。
 function renderIndustryFlowTreemap(rows) {
   const container = byId("industry-flow-treemap");
   const meta = byId("industry-flow-meta");
@@ -1387,28 +1610,28 @@ function renderIndustryFlowTreemap(rows) {
   const data = (rows || []).filter((row) => isValue(row.turnover) && Number(row.turnover) > 0);
   state.industryFlowRows = data;
   if (!data.length) {
-    container.innerHTML = `<div class="flow-tile is-empty">尚無產業資金流向資料（依成交金額）</div>`;
+    container.innerHTML = emptyHtml("尚無產業資金流向資料（依成交金額）");
     if (meta) meta.textContent = "";
     return;
   }
   const maxTurnover = Math.max(...data.map((row) => Number(row.turnover)), 1);
-  const maxAbsPct = Math.max(...data.filter((row) => isValue(row.change_pct)).map((row) => Math.abs(Number(row.change_pct))), 1);
   if (meta) {
-    meta.textContent = `資料日 ${data[0]?.date || "-"}｜面積＝成交金額佔比｜顏色＝漲跌幅相對強度（紅漲／綠跌）｜另列三大法人買賣超張數，"－"代表該產業無法人資料｜點擊任一產業看成分股`;
+    meta.textContent = `資料日 ${data[0]?.date || "-"}｜長條＝成交金額（線性比例）｜顏色＝漲跌方向（紅漲／綠跌）｜另列三大法人買賣超張數，"－"代表該產業無法人資料｜點擊任一產業看成分股`;
   }
   container.innerHTML = data.map((row, i) => {
-    const grow = Math.max((Number(row.turnover) / maxTurnover) * 100, 3).toFixed(2);
-    const heat = flowHeatClass(row.change_pct, maxAbsPct);
+    const width = Math.max((Number(row.turnover) / maxTurnover) * 100, 1).toFixed(2);
+    const heat = flowHeatClass(row.change_pct);
     const changeText = isValue(row.change_pct) ? `${Number(row.change_pct) >= 0 ? "+" : ""}${pct(row.change_pct, 2, true)}` : "－";
     const turnoverText = `${fmt(Number(row.turnover) / 1e8, 2)} 億`;
     const netText = isValue(row.net_amount) ? `${fmt(row.net_amount, 0)} 張` : "－";
     const tip = `${row.industry}｜漲跌幅 ${changeText}｜成交值 ${turnoverText}｜買賣超 ${netText}｜成分股 ${fmt(row.member_count, 0)} 檔｜${row.date}`;
-    return `<div class="flow-tile ${heat}" style="flex-grow:${grow};" data-flow-idx="${i}" title="${escapeHtml(tip)}">` +
-      `<b>${escapeHtml(row.industry)}</b>` +
-      `<span class="flow-tile-pct">${changeText}</span>` +
-      `<span class="flow-tile-turnover">${turnoverText}</span>` +
-      `<span class="flow-tile-net">買賣超 ${netText}</span>` +
-      `<small>${fmt(row.member_count, 0)} 檔</small>` +
+    return `<div class="flow-bar-row" data-flow-idx="${i}" title="${escapeHtml(tip)}">` +
+      `<span class="flow-bar-label">${escapeHtml(row.industry)}</span>` +
+      `<div class="flow-bar-track"><div class="flow-bar-fill ${heat}" style="width:${width}%;"></div></div>` +
+      `<span class="flow-bar-pct ${heat}">${changeText}</span>` +
+      `<span class="flow-bar-turnover">${turnoverText}</span>` +
+      `<span class="flow-bar-net">${netText}</span>` +
+      `<span class="flow-bar-members">${fmt(row.member_count, 0)} 檔</span>` +
       `</div>`;
   }).join("");
 }
@@ -1434,7 +1657,7 @@ function openIndustryFlowDrawer(row) {
 }
 
 byId("industry-flow-treemap")?.addEventListener("click", (event) => {
-  const tile = event.target.closest(".flow-tile[data-flow-idx]");
+  const tile = event.target.closest(".flow-bar-row[data-flow-idx]");
   if (!tile) return;
   const row = state.industryFlowRows?.[Number(tile.dataset.flowIdx)];
   if (row) openIndustryFlowDrawer(row);
@@ -1754,13 +1977,16 @@ function renderMarketSnapshotCard(overview) {
 let marketOverviewLoaded = false;
 async function loadMarketOverview() {
   try {
-    renderMarketOverview(await fetchJson(`${API}/market/overview`));
+    const overview = await fetchJson(`${API}/market/overview`);
+    renderMarketOverview(overview);
+    if (state.indexComparisonActive) renderIndexComparison(overview);
   } catch (error) {
     showError(`大盤總覽載入失敗：${error.message}`);
   }
 }
 
 function showMarketOverviewTab() {
+  if (state.indexComparisonActive) hideIndexComparisonTab();
   byId("empty-state").classList.add("hidden");
   byId("stock-header").classList.add("hidden");
   byId("freshness-rail").classList.add("hidden");
@@ -1782,6 +2008,43 @@ function hideMarketOverviewTab() {
   byId("market-overview-tab").classList.remove("active");
   byId("market-overview-tab").setAttribute("aria-pressed", "false");
   state.marketOverviewActive = false;
+  if (state.code) {
+    byId("stock-header").classList.remove("hidden");
+    byId("freshness-rail").classList.remove("hidden");
+    byId("workspace-nav").classList.remove("hidden");
+    byId("workspace").classList.remove("hidden");
+    byId("refresh-button").classList.remove("hidden");
+    history.replaceState(null, "", `?code=${encodeURIComponent(state.code)}&view=${state.view}`);
+  } else {
+    byId("empty-state").classList.remove("hidden");
+    history.replaceState(null, "", "/");
+  }
+}
+
+function showIndexComparisonTab() {
+  if (state.marketOverviewActive) hideMarketOverviewTab();
+  byId("empty-state").classList.add("hidden");
+  byId("stock-header").classList.add("hidden");
+  byId("freshness-rail").classList.add("hidden");
+  byId("workspace-nav").classList.add("hidden");
+  byId("workspace").classList.add("hidden");
+  byId("refresh-button").classList.add("hidden");
+  byId("index-comparison-panel").classList.remove("hidden");
+  byId("index-comparison-tab").classList.add("active");
+  byId("index-comparison-tab").setAttribute("aria-pressed", "true");
+  state.indexComparisonActive = true;
+  history.replaceState(null, "", state.code
+    ? `?code=${encodeURIComponent(state.code)}&view=${state.view}&panel=index-comparison`
+    : "?panel=index-comparison");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  if (state.marketOverview) renderIndexComparison(state.marketOverview);
+}
+
+function hideIndexComparisonTab() {
+  byId("index-comparison-panel").classList.add("hidden");
+  byId("index-comparison-tab").classList.remove("active");
+  byId("index-comparison-tab").setAttribute("aria-pressed", "false");
+  state.indexComparisonActive = false;
   if (state.code) {
     byId("stock-header").classList.remove("hidden");
     byId("freshness-rail").classList.remove("hidden");
@@ -2191,6 +2454,17 @@ $$('#industry-rankings-tabs [data-industry-tab]').forEach((button) => button.add
 }));
 byId("industry-rankings-more").addEventListener("click", openIndustryRankingsDrawer);
 
+$$('#index-comparison-scale-tabs [data-comparison-scale]').forEach((button) => button.addEventListener("click", () => {
+  state.indexComparisonScale = button.dataset.comparisonScale;
+  $$('#index-comparison-scale-tabs [data-comparison-scale]').forEach((item) => item.classList.toggle("active", item === button));
+  renderIndexComparison(state.marketOverview);
+}));
+$$('#index-comparison-range-tabs [data-comparison-range]').forEach((button) => button.addEventListener("click", () => {
+  state.indexComparisonRange = button.dataset.comparisonRange;
+  $$('#index-comparison-range-tabs [data-comparison-range]').forEach((item) => item.classList.toggle("active", item === button));
+  renderIndexComparison(state.marketOverview);
+}));
+
 byId("index-contribution-more").addEventListener("click", openIndexContributionDrawer);
 byId("market-cap-share-link").addEventListener("click", openMarketCapShareDrawer);
 byId("index-detail-trigger").addEventListener("click", openIndexDetailDrawer);
@@ -2267,6 +2541,10 @@ async function loadStock(code, { modelOnly = false, bootstrapAttempt = false } =
       byId("market-overview-tab").classList.remove("active");
       byId("market-overview-tab").setAttribute("aria-pressed", "false");
       state.marketOverviewActive = false;
+      byId("index-comparison-panel").classList.add("hidden");
+      byId("index-comparison-tab").classList.remove("active");
+      byId("index-comparison-tab").setAttribute("aria-pressed", "false");
+      state.indexComparisonActive = false;
       byId("stock-header").classList.remove("hidden");
       byId("freshness-rail").classList.remove("hidden");
       byId("workspace-nav").classList.remove("hidden");
@@ -2535,6 +2813,9 @@ byId("landing-focus-button").addEventListener("click", () => {
 byId("market-overview-tab").addEventListener("click", () => {
   if (state.marketOverviewActive) hideMarketOverviewTab(); else showMarketOverviewTab();
 });
+byId("index-comparison-tab").addEventListener("click", () => {
+  if (state.indexComparisonActive) hideIndexComparisonTab(); else showIndexComparisonTab();
+});
 byId("market-snapshot-link").addEventListener("click", (event) => {
   event.preventDefault();
   showMarketOverviewTab();
@@ -2615,6 +2896,7 @@ window.addEventListener("resize", () => {
   resizeTimer = setTimeout(() => {
     if (state.dashboard) renderDashboard(state.dashboard, state.radar || { futures: [], rankings: {} }, state.valuationBenchmark || {});
     if (state.marketOverview && state.marketOverviewActive) renderMarketOverview(state.marketOverview);
+    if (state.marketOverview && state.indexComparisonActive) renderIndexComparison(state.marketOverview);
   }, 150);
 });
 
@@ -2630,4 +2912,5 @@ if (initialCode) {
 }
 if (initialPanel === "data-health") openDataHealth();
 else if (initialPanel === "market-overview") showMarketOverviewTab();
+else if (initialPanel === "index-comparison") showIndexComparisonTab();
 loadMarketOverview();

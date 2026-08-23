@@ -5,13 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="個人台股研究平台，整合估值、營運基本面、財務品質、翁氏九宮格與籌碼市場。" />
   <title>台股基本面研究工作台</title>
-  <link rel="stylesheet" href="/static/style.css?v=20260824-5" />
+  <link rel="stylesheet" href="/static/style.css?v=20260824-6" />
 </head>
 <body>
   <header class="topbar">
     <a class="brand" href="/" aria-label="回到首頁">波段<span>決策台</span></a>
     <nav class="topbar-nav" aria-label="頂層視圖">
       <button id="market-overview-tab" class="topbar-tab" type="button" aria-pressed="false">大盤總覽</button>
+      <button id="index-comparison-tab" class="topbar-tab" type="button" aria-pressed="false">指數對照</button>
     </nav>
     <form id="search-form" class="search" autocomplete="off">
       <label class="sr-only" for="code-input">股票代碼或名稱</label>
@@ -406,10 +407,10 @@
     <button id="industry-rankings-more" class="drawer-more" type="button">更多 ▸</button>
 
     <details class="market-group" id="industry-treemap-details">
-      <summary><span><b>產業資金流向熱力圖</b><strong>面積=成交值・顏色=漲跌幅</strong></span><em>展開／收合</em></summary>
-      <p class="source-note">面積＝該產業全市場成交金額佔比，顏色＝成交金額加權平均漲跌幅（紅漲綠跌）；另列三大法人買賣超張數，僅少數已 ingest 個股有此資料，"－"代表無資料，不代表 0。點擊任一產業可看成分股清單。口徑跟上方「產業排行」跟下方「板塊動能」（20/60/120 日報酬排名）不同，三者不能互相取代。</p>
+      <summary><span><b>產業資金流向</b><strong>長條=成交值・顏色=漲跌方向</strong></span><em>展開／收合</em></summary>
+      <p class="source-note">長條長度＝該產業全市場成交金額（線性比例），顏色＝成交金額加權平均漲跌幅方向（紅漲綠跌）；另列三大法人買賣超張數，僅少數已 ingest 個股有此資料，"－"代表無資料，不代表 0。點擊任一產業可看成分股清單。口徑跟上方「產業排行」跟下方「板塊動能」（20/60/120 日報酬排名）不同，三者不能互相取代。</p>
       <p id="industry-flow-meta" class="source-note"></p>
-      <div id="industry-flow-treemap" class="industry-treemap" role="img" aria-label="產業資金流向 treemap"></div>
+      <div id="industry-flow-treemap" class="industry-treemap" role="list" aria-label="產業資金流向長條圖"></div>
     </details>
 
     <header class="momentum-header">
@@ -448,6 +449,48 @@
     </div><!-- /.mkt-dark -->
   </section>
 
+  <section id="index-comparison-panel" class="sector-momentum hidden" aria-label="三指數對照">
+    <div class="mkt-dark">
+    <header class="momentum-header">
+      <div class="momentum-heading">
+        <h2>三指數對照</h2>
+        <p>加權指數、櫃買指數、台指期貨（日盤）疊圖比較相對強弱 — 同一批資金在現貨與期貨市場的表態，一次看誰比較強。</p>
+      </div>
+    </header>
+
+    <article class="card wide-card" id="index-comparison-card">
+      <div class="card-head">
+        <h3>疊圖比較</h3>
+        <span id="index-comparison-meta" class="source-note">讀取中…</span>
+      </div>
+      <div class="index-comparison-controls">
+        <div class="mode-switch" role="group" aria-label="Y軸模式" id="index-comparison-scale-tabs">
+          <button class="active" data-comparison-scale="percent" type="button">百分比</button>
+          <button data-comparison-scale="linear" type="button">一般</button>
+          <button data-comparison-scale="log" type="button">Log</button>
+        </div>
+        <div class="mode-switch" role="group" aria-label="時間範圍" id="index-comparison-range-tabs">
+          <button class="active" data-comparison-range="30" type="button">1月</button>
+          <button data-comparison-range="90" type="button">3月</button>
+          <button data-comparison-range="180" type="button">半年</button>
+          <button data-comparison-range="all" type="button">全部</button>
+        </div>
+      </div>
+      <canvas id="chart-index-comparison" height="360"></canvas>
+      <div id="index-comparison-legend" class="index-comparison-legend"></div>
+      <p class="source-note">百分比模式：每條線各自以「可視範圍內第一個有資料的交易日」收盤價為基準（=0%），不代表三者當天絕對點位相同。點圖例可單獨隱藏/顯示某條線。</p>
+    </article>
+
+    <article class="card wide-card" id="index-comparison-matrix-card">
+      <div class="card-head">
+        <h3>報酬率矩陣</h3>
+        <span class="source-note">依交易日數計算（1週≈5個交易日、1月≈20個、3月≈60個），跟板塊動能的 R 值同一套慣例</span>
+      </div>
+      <div class="table-scroll"><table id="index-comparison-matrix" class="data-table"><tbody></tbody></table></div>
+    </article>
+    </div><!-- /.mkt-dark -->
+  </section>
+
   <div id="detail-drawer" class="detail-drawer hidden" aria-label="詳情面板">
     <div id="detail-drawer-backdrop" class="detail-drawer-backdrop"></div>
     <div class="detail-drawer-panel mkt-dark">
@@ -461,6 +504,6 @@
 
   <div id="loading" class="loading hidden"><span></span><p>正在組裝研究資料…</p></div>
   <div id="error-banner" class="error-banner hidden"></div>
-  <script src="/static/app.js?v=20260824-5"></script>
+  <script src="/static/app.js?v=20260824-6"></script>
 </body>
 </html>

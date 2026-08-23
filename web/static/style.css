@@ -294,6 +294,12 @@ body.health-open > #empty-state { display: none !important; }
 .mode-switch button:last-child, .market-switch button:last-child { border: 0; }
 .mode-switch button.active, .market-switch button.active { background: var(--shell); color: #f3f5f2; }
 
+.index-comparison-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 10px; }
+.index-comparison-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; min-height: 20px; margin-top: 8px; }
+.index-comparison-legend button { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); font-size: 11px; cursor: pointer; }
+.index-comparison-legend button i { width: 13px; height: 3px; background: var(--legend-color); }
+.index-comparison-legend button.hidden-series { color: var(--muted); opacity: .5; text-decoration: line-through; }
+
 .valuation-chain { display: flex; align-items: stretch; gap: 5px; overflow-x: auto; padding-bottom: 4px; }
 .chain-node { flex: 1 0 118px; padding: 12px; border: 1px solid var(--line); background: var(--paper-soft); }
 .chain-node span, .chain-node small { display: block; color: var(--muted); font-size: 9px; }
@@ -514,24 +520,28 @@ body.health-open > #empty-state { display: none !important; }
 .ohlc-row span { color: var(--muted); }
 .ohlc-block small { display: block; margin-top: 4px; color: var(--muted); font-size: 9px; }
 
-/* Flexbox treemap: area (flex-grow) = 成交金額 share (per wrapped line), color/tier =
-   change_pct sign + relative strength, reusing the existing gain-heat/loss-heat/heat-tier-N
-   tokens (no new hardcoded hex). net_amount (法人買賣超張數) is a separate display metric,
-   never the color/existence driver — most industries have no institutional data (null).
-   min-width 150px is sized for the widest real 產業 label (e.g. "半導體業", "其他電子業")
-   at 12px/750-weight without wrapping mid-character; flex-wrap lets ~47 tiles flow across
-   multiple lines instead of being squeezed into one. */
-.industry-treemap { display: flex; flex-wrap: wrap; gap: 6px; min-height: 160px; margin: 10px 0 22px; }
-.industry-treemap .flow-tile {
-  position: relative; display: flex; flex-direction: column; gap: 3px;
-  flex: 1 1 150px; flex-shrink: 0; min-width: 150px; min-height: 100px;
-  padding: 9px 11px; border: 1px solid var(--line-strong); overflow: hidden; cursor: pointer;
+/* 橫向長條圖，不是方塊熱力圖。舊版用 flexbox flex-grow 排方塊模擬「面積＝成交值」，
+   但 flexbox 是一維排版，flex-wrap 換行後每一行各自重新分配寬度比例，行與行之間比例
+   基準不一致，加上為了塞下中文產業名而加的 min-width 下限，實際視覺差異遠小於真實
+   成交值差異（使用者反饋「面積沒有如實地呈現」）。長條寬度直接對應 turnover/max，
+   是唯一能保證線性比例、不受換行影響的做法；文字放在固定寬度欄位，長條長度變化
+   不會擠壓或截斷文字。顏色＝change_pct 正負（紅漲／綠跌），跟全站 .positive/.negative
+   同一套語意，不是獨立色階。 */
+.industry-treemap { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 22px; max-height: 520px; overflow-y: auto; }
+.flow-bar-row {
+  display: grid; grid-template-columns: minmax(90px, 130px) 1fr 64px 76px 64px 48px;
+  align-items: center; gap: 8px; padding: 4px 6px; cursor: pointer;
 }
-.industry-treemap .flow-tile:hover { filter: brightness(0.97); }
-.industry-treemap .flow-tile b { display: block; font-size: 12px; font-weight: 750; line-height: 1.3; overflow-wrap: break-word; white-space: normal; }
-.industry-treemap .flow-tile span { display: block; font: 700 11px/1.3 var(--mono); }
-.industry-treemap .flow-tile small { display: block; margin-top: auto; padding-top: 2px; font-size: 9px; opacity: .75; }
-.industry-treemap .flow-tile.is-empty { display: flex; align-items: center; justify-content: center; flex-basis: 100%; min-height: 80px; background: var(--paper-soft); color: var(--muted); cursor: default; }
+.flow-bar-row:hover { background: var(--paper-soft); }
+.flow-bar-label { font-size: 12px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flow-bar-track { height: 14px; background: var(--paper-soft); border: 1px solid var(--line); }
+.flow-bar-fill { height: 100%; background: var(--muted); }
+.flow-bar-fill.is-gain { background: var(--red); }
+.flow-bar-fill.is-loss { background: var(--green); }
+.flow-bar-pct { font: 700 11px var(--mono); text-align: right; }
+.flow-bar-pct.is-gain { color: var(--red); }
+.flow-bar-pct.is-loss { color: var(--green); }
+.flow-bar-turnover, .flow-bar-net, .flow-bar-members { font: 700 11px var(--mono); color: var(--muted); text-align: right; }
 .stock-labels { display: flex; align-items: center; gap: 5px; min-width: 230px; }
 .stock-labels b { min-width: 72px; color: var(--ink); }
 .stock-labels small, .stock-labels span { padding: 3px 6px; border: 1px solid var(--line); color: var(--muted); font-size: 9px; line-height: 1; }
@@ -663,21 +673,15 @@ body.health-open > #empty-state { display: none !important; }
 /* 產業資金流向 treemap tiles reuse gain-heat/loss-heat/heat-tier-N (see flowHeatClass() in
    app.js) — scoped overrides here only touch tiles inside .mkt-dark, not the sector-momentum
    table further down the page which uses the same class names outside this wrapper. */
-.mkt-dark .industry-treemap .flow-tile { border-color: var(--mkt-card-border); background: var(--mkt-card-alt); }
-.mkt-dark .industry-treemap .flow-tile b { color: var(--mkt-text); }
-.mkt-dark .industry-treemap .flow-tile span { color: var(--mkt-text); }
-.mkt-dark .industry-treemap .flow-tile small { color: var(--mkt-muted); opacity: 1; }
-.mkt-dark .industry-treemap .flow-tile.is-empty { background: var(--mkt-card); color: var(--mkt-muted); }
-.mkt-dark .industry-treemap .gain-heat { border-left: 3px solid var(--mkt-up); }
-.mkt-dark .industry-treemap .gain-heat .flow-tile-pct { color: var(--mkt-up); }
-.mkt-dark .industry-treemap .gain-heat.heat-tier-1 { background: rgba(157, 99, 104, .12); }
-.mkt-dark .industry-treemap .gain-heat.heat-tier-2 { background: rgba(157, 99, 104, .22); }
-.mkt-dark .industry-treemap .gain-heat.heat-tier-3 { background: rgba(157, 99, 104, .34); }
-.mkt-dark .industry-treemap .loss-heat { border-left: 3px solid var(--mkt-down); }
-.mkt-dark .industry-treemap .loss-heat .flow-tile-pct { color: var(--mkt-down); }
-.mkt-dark .industry-treemap .loss-heat.heat-tier-1 { background: rgba(95, 128, 111, .12); }
-.mkt-dark .industry-treemap .loss-heat.heat-tier-2 { background: rgba(95, 128, 111, .22); }
-.mkt-dark .industry-treemap .loss-heat.heat-tier-3 { background: rgba(95, 128, 111, .32); }
+.mkt-dark .flow-bar-row:hover { background: var(--mkt-card-alt); }
+.mkt-dark .flow-bar-label { color: var(--mkt-text); }
+.mkt-dark .flow-bar-track { background: var(--mkt-card-alt); border-color: var(--mkt-card-border); }
+.mkt-dark .flow-bar-fill { background: var(--mkt-muted); }
+.mkt-dark .flow-bar-fill.is-gain { background: var(--mkt-up); }
+.mkt-dark .flow-bar-fill.is-loss { background: var(--mkt-down); }
+.mkt-dark .flow-bar-pct.is-gain { color: var(--mkt-up); }
+.mkt-dark .flow-bar-pct.is-loss { color: var(--mkt-down); }
+.mkt-dark .flow-bar-turnover, .mkt-dark .flow-bar-net, .mkt-dark .flow-bar-members { color: var(--mkt-muted); }
 
 /* ===================================================================================
    4 new .mkt-dark sections (加權指數貢獻排行／個股漲跌分佈／類股成交金額比重分佈／
