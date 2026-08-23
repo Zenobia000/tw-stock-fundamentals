@@ -4,6 +4,7 @@ const state = {
   code: null,
   dashboard: null,
   radar: null,
+  valuationBenchmark: null,
   view: "overview",
   rankingTopic: "turnover",
   rankingMarket: "listed",
@@ -33,15 +34,19 @@ function isValue(value) {
 }
 
 function fmt(value, digits = 2, suffix = "") {
-  return isValue(value) ? `${nf(digits).format(Number(value))}${suffix}` : "—";
+  return isValue(value) ? `${nf(digits).format(Number(value))}${suffix}` : "-";
 }
 
 function pct(value, digits = 2, alreadyPercent = false) {
-  return isValue(value) ? `${nf(digits).format(Number(value) * (alreadyPercent ? 1 : 100))}%` : "—";
+  return isValue(value) ? `${nf(digits).format(Number(value) * (alreadyPercent ? 1 : 100))}%` : "-";
+}
+
+function signedPct(value, digits = 1) {
+  return isValue(value) ? `${Number(value) >= 0 ? "+" : "-"}${pct(Math.abs(Number(value)), digits)}` : "-";
 }
 
 function escapeHtml(value) {
-  return String(value ?? "—")
+  return String(value ?? "-")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -114,7 +119,7 @@ chartTooltip.className = "chart-tooltip hidden";
 document.body.appendChild(chartTooltip);
 
 function chartValue(item, value) {
-  if (!isValue(value)) return "—";
+  if (!isValue(value)) return "-";
   if (item.format) return item.format(Number(value));
   return fmt(value, item.digits ?? 2, item.suffix || "");
 }
@@ -157,11 +162,13 @@ function installChartInteraction(canvas, meta) {
       return;
     }
     const plotWidth = Math.max(rect.width - left - right, 1);
-    const index = Math.max(0, Math.min(
-      current.labels.length - 1,
-      Math.round(((x - left) / plotWidth) * Math.max(current.labels.length - 1, 1)),
-    ));
-    const nearestX = left + (plotWidth * index) / Math.max(current.labels.length - 1, 1);
+    const count = current.labels.length;
+    const relativeX = (x - left) / plotWidth;
+    const rawIndex = current.banded
+      ? Math.floor(relativeX * count)
+      : Math.round(relativeX * Math.max(count - 1, 1));
+    const index = Math.max(0, Math.min(count - 1, rawIndex));
+    const nearestX = chartX(index, count, left, plotWidth, current.banded);
     crosshair.style.left = `${canvas.offsetLeft + nearestX}px`;
     crosshair.style.top = `${canvas.offsetTop + current.padding.top}px`;
     crosshair.style.height = `${canvas.clientHeight - current.padding.top - current.padding.bottom}px`;
@@ -236,34 +243,45 @@ function shortAxisLabel(value) {
 }
 
 function axisValue(value) {
-  const absolute = Math.abs(value);
-  if (absolute >= 1e9) return `${nf(1).format(value / 1e9)}B`;
-  if (absolute >= 1e6) return `${nf(1).format(value / 1e6)}M`;
-  if (absolute >= 1e3) return `${nf(1).format(value / 1e3)}K`;
-  return nf(absolute < 10 ? 1 : 0).format(value);
+  const normalized = Math.abs(Number(value)) < 1e-9 ? 0 : Number(value);
+  const absolute = Math.abs(normalized);
+  if (absolute >= 1e9) return `${nf(1).format(normalized / 1e9)}B`;
+  if (absolute >= 1e6) return `${nf(1).format(normalized / 1e6)}M`;
+  if (absolute >= 1e3) return `${nf(1).format(normalized / 1e3)}K`;
+  return nf(absolute < 10 ? 1 : 0).format(normalized);
 }
 
-function drawAxes(ctx, width, height, domain, labels, padding, showEveryLabel = false) {
+function chartX(index, count, left, plotWidth, banded = false) {
+  if (banded) return left + (plotWidth * (index + 0.5)) / Math.max(count, 1);
+  return left + (plotWidth * index) / Math.max(count - 1, 1);
+}
+
+function drawAxes(ctx, width, height, domain, labels, padding, showEveryLabel = false, banded = false, axisFontSize = 11, targetLabelCount = 0) {
   const { left, right, top, bottom } = padding;
+  const axisFont = `600 ${axisFontSize}px ui-monospace, monospace`;
   ctx.strokeStyle = "#d0d5d3";
   ctx.lineWidth = 1;
   for (let i = 0; i <= 3; i += 1) {
     const y = top + ((height - top - bottom) * i) / 3;
     ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(width - right, y); ctx.stroke();
     const value = domain.max - ((domain.max - domain.min) * i) / 3;
-    ctx.fillStyle = "#58676e"; ctx.font = "600 11px ui-monospace, monospace"; ctx.textAlign = "right";
+    ctx.fillStyle = "#58676e"; ctx.font = axisFont; ctx.textAlign = "right";
     ctx.fillText(axisValue(value), left - 6, y + 3);
   }
   const count = labels.length;
   const labelIndexes = showEveryLabel
     ? labels.map((_, index) => index)
-    : [...new Set([0, Math.floor((count - 1) / 2), count - 1])];
-  ctx.textAlign = "center"; ctx.fillStyle = "#58676e"; ctx.font = "600 11px ui-monospace, monospace";
+    : targetLabelCount > 0
+      ? [...new Set(Array.from({ length: Math.min(targetLabelCount, count) }, (_, i) =>
+          Math.round((i * (count - 1)) / Math.max(Math.min(targetLabelCount, count) - 1, 1))))]
+      : [...new Set([0, Math.floor((count - 1) / 2), count - 1])];
+  const rotate = showEveryLabel ? count > 8 : targetLabelCount > 0 && count > targetLabelCount;
+  ctx.textAlign = "center"; ctx.fillStyle = "#58676e"; ctx.font = axisFont;
   labelIndexes.forEach((index) => {
     if (index < 0 || !labels[index]) return;
-    const x = left + ((width - left - right) * index) / Math.max(count - 1, 1);
+    const x = chartX(index, count, left, width - left - right, banded);
     const label = shortAxisLabel(labels[index]);
-    if (showEveryLabel && count > 8) {
+    if (rotate) {
       ctx.save();
       ctx.translate(x, height - bottom + 12);
       ctx.rotate(-Math.PI / 3);
@@ -276,7 +294,7 @@ function drawAxes(ctx, width, height, domain, labels, padding, showEveryLabel = 
   });
 }
 
-function drawChart(canvas, series, labels = [], { bars = [], zeroBased = false, rightAxis = [] } = {}) {
+function drawChart(canvas, series, labels = [], { bars = [], zeroBased = false, rightAxis = [], labelCount = 0 } = {}) {
   const { ctx, width, height } = canvasFrame(canvas);
   const leftDomain = chartDomain(series.filter((_, index) => !rightAxis.includes(index)));
   const rightDomain = chartDomain(series.filter((_, index) => rightAxis.includes(index)));
@@ -284,24 +302,28 @@ function drawChart(canvas, series, labels = [], { bars = [], zeroBased = false, 
   if (!domain) { noChartData(ctx, width, height); return; }
   if (zeroBased && domain.min > 0) domain.min = 0;
   const hasDualAxis = Boolean(leftDomain && rightDomain);
-  const showEveryLabel = bars.length > 0 || labels.length <= 12;
+  const compact = width < 370;
+  const showEveryLabel = labels.length <= (compact ? 8 : 12);
+  const banded = bars.length > 0;
+  const rotatedLabels = showEveryLabel ? labels.length > 8 : labelCount > 0 && labels.length > labelCount;
   const padding = {
-    left: 56,
-    right: hasDualAxis ? 50 : 14,
+    left: compact ? 47 : 56,
+    right: hasDualAxis ? (compact ? 42 : 50) : 14,
     top: 14,
-    bottom: showEveryLabel && labels.length > 8 ? 48 : 29,
+    bottom: rotatedLabels ? 48 : 29,
   };
-  drawAxes(ctx, width, height, domain, labels, padding, showEveryLabel);
+  const axisFontSize = compact ? 9 : 11;
+  drawAxes(ctx, width, height, domain, labels, padding, showEveryLabel, banded, axisFontSize, labelCount);
   const plotW = width - padding.left - padding.right;
   const plotH = height - padding.top - padding.bottom;
   const yOf = (value, itemDomain = domain) => padding.top + ((itemDomain.max - Number(value)) / (itemDomain.max - itemDomain.min)) * plotH;
   const maxLength = Math.max(...series.map((item) => item.values.length), 1);
-  const xOf = (index) => padding.left + (plotW * index) / Math.max(maxLength - 1, 1);
+  const xOf = (index) => chartX(index, maxLength, padding.left, plotW, banded);
   const barOrder = new Map(bars.map((seriesIndex, index) => [seriesIndex, index]));
   const barCount = Math.max(bars.length, 1);
 
   if (hasDualAxis) {
-    ctx.fillStyle = "#58676e"; ctx.font = "600 11px ui-monospace, monospace"; ctx.textAlign = "left";
+    ctx.fillStyle = "#58676e"; ctx.font = `600 ${axisFontSize}px ui-monospace, monospace`; ctx.textAlign = "left";
     for (let i = 0; i <= 3; i += 1) {
       const y = padding.top + (plotH * i) / 3;
       const value = rightDomain.max - ((rightDomain.max - rightDomain.min) * i) / 3;
@@ -348,7 +370,7 @@ function drawChart(canvas, series, labels = [], { bars = [], zeroBased = false, 
     });
   });
   updateChartLegend(canvas, series);
-  installChartInteraction(canvas, { labels, series, padding });
+  installChartInteraction(canvas, { labels, series, padding, banded });
 }
 
 function drawCandles(canvas, priceRows) {
@@ -358,8 +380,9 @@ function drawCandles(canvas, priceRows) {
   if (!valid.length) { noChartData(ctx, width, height, "待補歷史日股價資料源"); return; }
   const domain = { min: Math.min(...valid.map((row) => Number(row.low))), max: Math.max(...valid.map((row) => Number(row.high))) };
   if (domain.min === domain.max) { domain.min -= 1; domain.max += 1; }
-  const padding = { left: 56, right: 14, top: 14, bottom: 29 };
-  drawAxes(ctx, width, height, domain, rows.map((row) => row.date), padding);
+  const compact = width < 370;
+  const padding = { left: compact ? 47 : 56, right: 14, top: 14, bottom: 29 };
+  drawAxes(ctx, width, height, domain, rows.map((row) => row.date), padding, false, true, compact ? 9 : 11);
   const plotW = width - padding.left - padding.right;
   const plotH = height - padding.top - padding.bottom;
   const step = plotW / Math.max(rows.length, 1);
@@ -383,14 +406,14 @@ function drawCandles(canvas, priceRows) {
     { name: "成交量", values: rows.map((row) => row.volume), digits: 0, color: "#817991" },
   ];
   updateChartLegend(canvas, series.slice(0, 4));
-  installChartInteraction(canvas, { labels: rows.map((row) => row.date), series, padding });
+  installChartInteraction(canvas, { labels: rows.map((row) => row.date), series, padding, banded: true });
 }
 
 function chronological(rows, key) {
   return [...(rows || [])].sort((a, b) => String(a[key]).localeCompare(String(b[key])));
 }
 
-function renderStockHeader(stock, freshness = {}) {
+function renderStockHeader(stock, freshness = {}, valuationBenchmark = {}) {
   byId("stock-name").textContent = stock.name || stock.code;
   byId("stock-code").textContent = stock.code;
   byId("stock-market").textContent = stock.market || "市場待補";
@@ -398,6 +421,8 @@ function renderStockHeader(stock, freshness = {}) {
   byId("stat-price").textContent = fmt(stock.price, 2);
   byId("stat-pe").textContent = fmt(stock.pe_ratio, 2);
   byId("stat-yield").textContent = pct(stock.dividend_yield_pct, 2, true);
+  byId("stat-pe-note").innerHTML = `${deltaChip(valuationBenchmark.pe_vs_market_pct)} 大盤中位數 ${fmt(valuationBenchmark.market_pe_median, 2)}`;
+  byId("stat-yield-note").innerHTML = `${deltaChip(valuationBenchmark.yield_vs_market_pct)} 大盤中位數 ${pct(valuationBenchmark.market_yield_median, 2, true)}`;
   byId("stat-bvps").textContent = fmt(stock.book_value_per_share, 2);
   byId("stat-mcap").textContent = fmt(stock.market_cap_millions, 0);
   byId("stat-time").textContent = freshness.market_date || "待補行情";
@@ -416,7 +441,7 @@ function renderCoverage(decision) {
     ["PE 方法", coverage.pe_method === "five_year_monthly" ? "五年月資料" : "季資料暫代", ""],
     ["詳細損益", coverage.detailed_income_statement ? "完整" : "推估中", ""],
   ];
-  byId("coverage-strip").innerHTML = parts.map(([label, value, suffix]) => `<div><span>${label}</span><b>${escapeHtml(value ?? "—")}${suffix}</b></div>`).join("");
+  byId("coverage-strip").innerHTML = parts.map(([label, value, suffix]) => `<div><span>${label}</span><b>${escapeHtml(value ?? "-")}${suffix}</b></div>`).join("");
   byId("decision-warnings").innerHTML = (decision.warnings || []).map((warning) => `<div class="notice">${escapeHtml(warning)}</div>`).join("");
 }
 
@@ -434,12 +459,13 @@ function renderDecision(decision) {
   const result = decision.result;
   byId("formula-version").textContent = result.formula_version;
   byId("metric-current-target").textContent = fmt(result.current_pe_target_price, 0);
+  byId("metric-current-target-note").innerHTML = `${deltaChip(result.current_target_upside_pct)} 現況 TTM PE × 預估 TTM EPS`;
   byId("metric-ttm-eps").textContent = fmt(result.estimated_ttm_eps, 2);
   byId("metric-current-eps").textContent = `目前 TTM ${fmt(result.current_ttm_eps, 2)} 元`;
   byId("metric-dividend").textContent = fmt(result.estimated_cash_dividend, 2);
   byId("metric-dividend-yield").textContent = `殖利率 ${pct(result.estimated_dividend_yield)}`;
   byId("metric-peg").textContent = fmt(result.peg, 3);
-  byId("metric-total-score").textContent = `總報酬本益比 ${fmt(result.total_return_pe_score, 3)}`;
+  byId("metric-total-score").innerHTML = `${pegBadge(result.peg)} 總報酬本益比 ${fmt(result.total_return_pe_score, 3)}`;
 
   const chain = [
     ["季度營收", result.estimated_quarterly_revenue],
@@ -457,10 +483,11 @@ function renderDecision(decision) {
     const key = `${step >= 0 ? "+" : ""}${step}sigma`;
     const pe = levels[key];
     const target = result.pe_target_prices?.[key];
-    return `<tr class="${step === 0 ? "mean-row" : ""}"><td>${step === 0 ? "平均" : `${step > 0 ? "+" : ""}${step}σ`}</td><td>${fmt(pe, 2)}</td><td>${fmt(target, 0)}</td></tr>`;
+    const upside = result.pe_target_upside_pct?.[key];
+    return `<tr class="${step === 0 ? "mean-row" : ""}"><td>${step === 0 ? "平均" : `${step > 0 ? "+" : ""}${step}σ`}</td><td>${fmt(pe, 2)}</td><td>${fmt(target, 0)}</td><td>${deltaChip(upside)}</td></tr>`;
   }).join("");
   byId("pe-river-table").innerHTML = result.pe_river
-    ? `<thead><tr><th>河流層級</th><th>PE</th><th>目標價</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td>母體標準差</td><td colspan="2">${fmt(result.pe_river.population_stdev, 3)}</td></tr></tfoot>`
+    ? `<thead><tr><th>河流層級</th><th>PE</th><th>目標價</th><th>距現價</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td>母體標準差</td><td colspan="3">${fmt(result.pe_river.population_stdev, 3)}</td></tr></tfoot>`
     : `<tr><td>${emptyHtml("需補五年月 PE")}</td></tr>`;
 }
 
@@ -493,7 +520,7 @@ function renderFundamentals(data) {
   table.innerHTML = `<thead><tr><th>季別</th><th>營收</th><th>毛利</th><th>營業費用</th><th>營業利益</th><th>業外</th><th>母公司淨利</th><th>EPS</th></tr></thead><tbody>${tableRows.map((row) => `<tr><td>${escapeHtml(row.quarter)}</td><td>${fmt(row.revenue, 0)}</td><td>${fmt(row.gross_profit, 0)}</td><td>${fmt(row.operating_expense, 0)}</td><td>${fmt(row.operating_income, 0)}</td><td>${fmt(row.non_operating_income, 0)}</td><td>${fmt(row.parent_net_income ?? row.net_income, 0)}</td><td>${fmt(row.eps, 2)}</td></tr>`).join("")}</tbody>`;
 }
 
-function renderQuality(data) {
+function renderQuality(data, governance) {
   const efficiency = chronological(data.efficiency, "quarter").slice(-12);
   drawChart(byId("chart-efficiency"), [
     { name: "應收天數", values: efficiency.map((row) => row.ar_days), digits: 1, suffix: " 天" },
@@ -516,7 +543,8 @@ function renderQuality(data) {
     const items = [
       ["季別", health.quarter], ["總資產", fmt(health.total_assets, 0)], ["總負債", fmt(health.total_liabilities, 0)],
       ["負債比率", pct(debt)], ["股東權益", fmt(health.total_equity, 0)], ["每股淨值", fmt(health.book_value_per_share, 2)],
-      ["ROE（年化）", pct(health.roe_ratio)], ["合約負債", fmt(health.contract_liabilities, 0)],
+      ["ROE（年化）", pct(health.roe_ratio)],
+      [`合約負債${infoTip("客戶已預付但公司尚未認列營收的訂單金額（如預收貨款），常被視為未來營收的先行指標。")}`, fmt(health.contract_liabilities, 0)],
     ];
     healthTable.innerHTML = items.map(([key, value]) => `<tr><th>${key}</th><td>${escapeHtml(value)}</td></tr>`).join("");
   }
@@ -537,18 +565,18 @@ function renderQuality(data) {
   const reductionHtml = reduction ? `<article><time>${escapeHtml(reduction.resume_date || "日期待補")}</time><div><b>減資恢復交易：${escapeHtml(reduction.name)}</b><p>${escapeHtml(reduction.reason || "減資公告")}｜停止交易 ${escapeHtml(reduction.stop_date || "待補")}｜換股率 ${pct(reduction.exchange_ratio)}｜EPS 校正值 ${pct(reduction.adjust_factor)}；僅在模型選擇「減資校正」時套用。</p></div></article>` : "";
   const eventHtml = events.map((event) => `<article><time>${escapeHtml(event.event_date)}</time><div><b>${escapeHtml(event.title)}</b><p>${escapeHtml(event.detail || event.event_type)}</p></div></article>`).join("");
   byId("event-list").innerHTML = reductionHtml || eventHtml ? reductionHtml + eventHtml : emptyHtml("待補重大事件與減資歷史");
-}
 
-function cashflowClass(row) {
-  const op = row.operating_cashflow_millions;
-  const inv = row.investing_cashflow_millions;
-  const fin = row.financing_cashflow_millions;
-  if (![op, inv, fin].every(isValue)) return { label: "資料不足", tone: "neutral" };
-  if (op > 0 && inv < 0 && fin < 0) return { label: "成熟／還債型", tone: "good" };
-  if (op > 0 && inv < 0 && fin > 0) return { label: "擴張型", tone: "watch" };
-  if (op < 0 && fin > 0) return { label: "籌資支撐型", tone: "risk" };
-  if (op > 0 && inv > 0) return { label: "收縮／處分型", tone: "watch" };
-  return { label: "混合型", tone: "neutral" };
+  const boardHoldings = governance?.board_holdings || [];
+  const boardTable = byId("board-holdings-table");
+  if (boardHoldings.length) {
+    boardTable.innerHTML = `<thead><tr><th>職稱</th><th>姓名</th><th>目前持股</th><th>設質股數</th><th>設質比例</th></tr></thead><tbody>${boardHoldings.map((row) => `<tr><td>${escapeHtml(row.title)}</td><td>${escapeHtml(row.person_name)}</td><td>${fmt(row.shares_held, 0)}</td><td>${fmt(row.pledged_shares, 0)}</td><td>${row.pledged_ratio > 0 ? `⚠ ${pct(row.pledged_ratio)}` : pct(row.pledged_ratio)}</td></tr>`).join("")}</tbody>`;
+  } else {
+    emptyTable(boardTable, 5, "待補董監事持股資料");
+  }
+
+  const majorShareholders = governance?.major_shareholders || [];
+  const shareholderHtml = majorShareholders.map((row) => `<article><div><b>${escapeHtml(row.shareholder_name)}</b><p>持股逾 10%｜資料日 ${escapeHtml(row.as_of_date)}</p></div></article>`).join("");
+  byId("major-shareholders-list").innerHTML = shareholderHtml || emptyHtml("待補大股東資料");
 }
 
 function signalLabel(value) {
@@ -559,6 +587,21 @@ function signalLabel(value) {
   };
   const [text, tone] = map[value] || [value || "待補", "neutral"];
   return `<em class="signal ${tone}">${text}</em>`;
+}
+
+// PEG 判讀：<1 視為低估（沿用 rise=紅、表示對決策有利的既有慣例）、1-2 合理、>2 偏貴。
+function pegBadge(peg) {
+  if (!isValue(peg)) return `<em class="signal neutral">待補</em>`;
+  const [text, tone] = Number(peg) < 1 ? ["低估", "rise"] : Number(peg) <= 2 ? ["合理", "neutral"] : ["偏貴", "fall"];
+  return `<em class="signal ${tone}">${text}</em>`;
+}
+
+function seasonalSeriesName(year, label, values) {
+  let latest = -1;
+  values.forEach((value, index) => { if (isValue(value)) latest = index; });
+  const base = year ? `${year} ${label}` : label;
+  if (latest < 0) return `${base} · 待公布`;
+  return latest < 3 ? `${base} · 至 Q${latest + 1}` : base;
 }
 
 function renderNineGrid(data) {
@@ -577,41 +620,58 @@ function renderNineGrid(data) {
     { name: "應付", values: rows.map((row) => row.payable_days), digits: 1, suffix: " 天" },
   ], labels);
   drawChart(byId("ng-debt"), [
-    { name: "現金與約當現金", values: rows.map((row) => row.cash_and_securities), digits: 0, suffix: " 百萬" },
+    { name: "營業現金流", values: rows.map((row) => isValue(row.operating_cashflow_millions) ? row.operating_cashflow_millions / 1000 : null), digits: 1, suffix: " 十億" },
+    { name: "自由現金流", values: rows.map((row) => isValue(row.free_cash_flow_millions) ? row.free_cash_flow_millions / 1000 : null), digits: 1, suffix: " 十億" },
     { name: "負債比", values: rows.map((row) => isValue(row.debt_ratio) ? row.debt_ratio * 100 : null), digits: 1, suffix: "%" },
-  ], labels, { bars: [0], rightAxis: [1] });
+  ], labels, { bars: [0, 1], rightAxis: [2] });
   drawChart(byId("ng-cash-profit"), [
     { name: "營業現金流", values: rows.map((row) => isValue(row.operating_cashflow_millions) ? row.operating_cashflow_millions / 1000 : null), digits: 1, suffix: " 十億" },
     { name: "營業利益", values: rows.map((row) => isValue(row.operating_income_millions) ? row.operating_income_millions / 1000 : null), digits: 1, suffix: " 十億" },
     { name: "ROE", values: rows.map((row) => isValue(row.roe_ratio) ? row.roe_ratio * 100 : null), digits: 1, suffix: "%" },
-  ], labels, { rightAxis: [2] });
+  ], labels, { bars: [0, 1], rightAxis: [2] });
   drawChart(byId("ng-lan"), [
     { name: "資本支出", values: rows.map((row) => isValue(row.capital_expenditure_millions) ? row.capital_expenditure_millions / 1000 : null), digits: 1, suffix: " 十億" },
     { name: "翁氏價值", values: rows.map((row) => row.lan_value), digits: 4 },
   ], labels, { bars: [0], rightAxis: [1] });
   drawChart(byId("ng-core-eps"), [
-    { name: "核心 EPS", values: rows.map((row) => row.core_eps), digits: 2, suffix: " 元" },
-    { name: "非核心 EPS", values: rows.map((row) => row.non_core_eps), digits: 2, suffix: " 元" },
-  ], labels, { bars: [0, 1] });
+    { name: "本業 EPS", values: rows.map((row) => row.core_eps), digits: 2, suffix: " 元" },
+    { name: "業外 EPS", values: rows.map((row) => row.non_core_eps), digits: 2, suffix: " 元" },
+    { name: "本業比率", values: rows.map((row) => isValue(row.core_business_ratio) ? row.core_business_ratio * 100 : null), digits: 1, suffix: "%" },
+  ], labels, { bars: [0, 1], rightAxis: [2] });
   const years = [...new Set(rows.map((row) => Number(String(row.quarter).slice(0, 4))))].filter(Number.isFinite).sort((a, b) => a - b);
   const currentYear = years.at(-1);
   const priorYear = currentYear - 1;
   const byYearQuarter = new Map(rows.map((row) => [row.quarter, row]));
   const current4 = [1, 2, 3, 4].map((quarter) => byYearQuarter.get(`${currentYear}Q${quarter}`));
   const prior4 = [1, 2, 3, 4].map((quarter) => byYearQuarter.get(`${priorYear}Q${quarter}`));
+  const currentRevenue = current4.map((row) => row?.revenue_millions);
+  const priorRevenue = prior4.map((row) => row?.revenue_millions);
   drawChart(byId("ng-season-revenue"), [
-    { name: `${currentYear} 本期`, values: current4.map((row) => row?.revenue_millions), digits: 0, suffix: " 百萬" },
-    { name: `${priorYear} 去年同期`, values: prior4.map((row) => row?.revenue_millions), digits: 0, suffix: " 百萬" },
+    { name: seasonalSeriesName(currentYear, "本期", currentRevenue), values: currentRevenue, digits: 0, suffix: " 百萬" },
+    { name: seasonalSeriesName(priorYear, "去年同期", priorRevenue), values: priorRevenue, digits: 0, suffix: " 百萬" },
   ], ["Q1", "Q2", "Q3", "Q4"], { bars: [0, 1] });
+  const currentDays = current4.map((row) => row?.operating_cycle_days);
+  const priorDays = prior4.map((row) => row?.operating_cycle_days);
   drawChart(byId("ng-season-days"), [
-    { name: `${currentYear} 本期`, values: current4.map((row) => row?.operating_cycle_days), digits: 1, suffix: " 天" },
-    { name: `${priorYear} 去年同期`, values: prior4.map((row) => row?.operating_cycle_days), digits: 1, suffix: " 天" },
+    { name: seasonalSeriesName(currentYear, "本期", currentDays), values: currentDays, digits: 1, suffix: " 天" },
+    { name: seasonalSeriesName(priorYear, "去年同期", priorDays), values: priorDays, digits: 1, suffix: " 天" },
   ], ["Q1", "Q2", "Q3", "Q4"]);
 
-  byId("ng-cash-class").innerHTML = rows.length ? rows.slice(-4).map((row) => {
-    const classification = cashflowClass(row);
-    return `<div><span>${escapeHtml(row.quarter)}</span><b class="${classification.tone}">${classification.label}</b><small>營 ${fmt(row.operating_cashflow_millions, 0)}／投 ${fmt(row.investing_cashflow_millions, 0)}／融 ${fmt(row.financing_cashflow_millions, 0)}</small></div>`;
-  }).join("") : emptyHtml();
+  const recentYear = rows.slice(-4);
+  const recentYearTotal = (key) => recentYear.length === 4 && recentYear.every((row) => isValue(row[key]))
+    ? recentYear.reduce((total, row) => total + Number(row[key]), 0)
+    : null;
+  drawChart(byId("ng-cash-class"), [{
+    name: "近四季合計",
+    values: [
+      recentYearTotal("operating_cashflow_millions"),
+      recentYearTotal("investing_cashflow_millions"),
+      recentYearTotal("financing_cashflow_millions"),
+      recentYearTotal("free_cash_flow_millions"),
+    ],
+    digits: 0,
+    suffix: " 百萬",
+  }], ["營業", "投資", "融資", "自由"], { bars: [0] });
 
   const monthly = chronological(data.monthly_revenue, "month");
   drawChart(byId("ng-bollinger"), [
@@ -619,7 +679,7 @@ function renderNineGrid(data) {
     { name: "3M 均線", values: monthly.map((row) => row.near_3m_avg), digits: 0, suffix: " 百萬" },
     { name: "上軌", values: monthly.map((row) => row.upper_band), digits: 0, suffix: " 百萬" },
     { name: "下軌", values: monthly.map((row) => row.lower_band), digits: 0, suffix: " 百萬" },
-  ], monthly.map((row) => row.month));
+  ], monthly.map((row) => row.month), { bars: [0] });
   drawChart(byId("ng-contract"), [{ name: "合約負債", values: rows.map((row) => row.contract_liabilities), digits: 0, suffix: " 百萬" }], labels, { bars: [0] });
   drawCandles(byId("ng-price"), data.daily_prices || []);
 }
@@ -627,6 +687,21 @@ function renderNineGrid(data) {
 function tableFromRows(table, rows, columns, message) {
   if (!rows?.length) { emptyTable(table, columns.length, message); return; }
   table.innerHTML = `<thead><tr>${columns.map((column) => `<th>${escapeHtml(column.label)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${columns.map((column) => `<td class="${column.className ? column.className(row) : ""}">${column.format ? column.format(row[column.key], row) : escapeHtml(row[column.key])}</td>`).join("")}</tr>`).join("")}</tbody>`;
+}
+
+// 法人買賣超原始資料是逐筆 (date, institution, net) 長表；轉成寬表 (date, 外資, 投信, 自營商)
+// 才能一眼比較同一天三大法人的狀態，不用逐列找同一個日期。
+function institutionNetClass(key) {
+  return (row) => (row[key] == null ? "" : row[key] >= 0 ? "positive" : "negative");
+}
+
+function pivotInstitutionRows(rows) {
+  const byDate = new Map();
+  for (const row of rows || []) {
+    if (!byDate.has(row.date)) byDate.set(row.date, { date: row.date });
+    byDate.get(row.date)[row.institution] = row.net;
+  }
+  return [...byDate.values()].sort((a, b) => (a.date < b.date ? 1 : -1));
 }
 
 function renderMarket(chips, radar) {
@@ -652,7 +727,7 @@ function renderMarket(chips, radar) {
     { name: "融資餘額", values: marginRows.map((row) => row.margin_balance), digits: 0, suffix: " 張" },
     { name: "融券餘額", values: marginRows.map((row) => row.short_balance), digits: 0, suffix: " 張" },
     { name: "券資比", values: marginRows.map((row) => row.short_margin_ratio), digits: 2, suffix: "%" },
-  ], marginRows.map((row) => row.date), { rightAxis: [2] });
+  ], marginRows.map((row) => row.date), { rightAxis: [2], labelCount: 10 });
 
   const etfLatestDate = chips.etf_holdings?.[0]?.as_of_date;
   const etfRows = (chips.etf_holdings || []).filter((row) => row.as_of_date === etfLatestDate).slice(0, 12);
@@ -666,6 +741,20 @@ function renderMarket(chips, radar) {
     ? `${etfLatestDate}｜${etfRows.length} 檔 ETF`
     : "目前資料源未查到持有此股票的 ETF";
 
+  tableFromRows(byId("institution-table"), pivotInstitutionRows(chips.institutional_trading).slice(0, 30), [
+    { key: "date", label: "日期" },
+    { key: "外資", label: "外資", format: (v) => fmt(v, 0), className: institutionNetClass("外資") },
+    { key: "投信", label: "投信", format: (v) => fmt(v, 0), className: institutionNetClass("投信") },
+    { key: "自營商", label: "自營商", format: (v) => fmt(v, 0), className: institutionNetClass("自營商") },
+  ], "待補法人個股買賣超資料");
+  tableFromRows(byId("margin-short-table"), chips.margin_short?.slice(0, 30), [
+    { key: "date", label: "日期" }, { key: "margin_balance", label: "融資", format: (v) => fmt(v, 0) },
+    { key: "short_balance", label: "融券", format: (v) => fmt(v, 0) }, { key: "short_margin_ratio", label: "券資比", format: (v) => pct(v, 2, true) },
+  ], "待補融資融券資料");
+  tableFromRows(byId("broker-table"), chips.broker_branches?.slice(0, 30), [
+    { key: "date", label: "日期" }, { key: "branch", label: "分點" }, { key: "buy", label: "買", format: (v) => fmt(v, 0) },
+    { key: "sell", label: "賣", format: (v) => fmt(v, 0) }, { key: "net", label: "淨", format: (v) => fmt(v, 0) },
+  ], "待補券商分點資料");
   const futuresRows = radar.futures || [];
   const contracts = [...new Set(futuresRows.map((row) => row.contract))];
   const futuresValues = new Map(futuresRows.map((row) => [`${row.contract}:${row.institution}`, row.net_oi]));
@@ -681,18 +770,6 @@ function renderMarket(chips, radar) {
     { key: "long_oi", label: "多", format: (v) => fmt(v, 0) }, { key: "short_oi", label: "空", format: (v) => fmt(v, 0) },
     { key: "net_oi", label: "淨額", format: (v) => fmt(v, 0), className: (row) => row.net_oi >= 0 ? "positive" : "negative" },
   ], "待補 TAIFEX 未平倉資料");
-  tableFromRows(byId("institution-table"), chips.institutional_trading?.slice(0, 30), [
-    { key: "date", label: "日期" }, { key: "institution", label: "法人" },
-    { key: "net", label: "買賣超", format: (v) => fmt(v, 0), className: (row) => row.net >= 0 ? "positive" : "negative" },
-  ], "待補法人個股買賣超資料");
-  tableFromRows(byId("margin-short-table"), chips.margin_short?.slice(0, 30), [
-    { key: "date", label: "日期" }, { key: "margin_balance", label: "融資", format: (v) => fmt(v, 0) },
-    { key: "short_balance", label: "融券", format: (v) => fmt(v, 0) }, { key: "short_margin_ratio", label: "券資比", format: (v) => pct(v, 2, true) },
-  ], "待補融資融券資料");
-  tableFromRows(byId("broker-table"), chips.broker_branches?.slice(0, 30), [
-    { key: "date", label: "日期" }, { key: "branch", label: "分點" }, { key: "buy", label: "買", format: (v) => fmt(v, 0) },
-    { key: "sell", label: "賣", format: (v) => fmt(v, 0) }, { key: "net", label: "淨", format: (v) => fmt(v, 0) },
-  ], "待補券商分點資料");
   tableFromRows(byId("etf-table"), etfRows, [
     { key: "as_of_date", label: "日期" }, { key: "etf_code", label: "ETF" }, { key: "etf_name", label: "名稱" },
     { key: "holding_ratio", label: "權重", format: (v) => pct(v) },
@@ -706,24 +783,152 @@ function renderMarket(chips, radar) {
   renderRanking(radar);
 }
 
-function relClassName(key) {
-  return (row) => (row[key] == null ? "" : row[key] >= 0 ? "positive" : "negative");
+let sectorMomentumData = [];
+let sectorMomentumSort = { key: "rank", dir: "desc" };
+
+function momentumSortRows(rows, sort) {
+  return [...rows].sort((a, b) => {
+    const left = a[sort.key];
+    const right = b[sort.key];
+    if (left == null && right == null) return 0;
+    if (left == null) return 1;
+    if (right == null) return -1;
+    const comparison = typeof left === "string"
+      ? left.localeCompare(right, "zh-Hant", { numeric: true })
+      : Number(left) - Number(right);
+    return sort.dir === "asc" ? comparison : -comparison;
+  });
+}
+
+function infoTip(text) {
+  return `<button type="button" class="info-tip" data-tip="${escapeHtml(text)}" aria-label="說明：${escapeHtml(text)}">?</button>`;
+}
+
+const RANK_BAND_TIP = "20R／60R／120R：近 20／60／120 個交易日報酬，在所有板塊間的百分位排名（0–99，越高代表這段期間漲幅相對最強）。Rank：綜合分數 = 20R×20% + 60R×40% + 120R×40%，兼顧短中長期動能。";
+const REL_BAND_TIP = "REL = 板塊同期報酬 − 大盤（發行量加權股價指數）同期報酬。正值代表這段期間跑贏大盤，負值代表落後大盤。";
+const MEMBER_COUNT_TIP = "這個細產業目前有幾檔「台灣前100大」成分股列入合成指數。檔數越少（例如只有1、2檔），指數越接近少數個股走勢，排名參考價值較低。";
+
+function momentumSortHeader(key, label) {
+  const active = sectorMomentumSort.key === key;
+  const direction = active ? sectorMomentumSort.dir : "none";
+  return `<th scope="col"${active ? ` aria-sort="${direction === "desc" ? "descending" : "ascending"}"` : ""}>` +
+    `<button type="button" class="table-sort${active ? ` active ${direction}` : ""}" data-sort-key="${key}">${escapeHtml(label)}</button></th>`;
+}
+
+function sectorName(value) {
+  return String(value || "-").replace(/指數$/, "");
+}
+
+function momentumRankGroup(value) {
+  if (!isValue(value)) return "missing";
+  if (Number(value) >= 67) return "leader";
+  if (Number(value) >= 34) return "middle";
+  return "lagger";
+}
+
+const _SECTOR_GROUPS = [
+  { key: "leader", label: "領先板塊", detail: "Rank 67–99" },
+  { key: "middle", label: "中段板塊", detail: "Rank 34–66" },
+  { key: "lagger", label: "落後板塊", detail: "Rank 0–33" },
+  { key: "missing", label: "資料不足", detail: "無法計算完整 Rank" },
+];
+
+function signedHeatClass(value) {
+  if (!isValue(value)) return "metric-heat is-empty";
+  const points = Math.abs(Number(value) * 100);
+  const strength = points >= 15 ? 3 : points >= 5 ? 2 : 1;
+  return `metric-heat ${Number(value) >= 0 ? "gain-heat" : "loss-heat"} heat-tier-${strength}`;
+}
+
+// 行內版比較徽章：套用跟 signedHeatClass 同一組三級色階（gain-heat/loss-heat/heat-tier-N），
+// 只是換掉表格 <td> 專用的 metric-heat 基底 class，改成小 pill 形狀，方便貼在卡片、統計數字旁。
+function deltaChip(value, digits = 1) {
+  const heatClass = signedHeatClass(value).replace("metric-heat", "delta-chip");
+  return `<span class="${heatClass}">${signedPct(value, digits)}</span>`;
+}
+
+function renderMomentumSummary(mode, rows) {
+  const summary = byId("momentum-summary");
+  const data = rows || [];
+  if (!data.length) {
+    summary.innerHTML = `<div><span>${mode === "sector" ? "資料日" : "資料狀態"}</span><strong>尚無資料</strong></div>` +
+      `<div><span>${mode === "sector" ? "板塊數" : "產業群"}</span><strong>0</strong></div>` +
+      `<div><span>${mode === "sector" ? "強勢板塊" : "細產業"}</span><strong>0</strong></div>` +
+      `<div><span>目前領先</span><strong>—</strong></div>`;
+    return;
+  }
+  if (mode === "sector") {
+    const dates = data.map((row) => row.date).filter(Boolean).sort();
+    const leaderCount = data.filter((row) => momentumRankGroup(row.rank) === "leader").length;
+    const leading = momentumSortRows(data, { key: "rank", dir: "desc" })[0];
+    summary.innerHTML = `<div><span>資料日</span><strong>${escapeHtml(dates.at(-1) || "-")}</strong></div>` +
+      `<div><span>板塊數</span><strong>${fmt(data.length, 0)}</strong></div>` +
+      `<div><span>強勢板塊</span><strong>${fmt(leaderCount, 0)}</strong><small>Rank ≥ 67</small></div>` +
+      `<div><span>目前領先</span><strong title="${escapeHtml(leading?.index_name)}">${escapeHtml(sectorName(leading?.index_name))}</strong></div>`;
+    return;
+  }
+  const subCount = data.reduce((total, row) => total + (row.sub_industries?.length || 0), 0);
+  const leading = momentumSortRows(data, { key: "rank", dir: "desc" })[0];
+  summary.innerHTML = `<div><span>資料狀態</span><strong>靜態快照</strong></div>` +
+    `<div><span>產業群</span><strong>${fmt(data.length, 0)}</strong></div>` +
+    `<div><span>可展開細產業</span><strong>${fmt(subCount, 0)}</strong></div>` +
+    `<div><span>目前領先</span><strong title="${escapeHtml(leading?.industry)}">${escapeHtml(leading?.industry)}</strong></div>`;
+}
+
+function sectorMomentumRow(row) {
+  const oneDayClass = row.change_pct_1d == null ? "" : row.change_pct_1d >= 0 ? "positive" : "negative";
+  return `<tr>` +
+    `<th scope="row" class="momentum-name"><strong>${escapeHtml(sectorName(row.index_name))}</strong><small>TWSE 類股指數</small></th>` +
+    `<td class="momentum-price">${fmt(row.close_index, 2)}</td>` +
+    `<td class="${oneDayClass}">${pct(row.change_pct_1d, 2, true)}</td>` +
+    `<td class="trend-cell">${sparklineSvg(row.trend)}</td>` +
+    `<td class="${rankHeatClass(row.rank_20d)}">${fmt(row.rank_20d, 0)}</td>` +
+    `<td class="${rankHeatClass(row.rank_60d)}">${fmt(row.rank_60d, 0)}</td>` +
+    `<td class="${rankHeatClass(row.rank_120d)}">${fmt(row.rank_120d, 0)}</td>` +
+    `<td class="${rankHeatClass(row.rank)} composite-rank">${fmt(row.rank, 0)}</td>` +
+    `<td class="${signedHeatClass(row.rel_20d)}">${pct(row.rel_20d, 2)}</td>` +
+    `<td class="${signedHeatClass(row.rel_60d)}">${pct(row.rel_60d, 2)}</td>` +
+    `<td class="${signedHeatClass(row.rel_120d)}">${pct(row.rel_120d, 2)}</td>` +
+    `<td class="momentum-date">${escapeHtml(row.date)}</td></tr>`;
 }
 
 function renderSectorMomentum(rows) {
-  tableFromRows(byId("sector-momentum-table"), rows, [
-    { key: "index_name", label: "板塊" },
-    { key: "close_index", label: "收盤", format: (v) => fmt(v, 2) },
-    { key: "change_pct_1d", label: "1D%", format: (v) => pct(v, 2, true), className: relClassName("change_pct_1d") },
-    { key: "rank_20d", label: "20R", format: (v) => fmt(v, 0) },
-    { key: "rank_60d", label: "60R", format: (v) => fmt(v, 0) },
-    { key: "rank_120d", label: "120R", format: (v) => fmt(v, 0) },
-    { key: "rank", label: "Rank", format: (v) => fmt(v, 0) },
-    { key: "rel_20d", label: "REL20", format: (v) => pct(v, 2), className: relClassName("rel_20d") },
-    { key: "rel_60d", label: "REL60", format: (v) => pct(v, 2), className: relClassName("rel_60d") },
-    { key: "rel_120d", label: "REL120", format: (v) => pct(v, 2), className: relClassName("rel_120d") },
-    { key: "date", label: "資料日" },
-  ], "板塊指數資料尚未回補");
+  if (rows !== undefined) sectorMomentumData = rows || [];
+  const table = byId("sector-momentum-table");
+  renderMomentumSummary("sector", sectorMomentumData);
+  if (!sectorMomentumData.length) { emptyTable(table, 12, "板塊指數資料尚未回補"); return; }
+
+  const body = _SECTOR_GROUPS.map((group) => {
+    const groupedRows = momentumSortRows(
+      sectorMomentumData.filter((row) => momentumRankGroup(row.rank) === group.key),
+      sectorMomentumSort,
+    );
+    if (!groupedRows.length) return "";
+    return `<tr class="momentum-group momentum-group-${group.key}"><th colspan="12" scope="rowgroup">` +
+      `<span>${group.label}</span><small>${group.detail} · ${groupedRows.length} 個</small></th></tr>` +
+      groupedRows.map(sectorMomentumRow).join("");
+  }).join("");
+
+  table.innerHTML = `<caption class="sr-only">TWSE 官方板塊短中長期動能排名與相對大盤報酬</caption>` +
+    `<colgroup><col class="col-name"><col class="col-price"><col class="col-day"><col class="col-trend">` +
+    `<col class="col-rank"><col class="col-rank"><col class="col-rank"><col class="col-rank">` +
+    `<col class="col-rel"><col class="col-rel"><col class="col-rel"><col class="col-date"></colgroup>` +
+    `<thead><tr class="momentum-band-row">` +
+    `<th rowspan="2" scope="col">板塊</th><th rowspan="2" scope="col">收盤</th><th rowspan="2" scope="col">1D%</th>` +
+    `<th rowspan="2" scope="col">120 日走勢</th><th colspan="4" scope="colgroup" class="rank-band">強度排名${infoTip(RANK_BAND_TIP)}</th>` +
+    `<th colspan="3" scope="colgroup" class="rel-band">相對大盤${infoTip(REL_BAND_TIP)}</th><th rowspan="2" scope="col">資料日</th></tr>` +
+    `<tr>${momentumSortHeader("rank_20d", "20R")}${momentumSortHeader("rank_60d", "60R")}` +
+    `${momentumSortHeader("rank_120d", "120R")}${momentumSortHeader("rank", "Rank")}` +
+    `${momentumSortHeader("rel_20d", "REL20")}${momentumSortHeader("rel_60d", "REL60")}` +
+    `${momentumSortHeader("rel_120d", "REL120")}</tr></thead><tbody>${body}</tbody>`;
+
+  $$(".table-sort", table).forEach((button) => button.addEventListener("click", () => {
+    const key = button.dataset.sortKey;
+    sectorMomentumSort = sectorMomentumSort.key === key
+      ? { key, dir: sectorMomentumSort.dir === "desc" ? "asc" : "desc" }
+      : { key, dir: "desc" };
+    renderSectorMomentum();
+  }));
 }
 
 let sectorMomentumLoaded = false;
@@ -752,26 +957,32 @@ function toggleSectorMomentum(forceShow) {
 // 純函式：走勢陣列 -> 一小段 inline SVG 折線圖。不重用 drawChart —— 那個是含座標軸／
 // 圖例的全功能圖表，對表格裡每一列都畫一份太重；這裡只要「漲跌形狀 + 紅漲綠跌」。
 function sparklineSvg(trend) {
-  if (!trend?.length || trend.length < 2) return "";
-  const width = 64;
-  const height = 22;
+  const values = (trend || []).map(Number).filter(Number.isFinite);
+  if (values.length < 2) return `<span class="sparkline-empty">—</span>`;
+  const width = 88;
+  const height = 24;
   const pad = 2;
-  const min = Math.min(...trend);
-  const max = Math.max(...trend);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
   const span = max - min || 1;
-  const stepX = (width - pad * 2) / (trend.length - 1);
-  const points = trend.map((value, index) => {
+  const stepX = (width - pad * 2) / (values.length - 1);
+  const points = values.map((value, index) => {
     const x = pad + index * stepX;
     const y = height - pad - ((value - min) / span) * (height - pad * 2);
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(" ");
-  const rising = trend[trend.length - 1] >= trend[0];
-  return `<svg class="sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">` +
+  const rising = values.at(-1) >= values[0];
+  const direction = rising ? "上升" : "下降";
+  return `<svg class="sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="近期走勢${direction}">` +
+    `<title>近期走勢${direction}</title>` +
     `<polyline points="${points}" fill="none" stroke="${rising ? "var(--red)" : "var(--green)"}" stroke-width="1.6" /></svg>`;
 }
 
 function rankHeatClass(value) {
-  return value == null ? "" : value >= 50 ? "positive" : "negative";
+  if (!isValue(value)) return "metric-heat rank-heat is-empty";
+  const number = Number(value);
+  const tier = number >= 85 ? 4 : number >= 67 ? 3 : number >= 34 ? 2 : 1;
+  return `metric-heat rank-heat rank-tier-${tier}`;
 }
 
 let industryPivotSort = { key: "rank", dir: "desc" };
@@ -794,10 +1005,10 @@ const _PIVOT_COLUMNS = [
 
 function _pivotRowHtml(entry, { indent = false, expandButton = null } = {}) {
   const nameCell = expandButton
-    ? `<button type="button" class="pivot-toggle" aria-expanded="${expandButton}">${expandButton === "true" ? "▾" : "▸"}</button>${escapeHtml(entry.industry)}`
+    ? `<button type="button" class="pivot-toggle" aria-expanded="${expandButton}" aria-label="${expandButton === "true" ? "收合" : "展開"}${escapeHtml(entry.industry)}細產業"><span class="pivot-caret" aria-hidden="true"></span><span>${escapeHtml(entry.industry)}</span></button>`
     : `<span class="pivot-child-name">${escapeHtml(entry.sub_industry)}</span>`;
   return `<tr class="pivot-row${indent ? " pivot-child" : " pivot-parent"}"${indent ? "" : ` data-industry="${escapeHtml(entry.industry)}"`}>` +
-    `<td class="pivot-name">${nameCell}</td>` +
+    `<th scope="row" class="pivot-name">${nameCell}</th>` +
     `<td>${fmt(entry.member_count, 0)}</td>` +
     `<td>${sparklineSvg(entry.trend)}</td>` +
     `<td class="${rankHeatClass(entry.rank_20d)}">${fmt(entry.rank_20d, 0)}</td>` +
@@ -808,6 +1019,7 @@ function _pivotRowHtml(entry, { indent = false, expandButton = null } = {}) {
 
 function renderSubIndustryMomentum(industries) {
   const table = byId("sub-industry-momentum-table");
+  renderMomentumSummary("sub-industry", industries);
   if (!industries?.length) { emptyTable(table, _PIVOT_COLUMNS.length, "細產業資料尚未回補"); return; }
 
   const sorted = [...industries].sort((a, b) => {
@@ -815,11 +1027,18 @@ function renderSubIndustryMomentum(industries) {
     return industryPivotSort.dir === "asc" ? diff : -diff;
   });
 
-  const head = `<thead><tr>${_PIVOT_COLUMNS.map((column) => {
-    if (!column.sortable) return `<th>${escapeHtml(column.label)}</th>`;
+  const pivotSortHeader = (column, rowspan = "") => {
     const active = industryPivotSort.key === column.key;
-    const arrow = active ? (industryPivotSort.dir === "desc" ? " ▾" : " ▴") : "";
-    return `<th class="sortable${active ? " active" : ""}" data-sort-key="${column.key}">${escapeHtml(column.label)}${arrow}</th>`;
+    const direction = active ? industryPivotSort.dir : "none";
+    const tip = column.key === "member_count" ? infoTip(MEMBER_COUNT_TIP) : "";
+    const button = `<button type="button" class="table-sort${active ? ` active ${direction}` : ""}" data-sort-key="${column.key}">${escapeHtml(column.label)}</button>`;
+    return `<th scope="col"${rowspan ? ` rowspan="${rowspan}"` : ""}${active ? ` aria-sort="${direction === "desc" ? "descending" : "ascending"}"` : ""}>` +
+      (tip ? `<span class="th-with-tip">${button}${tip}</span>` : button) + `</th>`;
+  };
+  const head = `<thead>` +
+    `<tr class="momentum-band-row"><th rowspan="2" scope="col">產業／細產業</th>${pivotSortHeader(_PIVOT_COLUMNS[1], 2)}` +
+    `<th rowspan="2" scope="col">120 日走勢</th><th colspan="4" scope="colgroup" class="rank-band">強度排名${infoTip(RANK_BAND_TIP)}</th></tr><tr>${_PIVOT_COLUMNS.slice(3).map((column) => {
+    return pivotSortHeader(column);
   }).join("")}</tr></thead>`;
 
   const body = sorted.map((industry) => {
@@ -831,10 +1050,12 @@ function renderSubIndustryMomentum(industries) {
     return rows.join("");
   }).join("");
 
-  table.innerHTML = `${head}<tbody>${body}</tbody>`;
+  const columns = `<colgroup><col class="col-name"><col class="col-members"><col class="col-trend">` +
+    `<col class="col-rank"><col class="col-rank"><col class="col-rank"><col class="col-rank"></colgroup>`;
+  table.innerHTML = `<caption class="sr-only">台灣前一百大股票細產業動能樞紐表</caption>${columns}${head}<tbody>${body}</tbody>`;
 
-  $$(".sortable", table).forEach((th) => th.addEventListener("click", () => {
-    const key = th.dataset.sortKey;
+  $$(".table-sort", table).forEach((button) => button.addEventListener("click", () => {
+    const key = button.dataset.sortKey;
     industryPivotSort = industryPivotSort.key === key
       ? { key, dir: industryPivotSort.dir === "desc" ? "asc" : "desc" }
       : { key, dir: "desc" };
@@ -904,8 +1125,16 @@ async function refreshSubIndustryMomentum() {
 byId("sub-industry-refresh-button").addEventListener("click", refreshSubIndustryMomentum);
 
 const _MOMENTUM_SOURCE_NOTES = {
-  sector: "來源：TWSE 官方類股指數（約 30-37 類），大盤超額報酬（REL）以發行量加權股價指數為基準。",
-  "sub-industry": "來源：台灣前100大成分股（依市值）依 FinMind 自身的 industry／sub_industry 兩層階層分組，兩層都是等權重合成指數估算，可展開查看；點列展開看細產業、點欄位標題排序。沒有大盤超額報酬（REL），成分股數少的細產業排名參考價值較低。",
+  sector: "來源：TWSE 官方類股指數（約 30–37 類）；REL 以發行量加權股價指數為基準。",
+  "sub-industry": "來源：台灣前 100 大成分股，以 FinMind 產業標籤建立等權重近似指數；成分股少的排名參考價值較低。",
+};
+
+const _MOMENTUM_LEGENDS = {
+  sector: `<span><i class="legend-swatch rank"></i>Rank 採 20/40/40 加權</span>` +
+    `<span><i class="legend-swatch gain"></i>REL 正值領先大盤</span>` +
+    `<span><i class="legend-swatch loss"></i>REL 負值落後大盤</span>`,
+  "sub-industry": `<span><i class="legend-swatch rank"></i>Rank 採 20/40/40 加權</span>` +
+    `<span>點選產業列展開細項</span>`,
 };
 
 $$('[data-momentum-mode]').forEach((button) => button.addEventListener("click", () => {
@@ -914,6 +1143,8 @@ $$('[data-momentum-mode]').forEach((button) => button.addEventListener("click", 
   byId("sector-momentum-view").classList.toggle("hidden", mode !== "sector");
   byId("sub-industry-momentum-view").classList.toggle("hidden", mode !== "sub-industry");
   byId("momentum-source-note").textContent = _MOMENTUM_SOURCE_NOTES[mode];
+  byId("momentum-legend").innerHTML = _MOMENTUM_LEGENDS[mode];
+  renderMomentumSummary(mode, mode === "sector" ? sectorMomentumData : subIndustryMomentumData);
   if (mode === "sub-industry" && !subIndustryMomentumLoaded) {
     subIndustryMomentumLoaded = true;
     loadSubIndustryMomentum();
@@ -924,9 +1155,9 @@ function renderRanking(radar = state.radar) {
   const category = `${state.rankingTopic}_${state.rankingMarket}`;
   const rows = radar?.rankings?.[category] || [];
   const topics = {
-    turnover: ["成交熱度", "用成交值找出資金最集中、最值得先研究的標的。"],
-    margin_ratio: ["券資壓力", "觀察融券相對融資的壓力，找出軋空或籌碼擁擠候選。"],
-    turnover_rate: ["交易活躍", "用週轉率辨識籌碼快速換手、價格正在形成共識的標的。"],
+    turnover: ["成交熱度", "用成交值找出資金最集中、最值得先研究的標的。（成交值＝成交量 × 成交均價）"],
+    margin_ratio: ["券資壓力", "觀察融券相對融資的壓力，找出軋空或籌碼擁擠候選。（券資比＝融券餘額 ÷ 融資餘額）"],
+    turnover_rate: ["交易活躍", "用週轉率辨識籌碼快速換手、價格正在形成共識的標的。（週轉率＝當日成交量 ÷ 流通在外股數）"],
   };
   byId("ranking-title").textContent = topics[state.rankingTopic][0];
   byId("ranking-description").textContent = topics[state.rankingTopic][1];
@@ -936,7 +1167,7 @@ function renderRanking(radar = state.radar) {
   $$('[data-ranking-market]').forEach((button) => button.classList.toggle("active", button.dataset.rankingMarket === state.rankingMarket));
   const valueLabel = state.rankingTopic === "turnover" ? "成交值" : state.rankingTopic === "margin_ratio" ? "券資比" : "週轉率";
   const valueFormat = state.rankingTopic === "turnover"
-    ? (value) => isValue(value) ? `${fmt(Number(value) / 1e8, 2)} 億` : "—"
+    ? (value) => isValue(value) ? `${fmt(Number(value) / 1e8, 2)} 億` : "-"
     : (value) => pct(value, 2, true);
   tableFromRows(byId("ranking-table"), rows.slice(0, 50), [
     { key: "rank", label: "排名" }, { key: "code", label: "代碼" },
@@ -960,12 +1191,12 @@ function renderRanking(radar = state.radar) {
   });
 }
 
-function renderDashboard(dashboard, radar) {
-  renderStockHeader(dashboard.stock, dashboard.freshness);
+function renderDashboard(dashboard, radar, valuationBenchmark = {}) {
+  renderStockHeader(dashboard.stock, dashboard.freshness, valuationBenchmark);
   byId("market-current-stock").textContent = `${dashboard.stock.code} ${dashboard.stock.name || ""}${dashboard.stock.industry ? `｜${dashboard.stock.industry}` : ""}`;
   renderDecision(dashboard.decision);
   renderFundamentals(dashboard.fundamentals);
-  renderQuality(dashboard.financial_quality);
+  renderQuality(dashboard.financial_quality, dashboard.governance);
   renderNineGrid(dashboard.nine_grid);
   renderMarket(dashboard.chips_market, radar);
 }
@@ -983,9 +1214,10 @@ async function loadStock(code, { modelOnly = false, bootstrapAttempt = false } =
     const dashboard = await fetchJson(`${API}/stocks/${encodeURIComponent(normalized)}/dashboard-v2?${optionsQuery()}`);
     if (!modelOnly || !state.dashboard) {
       state.radar = state.radar || await fetchJson(`${API}/market/radar`).catch(() => ({ futures: [], rankings: {} }));
+      state.valuationBenchmark = await fetchJson(`${API}/stocks/${encodeURIComponent(normalized)}/valuation-benchmark`).catch(() => ({}));
       state.dashboard = dashboard;
       state.code = normalized;
-      renderDashboard(dashboard, state.radar);
+      renderDashboard(dashboard, state.radar, state.valuationBenchmark);
       byId("empty-state").classList.add("hidden");
       byId("stock-header").classList.remove("hidden");
       byId("freshness-rail").classList.remove("hidden");
@@ -1019,7 +1251,7 @@ function switchView(view) {
   $$(".nav-tab").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
   $$('[data-view-panel]').forEach((panel) => panel.classList.toggle("active", panel.dataset.viewPanel === view));
   if (state.code) history.replaceState(null, "", `?code=${encodeURIComponent(state.code)}&view=${view}`);
-  requestAnimationFrame(() => { if (state.dashboard) renderDashboard(state.dashboard, state.radar || { futures: [], rankings: {} }); });
+  requestAnimationFrame(() => { if (state.dashboard) renderDashboard(state.dashboard, state.radar || { futures: [], rankings: {} }, state.valuationBenchmark || {}); });
   window.scrollTo({ top: byId("workspace-nav").offsetTop - 60, behavior: "smooth" });
 }
 
@@ -1046,7 +1278,7 @@ function healthStatus(status, label = HEALTH_LABELS[status] || status) {
 }
 
 function healthTime(value, includeTime = false) {
-  if (!value) return "—";
+  if (!value) return "-";
   if (/^\d{4}(?:Q\d|$|[-/]\d{1,2}$)/.test(value) && !value.includes("T")) return value;
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
@@ -1095,7 +1327,7 @@ function renderHealthDatasets() {
     .sort((a, b) => (HEALTH_SEVERITY[b.status] || 0) - (HEALTH_SEVERITY[a.status] || 0) || a.label.localeCompare(b.label, "zh-Hant"));
   byId("health-datasets-body").innerHTML = rows.length ? rows.map((row) => {
     const completeness = row.row_count === null
-      ? "—"
+      ? "-"
       : row.allow_empty && row.row_count === 0
         ? "允許為空"
         : `${Math.round((row.completeness_ratio || 0) * 100)}% · ${row.row_count}/${row.minimum_rows}`;
@@ -1104,7 +1336,7 @@ function renderHealthDatasets() {
       <td>${healthStatus(row.status, row.status_label)}</td>
       <td><b class="mono">${escapeHtml(healthTime(row.data_as_of))}</b><small>${row.last_success_at ? `成功於 ${escapeHtml(healthTime(row.last_success_at, true))}` : "尚無成功紀錄"}</small></td>
       <td><b class="mono">${escapeHtml(completeness)}</b><small>${escapeHtml(row.grain)}</small></td>
-      <td><b>${escapeHtml(row.source_label || "—")}</b><small>${escapeHtml(row.source_tier || row.primary_source)}</small></td>
+      <td><b>${escapeHtml(row.source_label || "-")}</b><small>${escapeHtml(row.source_tier || row.primary_source)}</small></td>
       <td class="health-reason">${escapeHtml(row.reason)}</td>
     </tr>`;
   }).join("") : `<tr><td colspan="6" class="health-empty">目前篩選條件沒有資料</td></tr>`;
@@ -1117,9 +1349,9 @@ function renderHealthSources() {
     <td><b>${escapeHtml(row.label)}</b><small class="mono">${escapeHtml(row.id)}</small></td>
     <td><span class="source-tier tier-${escapeHtml(row.tier)}">${escapeHtml(row.tier)}</span></td>
     <td>${healthStatus(row.status, row.status_label)}</td>
-    <td><b class="mono">${row.success_rate_24h === null ? "—" : `${Math.round(row.success_rate_24h * 100)}%`}</b><small>${row.runs_24h} 次觀察</small></td>
+    <td><b class="mono">${row.success_rate_24h === null ? "-" : `${Math.round(row.success_rate_24h * 100)}%`}</b><small>${row.runs_24h} 次觀察</small></td>
     <td><b>${row.canonical_datasets} 個資料集</b><small>${row.dependent_datasets} 個相依</small></td>
-    <td><b class="mono">${escapeHtml(healthTime(row.latest_run?.started_at, true))}</b><small>${escapeHtml(row.latest_run?.error || "—")}</small></td>
+    <td><b class="mono">${escapeHtml(healthTime(row.latest_run?.started_at, true))}</b><small>${escapeHtml(row.latest_run?.error || "-")}</small></td>
   </tr>`).join("");
 }
 
@@ -1155,9 +1387,9 @@ function renderHealthApi() {
     <td><span class="http-method method-${row.method.toLowerCase()}">${row.method}</span><b class="mono api-path">${escapeHtml(row.path)}</b></td>
     <td>${healthStatus(row.status)}</td>
     <td><b class="mono">${row.metric?.count ?? 0}</b></td>
-    <td><b class="mono">${row.metric ? `${Math.round(row.metric.successCount / row.metric.count * 100)}%` : "—"}</b></td>
-    <td><b class="mono">${row.average === null ? "—" : `${Math.round(row.average)} ms`}</b></td>
-    <td><b class="mono">${row.metric?.lastStatus || "—"}</b><small>${escapeHtml(healthTime(row.metric?.lastAt, true))}</small></td>
+    <td><b class="mono">${row.metric ? `${Math.round(row.metric.successCount / row.metric.count * 100)}%` : "-"}</b></td>
+    <td><b class="mono">${row.average === null ? "-" : `${Math.round(row.average)} ms`}</b></td>
+    <td><b class="mono">${row.metric?.lastStatus || "-"}</b><small>${escapeHtml(healthTime(row.metric?.lastAt, true))}</small></td>
   </tr>`).join("");
 }
 
@@ -1170,8 +1402,8 @@ function renderHealthRuns() {
     <td><b>${escapeHtml(labels[row.dataset_id] || row.dataset_id)}</b><small class="mono">${escapeHtml(row.dataset_id)}</small></td>
     <td><b>${escapeHtml(sources[row.source] || row.source)}</b></td>
     <td>${healthStatus(row.status)}</td>
-    <td><b class="mono">${row.duration_ms === null ? "—" : `${Math.round(row.duration_ms)} ms`}</b><small>${row.http_status ? `HTTP ${row.http_status}` : ""}</small></td>
-    <td class="health-reason"><b class="mono">${escapeHtml(row.data_as_of || "—")}</b><small>${escapeHtml(row.error || `${row.row_count ?? "—"} 筆`)}</small></td>
+    <td><b class="mono">${row.duration_ms === null ? "-" : `${Math.round(row.duration_ms)} ms`}</b><small>${row.http_status ? `HTTP ${row.http_status}` : ""}</small></td>
+    <td class="health-reason"><b class="mono">${escapeHtml(row.data_as_of || "-")}</b><small>${escapeHtml(row.error || `${row.row_count ?? "-"} 筆`)}</small></td>
   </tr>`).join("") : `<tr><td colspan="6" class="health-empty">這個範圍尚無外部資料更新紀錄</td></tr>`;
 }
 
@@ -1251,7 +1483,6 @@ byId("search-form").addEventListener("submit", (event) => {
 });
 byId("landing-focus-button").addEventListener("click", () => {
   byId("code-input").focus();
-  byId("code-input").scrollIntoView({ behavior: "smooth", block: "center" });
 });
 document.addEventListener("click", (event) => { if (!byId("search-form").contains(event.target)) byId("search-results").classList.remove("show"); });
 $$('.nav-tab').forEach((button) => button.addEventListener("click", () => switchView(button.dataset.view)));
@@ -1327,7 +1558,7 @@ tickClock(); setInterval(tickClock, 1000);
 let resizeTimer;
 window.addEventListener("resize", () => {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => { if (state.dashboard) renderDashboard(state.dashboard, state.radar || { futures: [], rankings: {} }); }, 150);
+  resizeTimer = setTimeout(() => { if (state.dashboard) renderDashboard(state.dashboard, state.radar || { futures: [], rankings: {} }, state.valuationBenchmark || {}); }, 150);
 });
 
 const params = new URLSearchParams(window.location.search);

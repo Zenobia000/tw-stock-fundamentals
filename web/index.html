@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="個人台股研究平台，整合估值、營運基本面、財務品質、翁氏九宮格與籌碼市場。" />
   <title>台股基本面研究工作台</title>
-  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="/static/style.css?v=20260823-1" />
 </head>
 <body>
   <header class="topbar">
@@ -17,9 +17,9 @@
       <div id="search-results" class="search-results"></div>
     </form>
     <button id="refresh-button" class="refresh-button hidden" type="button">更新資料</button>
-    <button id="sector-momentum-toggle" class="quiet-button" type="button">板塊動能</button>
-    <button id="health-toggle" class="health-button" type="button">資料健康 <b id="health-badge">按需</b></button>
-    <button id="method-toggle" class="quiet-button" type="button">研究方法</button>
+    <button id="sector-momentum-toggle" class="quiet-button" type="button">板塊</button>
+    <button id="health-toggle" class="health-button" type="button">資料狀態 <b id="health-badge">按需</b></button>
+    <button id="method-toggle" class="quiet-button" type="button">方法</button>
     <div id="clock" class="clock"></div>
   </header>
 
@@ -98,24 +98,38 @@
   </section>
 
   <section id="sector-momentum-panel" class="sector-momentum hidden" aria-label="板塊／細產業動能觀察">
-    <div class="section-title">
-      <div><h2>板塊動能觀察</h2></div>
-      <div class="section-actions">
-        <p>比較 20、60、120 日報酬排名，查看資金往哪個板塊移動。不需先選股票；Rank 為近似值。</p>
-        <div class="mode-switch" role="group" aria-label="動能顆粒度">
-          <button class="active" data-momentum-mode="sector" type="button">板塊</button>
-          <button data-momentum-mode="sub-industry" type="button">細產業</button>
-        </div>
+    <header class="momentum-header">
+      <div class="momentum-heading">
+        <h2>板塊動能觀察</h2>
+        <p>比較短、中、長期相對強度，快速辨識資金輪動方向。</p>
+      </div>
+      <div class="mode-switch" role="group" aria-label="動能顆粒度">
+        <button class="active" data-momentum-mode="sector" type="button">官方板塊</button>
+        <button data-momentum-mode="sub-industry" type="button">細產業</button>
+      </div>
+    </header>
+    <div class="momentum-context">
+      <p class="source-note" id="momentum-source-note">來源：TWSE 官方類股指數（約 30–37 類）；REL 以發行量加權股價指數為基準。</p>
+      <div id="momentum-legend" class="momentum-legend" aria-label="指標判讀方式">
+        <span><i class="legend-swatch rank"></i>Rank 越高越強</span>
+        <span><i class="legend-swatch gain"></i>REL 正值領先大盤</span>
+        <span><i class="legend-swatch loss"></i>REL 負值落後大盤</span>
       </div>
     </div>
-    <p class="source-note" id="momentum-source-note">來源：TWSE 官方類股指數（約30–37類），大盤超額報酬（REL）以發行量加權股價指數為基準。</p>
-    <div id="sector-momentum-view" class="table-scroll"><table id="sector-momentum-table" class="data-table"></table></div>
-    <div id="sub-industry-momentum-view" class="table-scroll hidden">
+    <div id="momentum-summary" class="momentum-summary" aria-live="polite">
+      <div><span>資料日</span><strong>讀取中</strong></div>
+      <div><span>板塊數</span><strong>—</strong></div>
+      <div><span>強勢板塊</span><strong>—</strong></div>
+      <div><span>目前領先</span><strong>—</strong></div>
+    </div>
+    <p class="momentum-scroll-hint">左右滑動可查看完整指標</p>
+    <div id="sector-momentum-view" class="momentum-table-frame table-scroll"><table id="sector-momentum-table" class="data-table momentum-table"></table></div>
+    <div id="sub-industry-momentum-view" class="momentum-table-frame table-scroll hidden">
       <div class="sub-industry-refresh-bar">
         <span id="sub-industry-refresh-message" class="sub-industry-refresh-message">產業標籤／前100大名單／股價都是手動回補的靜態快照，不會每天自動更新。</span>
         <button id="sub-industry-refresh-button" class="refresh-button" type="button">重新回補細產業資料</button>
       </div>
-      <table id="sub-industry-momentum-table" class="data-table"></table>
+      <table id="sub-industry-momentum-table" class="data-table momentum-table"></table>
     </div>
   </section>
 
@@ -143,23 +157,23 @@
 
   <section id="stock-header" class="stock-header hidden">
     <div class="stock-identity">
-      <div><h1 id="stock-name">—</h1><strong id="stock-code">—</strong><span id="stock-market" class="tag">—</span><span id="stock-industry" class="tag">—</span></div>
+      <div><h1 id="stock-name">-</h1><strong id="stock-code">-</strong><span id="stock-market" class="tag">-</span><span id="stock-industry" class="tag">-</span></div>
     </div>
     <div class="stock-stats">
-      <div><span>現價</span><b id="stat-price">—</b></div>
-      <div><span>本益比</span><b id="stat-pe">—</b></div>
-      <div><span>殖利率</span><b id="stat-yield">—</b></div>
-      <div><span>每股淨值</span><b id="stat-bvps">—</b></div>
-      <div><span>市值（百萬）</span><b id="stat-mcap">—</b></div>
-      <div><span>行情日期</span><b id="stat-time">—</b></div>
+      <div><span>現價</span><b id="stat-price">-</b></div>
+      <div><span>本益比</span><b id="stat-pe">-</b><small id="stat-pe-note" class="stat-note"></small></div>
+      <div><span>殖利率</span><b id="stat-yield">-</b><small id="stat-yield-note" class="stat-note"></small></div>
+      <div><span>每股淨值</span><b id="stat-bvps">-</b></div>
+      <div><span>市值（百萬）</span><b id="stat-mcap">-</b></div>
+      <div><span>行情日期</span><b id="stat-time">-</b></div>
     </div>
   </section>
 
   <section id="freshness-rail" class="freshness-rail hidden" aria-label="資料時效">
-    <div><i class="daily"></i><span>每日行情</span><b id="fresh-market">—</b></div>
-    <div><i class="monthly"></i><span>月營收</span><b id="fresh-revenue">—</b></div>
-    <div><i class="quarterly"></i><span>季財報</span><b id="fresh-financial">—</b></div>
-    <div><i class="chips"></i><span>籌碼</span><b id="fresh-chips">—</b></div>
+    <div><i class="daily"></i><span>每日行情</span><b id="fresh-market">-</b></div>
+    <div><i class="monthly"></i><span>月營收</span><b id="fresh-revenue">-</b></div>
+    <div><i class="quarterly"></i><span>季財報</span><b id="fresh-financial">-</b></div>
+    <div><i class="chips"></i><span>籌碼</span><b id="fresh-chips">-</b></div>
     <p id="refresh-message">各資料依官方發布頻率更新</p>
   </section>
 
@@ -173,7 +187,7 @@
 
   <main id="workspace" class="workspace hidden">
     <section class="view active" data-view-panel="overview">
-      <div class="section-title"><div><h2>股價預估與模型判讀</h2></div><span id="formula-version" class="version-tag">—</span></div>
+      <div class="section-title"><div><h2>股價預估與模型判讀</h2></div><span id="formula-version" class="version-tag">-</span></div>
       <div id="decision-warnings" class="notice-stack"></div>
       <div id="coverage-strip" class="coverage-strip"></div>
 
@@ -194,10 +208,10 @@
       <div id="decision-empty" class="empty-block hidden"></div>
       <div id="decision-content">
         <div class="hero-grid">
-          <article class="hero-card accent"><span>現況 PE 延伸目標價</span><b id="metric-current-target">—</b><small>現況 TTM PE × 預估 TTM EPS</small></article>
-          <article class="hero-card"><span>預估 TTM EPS</span><b id="metric-ttm-eps">—</b><small id="metric-current-eps">—</small></article>
-          <article class="hero-card"><span>預估現金股利</span><b id="metric-dividend">—</b><small id="metric-dividend-yield">—</small></article>
-          <article class="hero-card"><span>PEG／本益成長比</span><b id="metric-peg">—</b><small id="metric-total-score">—</small></article>
+          <article class="hero-card accent"><span>現況 PE 延伸目標價</span><b id="metric-current-target">-</b><small id="metric-current-target-note">現況 TTM PE × 預估 TTM EPS</small></article>
+          <article class="hero-card"><span>預估 TTM EPS</span><b id="metric-ttm-eps">-</b><small id="metric-current-eps">-</small></article>
+          <article class="hero-card"><span>預估現金股利</span><b id="metric-dividend">-</b><small id="metric-dividend-yield">-</small></article>
+          <article class="hero-card"><span>PEG／本益成長比<button type="button" class="info-tip" data-tip="PEG＝預估本益比 ÷（預估EPS成長率×100）。判讀：小於1 通常視為低估、1–2 合理、大於2 偏貴（經驗法則，非絕對規則）。">?</button></span><b id="metric-peg">-</b><small id="metric-total-score">-</small></article>
         </div>
 
         <div class="content-grid two-one">
@@ -206,7 +220,7 @@
             <div id="valuation-chain" class="valuation-chain"></div>
           </article>
           <article class="card">
-            <div class="card-head"><h3>本益比河流目標價</h3><span>平均 ± 母體標準差</span></div>
+            <div class="card-head"><h3>本益比河流目標價<button type="button" class="info-tip" data-tip="近五年月 PE 的平均值 ± 1／2／3 倍母體標準差畫出的河流層級（不是分位數），乘上預估 TTM EPS 得到各層級目標價。">?</button></h3><span>平均 ± 母體標準差</span></div>
             <table id="pe-river-table" class="data-table"></table>
           </article>
         </div>
@@ -216,7 +230,7 @@
     <section class="view" data-view-panel="fundamentals">
       <div class="section-title"><div><h2>營運基本面</h2></div><div class="section-actions"><p>先看營收、利潤率與 EPS。</p><div class="mode-switch" role="group" aria-label="營運基本面顯示模式"><button class="active" data-fund-mode="chart" type="button">重點圖表</button><button data-fund-mode="table" type="button">完整數據</button></div></div></div>
       <div id="fundamentals-chart-view" class="content-grid two">
-        <article class="card wide-card"><div class="card-head"><h3>月營收與趨勢</h3><span id="revenue-caption">—</span></div><canvas id="chart-revenue" class="chart" height="260"></canvas></article>
+        <article class="card wide-card"><div class="card-head"><h3>月營收與趨勢</h3><span id="revenue-caption">-</span></div><canvas id="chart-revenue" class="chart" height="260"></canvas></article>
         <article class="card"><div class="card-head"><h3>毛利率／營益率／淨利率</h3><span>最近 12 季</span></div><canvas id="chart-profitability" class="chart" height="240"></canvas></article>
         <article class="card"><div class="card-head"><h3>每股盈餘 EPS</h3><span>季</span></div><canvas id="chart-eps" class="chart" height="240"></canvas></article>
       </div>
@@ -230,35 +244,31 @@
       <div class="section-title"><div><h2>財務品質與股東回報</h2></div><p>整合資產負債、營運效率、現金流、股利與公司事件。</p></div>
       <div class="content-grid two">
         <article class="card"><div class="card-head"><h3>營運週轉天數</h3><span>越低通常越佳</span></div><canvas id="chart-efficiency" class="chart" height="240"></canvas></article>
-        <article class="card"><div class="card-head"><h3>現金流結構</h3><span>FCF＝營業現金流－資本支出</span></div><canvas id="chart-cashflow" class="chart" height="240"></canvas></article>
+        <article class="card"><div class="card-head"><h3>現金流結構<button type="button" class="info-tip" data-tip="自由現金流（FCF）：資料完整時＝營運現金流－資本支出；只有投資現金流的舊來源，改用「營業＋投資」近似值代替，此時只是近似值，不是正式 FCF。">?</button></h3><span>FCF＝營業現金流－資本支出</span></div><canvas id="chart-cashflow" class="chart" height="240"></canvas></article>
         <article class="card"><div class="card-head"><h3>財報健檢</h3><span>最新季</span></div><table id="health-table" class="key-table"></table></article>
         <article class="card"><div class="card-head"><h3>股利政策</h3><span>歷年配發</span></div><div class="table-scroll"><table id="dividend-table" class="data-table"></table></div></article>
         <article class="card span-two"><div class="card-head"><h3>公司事件與減資</h3><span>重大變動會影響歷史比較</span></div><div id="event-list" class="event-list"></div></article>
+        <article class="card span-two"><div class="card-head"><h3>董監事持股與大股東</h3><span>質押比例是籌碼面風險指標</span></div><div id="governance-panel"><div class="table-scroll"><table id="board-holdings-table" class="data-table"></table></div><div id="major-shareholders-list" class="event-list"></div></div></article>
       </div>
     </section>
 
     <section class="view" data-view-panel="nine-grid">
-      <div class="section-title"><div><h2>翁氏九宮格</h2></div><p>以相同季度軸比較九項核心指標，並保留離散資料節點。</p></div>
+      <div class="section-title"><div><h2>翁氏九宮格</h2></div><p>以同一批季度與月份資料，從十二個視角交叉檢查。</p></div>
       <div id="nine-signals" class="signal-strip"></div>
       <div class="nine-grid">
-        <article class="grid-card"><header><b>01</b><h3>營收與獲利率</h3><span data-signal="revenue"></span></header><canvas id="ng-profit" class="chart" height="145"></canvas></article>
-        <article class="grid-card"><header><b>02</b><h3>營運天數</h3><span data-signal="operating_cycle"></span></header><canvas id="ng-days" class="chart" height="145"></canvas></article>
-        <article class="grid-card"><header><b>03</b><h3>現金與負債</h3><span data-signal="debt_ratio"></span></header><canvas id="ng-debt" class="chart" height="145"></canvas></article>
-        <article class="grid-card"><header><b>04</b><h3>營業現金／營業利益／ROE</h3><span data-signal="cashflow"></span></header><canvas id="ng-cash-profit" class="chart" height="145"></canvas></article>
-        <article class="grid-card"><header><b>05</b><h3>資本支出與翁氏價值</h3><span data-signal="lan_value"></span></header><canvas id="ng-lan" class="chart" height="145"></canvas></article>
-        <article class="grid-card"><header><b>06</b><h3>核心／非核心 EPS</h3><span data-signal="core_business_ratio"></span></header><canvas id="ng-core-eps" class="chart" height="145"></canvas></article>
-        <article class="grid-card"><header><b>07</b><h3>營收同期比較</h3><span data-signal="gross_margin"></span></header><canvas id="ng-season-revenue" class="chart" height="145"></canvas></article>
-        <article class="grid-card"><header><b>08</b><h3>營運天數季節性</h3><span data-signal="eps"></span></header><canvas id="ng-season-days" class="chart" height="145"></canvas></article>
-        <article class="grid-card"><header><b>09</b><h3>現金流型態</h3><span>年度觀察</span></header><div id="ng-cash-class" class="classification"></div></article>
+        <article class="grid-card" data-grid-slot="01"><header><b>01</b><h3>營收與毛利／營益率</h3><span data-signal="revenue"></span></header><canvas id="ng-profit" class="chart" height="145"></canvas></article>
+        <article class="grid-card" data-grid-slot="02"><header><b>02</b><h3>收款／存貨／付款天數<button type="button" class="info-tip" data-tip="翁氏營運天數＝收款天數＋存貨天數（不含付款天數），是核心週轉效率指標，數字越低代表資金卡在營運週期的時間越短。">?</button></h3><span data-signal="operating_cycle"></span></header><canvas id="ng-days" class="chart" height="145"></canvas></article>
+        <article class="grid-card" data-grid-slot="03"><header><b>03</b><h3>營業／自由現金流與負債比<button type="button" class="info-tip" data-tip="自由現金流：資料完整時＝營運現金流－資本支出；只有投資現金流的舊來源，改用「營業＋投資」近似值代替，此時只是近似值，不是正式 FCF。">?</button></h3><span data-signal="debt_ratio"></span></header><canvas id="ng-debt" class="chart" height="145"></canvas></article>
+        <article class="grid-card" data-grid-slot="04"><header><b>04</b><h3>營業現金／營業利益／ROE</h3><span data-signal="cashflow"></span></header><canvas id="ng-cash-profit" class="chart" height="145"></canvas></article>
+        <article class="grid-card" data-grid-slot="05"><header><b>05</b><h3>資本支出與弦值<button type="button" class="info-tip" data-tip="翁氏價值（弦值）＝(ROE × 本業比率) ÷ PB，是全市場排名用的選股指標。數字越高，代表用越低的股價買到品質越高的本業 ROE。">?</button></h3><span data-signal="lan_value"></span></header><canvas id="ng-lan" class="chart" height="145"></canvas></article>
+        <article class="grid-card" data-grid-slot="06"><header><b>06</b><h3>本業／業外 EPS 與本業比率<button type="button" class="info-tip" data-tip="本業比率＝1 − 業外損益佔比；本業 EPS＝EPS × 本業比率。先剔除業外雜訊（處分資產、匯兌損益等），只評價本業真正的賺錢能力。">?</button></h3><span data-signal="core_business_ratio"></span></header><canvas id="ng-core-eps" class="chart" height="145"></canvas></article>
+        <article class="grid-card" data-grid-slot="07"><header><b>07</b><h3>營收淡旺季比較</h3><span data-signal="revenue"></span></header><canvas id="ng-season-revenue" class="chart" height="145"></canvas></article>
+        <article class="grid-card" data-grid-slot="08"><header><b>08</b><h3>營運天數：今年與去年</h3><span data-signal="operating_cycle"></span></header><canvas id="ng-season-days" class="chart" height="145"></canvas></article>
+        <article class="grid-card" data-grid-slot="09"><header><b>09</b><h3>近一年現金流分類<button type="button" class="info-tip" data-tip="自由現金流：資料完整時＝營運現金流－資本支出；只有投資現金流的舊來源，改用「營業＋投資」近似值代替，此時只是近似值，不是正式 FCF。">?</button></h3><span>近四季合計</span></header><canvas id="ng-cash-class" class="chart" height="145"></canvas></article>
+        <article class="grid-card" data-grid-slot="10"><header><b>10</b><h3>月營收、均線與布林通道<button type="button" class="info-tip" data-tip="上／下軌＝近 12 個月營收平均值 ± 1 倍標準差；圖上的 3M 均線是另一條近 3 個月平均線，兩者基準不同。營收站上上軌或跌破下軌，代表相對近一年區間出現罕見的高點或低點。">?</button></h3><span>近 24 個月</span></header><canvas id="ng-bollinger" class="chart" height="145"></canvas></article>
+        <article class="grid-card" data-grid-slot="11"><header><b>11</b><h3>合約負債<button type="button" class="info-tip" data-tip="客戶已預付但公司尚未認列營收的訂單金額（如預收貨款），常被視為未來營收的先行指標。">?</button></h3><span>訂單先行指標</span></header><canvas id="ng-contract" class="chart" height="145"></canvas></article>
+        <article class="grid-card" data-grid-slot="12"><header><b>12</b><h3>股價 K 線</h3><span>近 80 個交易日</span></header><canvas id="ng-price" class="chart" height="145"></canvas></article>
       </div>
-      <details class="extended-details">
-        <summary><span><b>延伸觀察</b>月營收布林、合約負債與股價 K 線</span><em>需要時展開</em></summary>
-        <div class="content-grid three">
-          <article class="card"><div class="card-head"><h3>月營收布林帶</h3><span>3M / 12M</span></div><canvas id="ng-bollinger" class="chart" height="200"></canvas></article>
-          <article class="card"><div class="card-head"><h3>合約負債</h3><span>領先觀察</span></div><canvas id="ng-contract" class="chart" height="200"></canvas></article>
-          <article class="card"><div class="card-head"><h3>股價 K 線</h3><span>日資料</span></div><canvas id="ng-price" class="chart" height="200"></canvas></article>
-        </div>
-      </details>
     </section>
 
     <section class="view" data-view-panel="market">
@@ -277,14 +287,14 @@
             <button data-ranking-market="otc" type="button">上櫃</button>
           </div>
         </div>
-        <div class="ranking-meta"><span>第二層・市場範圍</span><b id="ranking-scope">上市股票</b><em id="ranking-date">資料日期 —</em></div>
+        <div class="ranking-meta"><span>市場範圍</span><b id="ranking-scope">上市股票</b><em id="ranking-date">資料日期 -</em></div>
         <div class="table-scroll ranking-table-wrap"><table id="ranking-table" class="data-table discovery-table"></table></div>
         <p class="ranking-hint">點選任一股票即可加入目前研究流程；資料源尚未接妥的榜單會明確標示，不以其他指標替代。</p>
         <select id="ranking-category" class="sr-only" aria-hidden="true"><option value="turnover_listed">上市成交值</option></select>
       </article>
 
       <details class="market-group" open>
-        <summary><span><b>目前研究標的的資金流</b><strong id="market-current-stock">—</strong>第三層・點選排行股票後才會同步切換</span><em>展開／收合</em></summary>
+        <summary><span><b>目前研究標的的資金流</b><strong id="market-current-stock">-</strong>點選排行股票後同步切換</span><em>展開／收合</em></summary>
         <div class="content-grid two">
           <article class="card span-two"><div class="card-head"><h3>外資／大戶／籌碼集中度</h3><span>日</span></div><canvas id="chart-holdings" class="chart" height="240"></canvas></article>
           <article class="card"><div class="card-head"><h3>法人買賣超</h3><span>圖表＋明細</span></div><canvas id="chart-institution" class="chart" height="180"></canvas><div class="table-scroll compact-table"><table id="institution-table" class="data-table"></table></div></article>
@@ -325,6 +335,6 @@
 
   <div id="loading" class="loading hidden"><span></span><p>正在組裝研究資料…</p></div>
   <div id="error-banner" class="error-banner hidden"></div>
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=20260823-1"></script>
 </body>
 </html>
