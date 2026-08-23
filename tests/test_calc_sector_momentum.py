@@ -45,8 +45,8 @@ def test_percentile_rank_raises_on_empty_population():
         percentile_rank([], 1.0)
 
 
-def test_composite_rank_is_simple_average():
-    assert composite_rank(60.0, 70.0, 80.0) == pytest.approx(70.0)
+def test_composite_rank_uses_published_20_40_40_weights():
+    assert composite_rank(60.0, 70.0, 80.0) == pytest.approx(72.0)
 
 
 def test_composite_rank_returns_none_when_any_input_missing():

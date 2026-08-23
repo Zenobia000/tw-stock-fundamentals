@@ -2,10 +2,7 @@
 
 輸入序列一律採「新到舊」排序（index 0 = 最新），跟 app.calc.nine_grid 的慣例
 一致。核心概念是「同組內用 N 日報酬做百分位排名」+「對大盤的超額報酬」。
-
-已知限制：TheMarketMemo 原表 Rank 欄位的確切加權公式無法從樣本數字反推
-（試過簡單平均與幾種加權都對不上部分列），composite_rank 這裡先用
-20R/60R/120R 的簡單平均，是我方近似值，不是精確復刻。
+綜合 Rank 採 TheMarketMemo 公開的 20R/60R/120R = 20%/40%/40% 權重。
 """
 
 import statistics
@@ -60,10 +57,10 @@ def percentile_rank(values: list[float], value: float) -> float:
 def composite_rank(
     r20: float | None, r60: float | None, r120: float | None
 ) -> float | None:
-    """20R/60R/120R 的簡單平均。任一為 None 時回傳 None（近似值，見模組說明）。"""
+    """20R×20% + 60R×40% + 120R×40%；任一為 None 時回傳 None。"""
     if r20 is None or r60 is None or r120 is None:
         return None
-    return statistics.fmean([r20, r60, r120])
+    return r20 * 0.2 + r60 * 0.4 + r120 * 0.4
 
 
 def equal_weighted_index(member_closes_newest_first: list[list[float]]) -> list[float]:

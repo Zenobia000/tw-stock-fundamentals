@@ -57,6 +57,9 @@ def test_build_sector_momentum_golden_values(tmp_path):
     assert a["rel_20d"] == pytest.approx(0.06)
     assert a["rel_60d"] == pytest.approx(0.3308823529411765)
     assert a["rel_120d"] == pytest.approx(3.6)
+    assert len(a["trend"]) == 120
+    assert a["trend"][0] == pytest.approx(52.0)
+    assert a["trend"][-1] == pytest.approx(290.0)
     # 母體只有 A/B 兩檔，A 全期間都領先，percentile_rank 頂端 = 99
     assert a["rank_20d"] == pytest.approx(99.0)
     assert a["rank_60d"] == pytest.approx(99.0)
