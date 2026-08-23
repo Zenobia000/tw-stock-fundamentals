@@ -214,8 +214,17 @@ function canvasFrame(canvas) {
   return { ctx, width, height };
 }
 
-function noChartData(ctx, width, height, text = "待補資料源") {
-  ctx.fillStyle = "#68747a";
+// Canvas pixels can't be reached by CSS, so the market-overview dark cards (chart-market-index,
+// chart-futures) need their own palette. Additive/opt-in only — every other chart on the site
+// keeps calling drawChart()/drawAxes() with no `theme`, which defaults to the existing light
+// colors below, so this doesn't touch any other view.
+const CHART_THEME = {
+  light: { grid: "#d0d5d3", axisText: "#58676e", noData: "#68747a", pointFill: "#f4f5f2" },
+  dark: { grid: "#3d3d3d", axisText: "#999999", noData: "#999999", pointFill: "#242424" },
+};
+
+function noChartData(ctx, width, height, text = "待補資料源", theme = "light") {
+  ctx.fillStyle = (CHART_THEME[theme] || CHART_THEME.light).noData;
   ctx.font = "12px system-ui";
   ctx.textAlign = "center";
   ctx.fillText(text, width / 2, height / 2);
@@ -257,16 +266,17 @@ function chartX(index, count, left, plotWidth, banded = false) {
   return left + (plotWidth * index) / Math.max(count - 1, 1);
 }
 
-function drawAxes(ctx, width, height, domain, labels, padding, showEveryLabel = false, banded = false, axisFontSize = 11, targetLabelCount = 0) {
+function drawAxes(ctx, width, height, domain, labels, padding, showEveryLabel = false, banded = false, axisFontSize = 11, targetLabelCount = 0, theme = "light") {
+  const palette = CHART_THEME[theme] || CHART_THEME.light;
   const { left, right, top, bottom } = padding;
   const axisFont = `600 ${axisFontSize}px ui-monospace, monospace`;
-  ctx.strokeStyle = "#d0d5d3";
+  ctx.strokeStyle = palette.grid;
   ctx.lineWidth = 1;
   for (let i = 0; i <= 3; i += 1) {
     const y = top + ((height - top - bottom) * i) / 3;
     ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(width - right, y); ctx.stroke();
     const value = domain.max - ((domain.max - domain.min) * i) / 3;
-    ctx.fillStyle = "#58676e"; ctx.font = axisFont; ctx.textAlign = "right";
+    ctx.fillStyle = palette.axisText; ctx.font = axisFont; ctx.textAlign = "right";
     ctx.fillText(axisValue(value), left - 6, y + 3);
   }
   const count = labels.length;
@@ -277,7 +287,7 @@ function drawAxes(ctx, width, height, domain, labels, padding, showEveryLabel = 
           Math.round((i * (count - 1)) / Math.max(Math.min(targetLabelCount, count) - 1, 1))))]
       : [...new Set([0, Math.floor((count - 1) / 2), count - 1])];
   const rotate = showEveryLabel ? count > 8 : targetLabelCount > 0 && count > targetLabelCount;
-  ctx.textAlign = "center"; ctx.fillStyle = "#58676e"; ctx.font = axisFont;
+  ctx.textAlign = "center"; ctx.fillStyle = palette.axisText; ctx.font = axisFont;
   labelIndexes.forEach((index) => {
     if (index < 0 || !labels[index]) return;
     const x = chartX(index, count, left, width - left - right, banded);
@@ -295,12 +305,13 @@ function drawAxes(ctx, width, height, domain, labels, padding, showEveryLabel = 
   });
 }
 
-function drawChart(canvas, series, labels = [], { bars = [], zeroBased = false, rightAxis = [], labelCount = 0 } = {}) {
+function drawChart(canvas, series, labels = [], { bars = [], zeroBased = false, rightAxis = [], labelCount = 0, theme = "light" } = {}) {
+  const palette = CHART_THEME[theme] || CHART_THEME.light;
   const { ctx, width, height } = canvasFrame(canvas);
   const leftDomain = chartDomain(series.filter((_, index) => !rightAxis.includes(index)));
   const rightDomain = chartDomain(series.filter((_, index) => rightAxis.includes(index)));
   const domain = leftDomain || rightDomain;
-  if (!domain) { noChartData(ctx, width, height); return; }
+  if (!domain) { noChartData(ctx, width, height, undefined, theme); return; }
   if (zeroBased && domain.min > 0) domain.min = 0;
   const hasDualAxis = Boolean(leftDomain && rightDomain);
   const compact = width < 370;
@@ -314,7 +325,7 @@ function drawChart(canvas, series, labels = [], { bars = [], zeroBased = false, 
     bottom: rotatedLabels ? 48 : 29,
   };
   const axisFontSize = compact ? 9 : 11;
-  drawAxes(ctx, width, height, domain, labels, padding, showEveryLabel, banded, axisFontSize, labelCount);
+  drawAxes(ctx, width, height, domain, labels, padding, showEveryLabel, banded, axisFontSize, labelCount, theme);
   const plotW = width - padding.left - padding.right;
   const plotH = height - padding.top - padding.bottom;
   const yOf = (value, itemDomain = domain) => padding.top + ((itemDomain.max - Number(value)) / (itemDomain.max - itemDomain.min)) * plotH;
@@ -324,7 +335,7 @@ function drawChart(canvas, series, labels = [], { bars = [], zeroBased = false, 
   const barCount = Math.max(bars.length, 1);
 
   if (hasDualAxis) {
-    ctx.fillStyle = "#58676e"; ctx.font = `600 ${axisFontSize}px ui-monospace, monospace`; ctx.textAlign = "left";
+    ctx.fillStyle = palette.axisText; ctx.font = `600 ${axisFontSize}px ui-monospace, monospace`; ctx.textAlign = "left";
     for (let i = 0; i <= 3; i += 1) {
       const y = padding.top + (plotH * i) / 3;
       const value = rightDomain.max - ((rightDomain.max - rightDomain.min) * i) / 3;
@@ -363,7 +374,7 @@ function drawChart(canvas, series, labels = [], { bars = [], zeroBased = false, 
       if (!isValue(value)) return;
       ctx.beginPath();
       ctx.arc(xOf(index), yOf(value, itemDomain), maxLength > 36 ? 1.8 : 2.8, 0, Math.PI * 2);
-      ctx.fillStyle = "#f4f5f2";
+      ctx.fillStyle = palette.pointFill;
       ctx.fill();
       ctx.strokeStyle = color;
       ctx.lineWidth = 1.5;
@@ -764,19 +775,47 @@ function renderMarket(chips, radar) {
   renderMarketSnapshotCard(state.marketOverview);
 }
 
-// 大盤層級的三大法人買賣超／融資融券只有 TWSE/TPEX 各一列（合計數字，不是逐股)，
-// 直接依 market 分組成表格即可，不需要像個股那樣按日期轉寬表。
-function institutionalTradingRow(row) {
-  const netClass = isValue(row.net_amount) ? (row.net_amount >= 0 ? "positive" : "negative") : "";
-  return `<tr><td>${escapeHtml(row.market)}</td><td>${escapeHtml(row.institution)}</td>` +
-    `<td class="${netClass}">${fmt(row.net_amount, 0)}</td><td>${escapeHtml(row.date)}</td></tr>`;
+// 大盤層級的三大法人買賣超原始資料是「市場×法人」長表（含外資/投信/自營商的
+// 各種子分類與合計列，例如 TWSE 沒有「自營商合計」列，只有自行買賣/避險兩列）。
+// 畫面改成籌碼K線式的「上市／上櫃」雙欄對照表，列固定為 外資/投信/自營商 三列 —
+// 這裡是把同一份 rows 依 institution 語意分組相加，不是新的資料來源或欄位。
+const INSTITUTIONAL_PIVOT_ROWS = [
+  { label: "外資", match: (name) => name.includes("外資及陸資") && name.includes("不含") },
+  { label: "投信", match: (name) => name === "投信" },
+  { label: "自營商", match: (name) => name.startsWith("自營商(") },
+];
+
+function pivotInstitutionalNet(rows, market, match) {
+  const matched = rows.filter((row) => row.market === market && match(row.institution));
+  if (!matched.length) return null;
+  return matched.reduce((sum, row) => sum + (isValue(row.net_amount) ? Number(row.net_amount) : 0), 0);
+}
+
+function institutionalNetCell(value) {
+  if (!isValue(value)) return `<td>-</td>`;
+  const netClass = Number(value) >= 0 ? "positive" : "negative";
+  return `<td class="${netClass}">${fmt(Number(value) / 1e8, 2)} 億</td>`;
 }
 
 function renderMarketInstitutionalTable(rows) {
   const table = byId("market-institutional-table");
-  if (!rows?.length) { emptyTable(table, 4, "待補大盤三大法人買賣超資料"); return; }
-  table.innerHTML = `<thead><tr><th>市場</th><th>法人</th><th>買賣超</th><th>資料日</th></tr></thead>` +
-    `<tbody>${rows.map(institutionalTradingRow).join("")}</tbody>`;
+  const dateNote = byId("market-institutional-date");
+  if (!rows?.length) {
+    emptyTable(table, 3, "待補大盤三大法人買賣超資料");
+    if (dateNote) dateNote.textContent = "上市／上櫃各自最新一天";
+    return;
+  }
+  const body = INSTITUTIONAL_PIVOT_ROWS.map(({ label, match }) => {
+    const twse = pivotInstitutionalNet(rows, "TWSE", match);
+    const tpex = pivotInstitutionalNet(rows, "TPEX", match);
+    return `<tr><td>${escapeHtml(label)}</td>${institutionalNetCell(twse)}${institutionalNetCell(tpex)}</tr>`;
+  }).join("");
+  table.innerHTML = `<thead><tr><th></th><th>上市</th><th>上櫃</th></tr></thead><tbody>${body}</tbody>`;
+  if (dateNote) {
+    const twseDate = rows.find((row) => row.market === "TWSE")?.date;
+    const tpexDate = rows.find((row) => row.market === "TPEX")?.date;
+    dateNote.textContent = twseDate || tpexDate ? `上市 ${twseDate || "-"}／上櫃 ${tpexDate || "-"}` : "上市／上櫃各自最新一天";
+  }
 }
 
 function renderMarketMarginTable(rows) {
@@ -797,7 +836,7 @@ function renderMarketFutures(rows) {
     values: contracts.map((contract) => values.get(`${contract}:${institution}`) ?? null),
     digits: 0,
     suffix: " 口",
-  })), contracts, { bars: [0, 1, 2] });
+  })), contracts, { bars: [0, 1, 2], theme: "dark" });
   tableFromRows(byId("futures-table"), rows, [
     { key: "institution", label: "身份" }, { key: "contract", label: "商品" },
     { key: "long_oi", label: "多", format: (v) => fmt(v, 0) }, { key: "short_oi", label: "空", format: (v) => fmt(v, 0) },
@@ -852,6 +891,44 @@ function renderIndexOhlc(ohlc) {
   if (!strip) return;
   strip.innerHTML = indexOhlcBlock("加權指數", ohlc?.twse) + indexOhlcBlock("櫃買指數", ohlc?.otc);
   renderFuturesPriceTable(ohlc?.futures || []);
+}
+
+// 台指期貨沒有單一「最新報價」欄位，只有日盤／夜盤兩列 OHLC（見
+// docs/specs/market-daily-digest-contract.md §3.2）。夜盤收盤時間比日盤晚，
+// 用夜盤代表「目前最新」比較貼近參考截圖「台指電子盤」卡片的意圖；當天還沒有
+// 夜盤資料就退回日盤。
+function latestFuturesQuote(rows) {
+  if (!rows?.length) return null;
+  return rows.find((row) => row.session === "night") || rows.find((row) => row.session === "day") || rows[0];
+}
+
+// 頂部 3 張指數卡片：加權指數／櫃買指數／台指期貨。三者都只有「漲跌幅」而沒有
+// 「漲跌點數」欄位（index_ohlc.twse/otc 固定回傳 change_pct，futures_price_daily
+// 也只有 change_pct，見同一份契約），所以卡片只顯示 ％，不倒推點數避免四捨五入
+// 誤差跟官方公告的點數對不上。
+function marketIndexCardHtml(name, value, changePct) {
+  const hasChange = isValue(changePct);
+  const changeClass = hasChange ? (Number(changePct) >= 0 ? "positive" : "negative") : "neutral";
+  const arrow = hasChange ? (Number(changePct) >= 0 ? "▲" : "▼") : "";
+  const changeText = hasChange ? `${arrow}${pct(Math.abs(Number(changePct)), 2, true)}` : "-";
+  return `<div class="mkt-index-card">` +
+    `<span class="mkt-index-name">${escapeHtml(name)}</span>` +
+    `<strong class="mkt-index-value">${fmt(value, 0)}</strong>` +
+    `<span class="mkt-index-delta ${changeClass}">${changeText}</span>` +
+    `</div>`;
+}
+
+function renderMarketIndexCards(overview) {
+  const container = byId("market-index-cards");
+  if (!container) return;
+  const latestIndex = (overview.index_trend || []).at(-1);
+  const otc = overview.index_ohlc?.otc;
+  const futuresQuote = latestFuturesQuote(overview.index_ohlc?.futures);
+  container.innerHTML = [
+    marketIndexCardHtml("加權指數", latestIndex?.close_index, latestIndex?.change_pct),
+    marketIndexCardHtml("櫃買指數", otc?.close_index, otc?.change_pct),
+    marketIndexCardHtml("台指期貨", futuresQuote?.close, futuresQuote?.change_pct),
+  ].join("");
 }
 
 const SYNC_SIGNAL_META = {
@@ -975,13 +1052,141 @@ function renderIndustryFlowTreemap(rows) {
   }).join("");
 }
 
+// 加權指數貢獻排行 — 依市值占比反推的估算值（見 index_contribution 契約），不是交易所
+// 官方逐筆貢獻數字，所以卡頭 meta 文字跟 title tooltip 都要講明「估算」。
+function contributionRows(list, positive) {
+  if (!list?.length) {
+    return `<tr><td colspan="3"><div class="table-empty">今日無${positive ? "正" : "負"}貢獻資料</div></td></tr>`;
+  }
+  return list.map((row, i) => {
+    const cls = Number(row.contribution_pts) >= 0 ? "positive" : "negative";
+    const sign = Number(row.contribution_pts) >= 0 ? "+" : "";
+    return `<tr><td class="contribution-rank">${i + 1}</td>` +
+      `<td class="contribution-name"><b>${escapeHtml(row.name)}</b><span>${escapeHtml(row.code)}</span></td>` +
+      `<td class="contribution-pts ${cls}">${sign}${fmt(row.contribution_pts, 2)}</td></tr>`;
+  }).join("");
+}
+
+function renderIndexContribution(data) {
+  const posTable = byId("index-contribution-positive");
+  const negTable = byId("index-contribution-negative");
+  const meta = byId("index-contribution-meta");
+  if (!posTable || !negTable) return;
+  posTable.innerHTML = `<tbody>${contributionRows(data?.top_positive, true)}</tbody>`;
+  negTable.innerHTML = `<tbody>${contributionRows(data?.top_negative, false)}</tbody>`;
+  if (meta) {
+    meta.textContent = data
+      ? `權重資料日 ${data.weight_data_date || "-"}｜估算值，依市值占比推算，非官方精確數字`
+      : "待補加權指數貢獻排行資料";
+  }
+}
+
+// 個股漲跌分佈 — 11 桶區間長條圖 + 漲停/跌停統計卡。月新高／月新低目前資料庫累積天數
+// 不足以計算（見 market-daily-digest 契約），這裡故意不生 0，也不整卡拿掉，改用
+// "資料累積中" + title tooltip 明講原因，避免使用者誤以為當天真的 0 檔創新高/新低。
+function changeStatTile(label, valueHtml, valueClass, note) {
+  return `<div class="change-stat-tile">` +
+    `<span>${escapeHtml(label)}</span>` +
+    `<strong class="${valueClass}">${valueHtml}</strong>` +
+    (note ? `<small title="${escapeHtml(note)}">${escapeHtml(note)}</small>` : "") +
+    `</div>`;
+}
+
+// index 5 是 "0%" 那一桶；離中心越遠（>5%／<-5% 那兩端）heat-tier 越深，
+// 手法照抄 flowHeatClass／industry-treemap 的 gain-heat/loss-heat/heat-tier-N。
+function changeBucketHeat(index, count) {
+  if (!count) return "";
+  if (index === 5) return "neutral-bar";
+  const distance = Math.abs(index - 5);
+  const tier = distance >= 4 ? 3 : distance >= 2 ? 2 : 1;
+  return index < 5 ? `gain-heat heat-tier-${tier}` : `loss-heat heat-tier-${tier}`;
+}
+
+function renderStockChangeDistribution(data) {
+  const dateNote = byId("stock-change-distribution-date");
+  const statsEl = byId("stock-change-stats");
+  const bucketsEl = byId("stock-change-buckets");
+  const summaryEl = byId("stock-change-summary");
+  if (!statsEl || !bucketsEl) return;
+  if (!data) {
+    if (dateNote) dateNote.textContent = "資料讀取中…";
+    statsEl.innerHTML = emptyHtml("待補個股漲跌分佈資料");
+    bucketsEl.innerHTML = "";
+    if (summaryEl) summaryEl.innerHTML = "";
+    return;
+  }
+  if (dateNote) dateNote.textContent = `資料日 ${data.date || "-"}`;
+  const newHighNote = "資料庫目前累積的歷史交易日還不夠計算「股價月新高」，需要更多交易日歷史才能提供，不是 0 檔";
+  const newLowNote = "資料庫目前累積的歷史交易日還不夠計算「股價月新低」，需要更多交易日歷史才能提供，不是 0 檔";
+  statsEl.innerHTML = [
+    changeStatTile("漲停", fmt(data.limit_up_count, 0), "positive"),
+    changeStatTile("股價月新高", "資料累積中", "pending", newHighNote),
+    changeStatTile("股價月新低", "資料累積中", "pending", newLowNote),
+    changeStatTile("跌停", fmt(data.limit_down_count, 0), "negative"),
+  ].join("");
+  const buckets = data.buckets || [];
+  const maxCount = Math.max(...buckets.map((b) => Number(b.count) || 0), 1);
+  bucketsEl.innerHTML = buckets.map((b, i) => {
+    const count = Number(b.count) || 0;
+    const heightPct = Math.max((count / maxCount) * 100, count > 0 ? 3 : 0);
+    const heat = changeBucketHeat(i, count);
+    return `<div class="change-bucket" title="${escapeHtml(b.label)}：${fmt(b.count, 0)} 檔">` +
+      `<span class="change-bucket-count">${fmt(b.count, 0)}</span>` +
+      `<div class="change-bucket-bar ${heat}" style="height:${heightPct}%;"></div>` +
+      `<small>${escapeHtml(b.label)}</small></div>`;
+  }).join("");
+  if (summaryEl) {
+    summaryEl.innerHTML = `<span class="positive">▲ ${fmt(data.up_count, 0)} 檔上漲</span>` +
+      `<span class="change-flat">平盤 ${fmt(data.flat_count, 0)} 檔</span>` +
+      `<span class="negative">▼ ${fmt(data.down_count, 0)} 檔下跌</span>`;
+  }
+}
+
+// 類股成交金額比重分佈 — 橫向長條圖，用 --mkt-accent（比重語意）跟 .positive/.negative
+// 的漲跌語意分開，呼應既有排版「面積/顏色分工要單一」的原則。
+function renderIndustryTurnoverShare(rows) {
+  const container = byId("industry-turnover-bars");
+  if (!container) return;
+  const data = rows || [];
+  if (!data.length) {
+    container.innerHTML = emptyHtml("待補類股成交金額比重資料");
+    return;
+  }
+  const maxPct = Math.max(...data.map((row) => Number(row.pct_of_total) || 0), 1);
+  container.innerHTML = data.map((row) => {
+    const width = Math.max(((Number(row.pct_of_total) || 0) / maxPct) * 100, 2);
+    const tip = `${row.industry}｜成交金額 ${fmt(row.turnover, 0)} 元｜占大盤 ${pct(row.pct_of_total, 2, true)}｜成分股 ${fmt(row.member_count, 0)} 檔`;
+    return `<div class="turnover-bar-row" title="${escapeHtml(tip)}">` +
+      `<span class="turnover-bar-label">${escapeHtml(row.industry)}</span>` +
+      `<div class="turnover-bar-track"><div class="turnover-bar-fill" style="width:${width}%;"></div></div>` +
+      `<span class="turnover-bar-pct">${pct(row.pct_of_total, 2, true)}</span></div>`;
+  }).join("");
+}
+
+// 大盤委買委賣小卡 — 這不是即時累積委託，是「收盤前最後一次揭示」的加總，且只有
+// TWSE（上市）有這個欄位（TPEX 官方端點沒有揭示量），文字必須把兩件事都講清楚，
+// 不能讓人誤以為是即時或全市場數字。
+function renderMarketOrderBook(data) {
+  const el = byId("market-order-book");
+  if (!el) return;
+  if (!data) { el.innerHTML = ""; return; }
+  const tip = "上市（TWSE）收盤前最後一次揭示的委買委賣張數加總，不是即時委託、也不是全日累積委託量；上櫃官方端點沒有揭示量欄位，故不含上櫃";
+  el.innerHTML = `<span class="order-book-label" title="${escapeHtml(tip)}">尾盤最後揭示委買委賣（上市，張）</span>` +
+    `<span class="order-book-figures"><b class="positive">委買 ${fmt(data.total_bid_volume, 0)}</b><b class="negative">委賣 ${fmt(data.total_ask_volume, 0)}</b></span>` +
+    `<small>資料日 ${data.date || "-"}</small>`;
+}
+
 function renderMarketOverview(overview) {
   state.marketOverview = overview;
   const trend = overview.index_trend || [];
   drawChart(byId("chart-market-index"), [
     { name: "加權指數", values: trend.map((row) => row.close_index), digits: 0 },
-  ], trend.map((row) => row.date), { labelCount: 8 });
+  ], trend.map((row) => row.date), { labelCount: 8, theme: "dark" });
+  renderMarketIndexCards(overview);
   renderIndexOhlc(overview.index_ohlc);
+  renderMarketOrderBook(overview.market_order_book);
+  renderIndexContribution(overview.index_contribution);
+  renderStockChangeDistribution(overview.stock_change_distribution);
   renderMarketInstitutionalTable(overview.institutional_trading);
   renderMarketMarginTable(overview.margin_short);
   renderMarketFutures(overview.futures || []);
@@ -992,6 +1197,7 @@ function renderMarketOverview(overview) {
     { key: "pct_of_market", label: "大盤比重", format: (v) => pct(v, 3) },
     { key: "date", label: "資料日期" },
   ], "待補全市場流通股本與市值資料源");
+  renderIndustryTurnoverShare(overview.industry_turnover_share);
   renderSyncSignal(overview.sync_signal);
   renderStockCandidates(overview.stock_candidates);
   const candidatesDateNote = byId("stock-candidates-date");

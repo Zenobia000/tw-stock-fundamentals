@@ -296,12 +296,36 @@
   </section>
 
   <section id="market-overview-panel" class="sector-momentum" aria-label="大盤總覽">
+    <!-- 深色主題只包住「大盤總覽」到「產業資金流向」這段（對應 5 張參考截圖的內容），
+         「板塊動能」是既有且截圖沒有對應的獨立功能，維持原本淺色視覺不動，避免無依據地
+         改動它既有的 heatmap 配色系統。scope 靠 .mkt-dark 這個 class（不是全站變數），
+         不會外溢到 section 以外的其他 view。 -->
+    <div class="mkt-dark">
     <header class="momentum-header">
       <div class="momentum-heading">
         <h2>大盤總覽</h2>
         <p>指數走勢、三大法人與融資融券、期貨未平倉、產業資金流向 — 看盤先看大方向，再往下查個股。</p>
       </div>
     </header>
+
+    <div id="market-index-cards" class="mkt-index-cards" aria-label="即時指數"></div>
+
+    <article class="card wide-card" id="index-contribution-card" aria-label="加權指數貢獻排行">
+      <div class="card-head">
+        <h3>加權指數貢獻排行</h3>
+        <span id="index-contribution-meta" class="source-note" title="依個股當日漲跌幅 × 最近一次公告的市值占比估算，非交易所官方逐筆貢獻數字，僅供參考">讀取中…</span>
+      </div>
+      <div class="contribution-columns">
+        <div>
+          <div class="contribution-head gain">正貢獻</div>
+          <table id="index-contribution-positive" class="data-table contribution-table"><tbody></tbody></table>
+        </div>
+        <div>
+          <div class="contribution-head loss">負貢獻</div>
+          <table id="index-contribution-negative" class="data-table contribution-table"><tbody></tbody></table>
+        </div>
+      </div>
+    </article>
 
     <section id="market-hero" aria-label="今日結論">
       <div id="sync-signal-banner" class="sync-signal-banner">
@@ -324,18 +348,30 @@
       </article>
     </section>
 
+    <article class="card wide-card" id="stock-change-distribution-card" aria-label="個股漲跌分佈">
+      <div class="card-head">
+        <h3>個股漲跌分佈</h3>
+        <span id="stock-change-distribution-date">讀取中…</span>
+      </div>
+      <div id="stock-change-stats" class="change-stats-row"></div>
+      <div id="stock-change-buckets" class="change-bucket-chart"></div>
+      <div id="stock-change-summary" class="change-bucket-summary"></div>
+    </article>
+
     <div class="content-grid two market-overview-grid">
       <article class="card wide-card">
         <div class="card-head"><h3>加權指數走勢</h3><span>發行量加權股價指數</span></div>
         <canvas id="chart-market-index" class="chart" height="220"></canvas>
         <div id="index-ohlc-strip" class="index-ohlc-strip"></div>
+        <div id="market-order-book" class="order-book-mini"></div>
       </article>
-      <article class="card"><div class="card-head"><h3>三大法人買賣超</h3><span>上市／上櫃各自最新一天</span></div><div class="table-scroll compact-table"><table id="market-institutional-table" class="data-table"></table></div></article>
+      <article class="card"><div class="card-head"><h3>三大法人買賣超</h3><span id="market-institutional-date">上市／上櫃各自最新一天</span></div><div class="table-scroll compact-table"><table id="market-institutional-table" class="data-table"></table></div></article>
       <article class="card"><div class="card-head"><h3>融資融券增減</h3><span>上市／上櫃各自最新一天，張</span></div><div class="table-scroll compact-table"><table id="market-margin-table" class="data-table"></table></div></article>
       <article class="card"><div class="card-head"><h3>各商品法人期貨淨部位</h3><span>每個商品 × 法人</span></div><canvas id="chart-futures" class="chart" height="200"></canvas><div class="table-scroll compact-table"><table id="futures-table" class="data-table"></table></div></article>
       <article class="card"><div class="card-head"><h3>期貨大戶集中度</h3><span>十大交易人／十大特定法人淨未平倉，口</span></div><div class="table-scroll compact-table"><table id="futures-large-trader-table" class="data-table"></table></div></article>
       <article class="card"><div class="card-head"><h3>台指期貨日／夜盤 OHLC</h3><span>含結算價與漲跌幅</span></div><div class="table-scroll compact-table"><table id="futures-price-table" class="data-table"></table></div></article>
       <article class="card"><div class="card-head"><h3>市值占大盤比重</h3><span>全市場</span></div><div class="table-scroll"><table id="market-cap-table" class="data-table"></table></div></article>
+      <article class="card" id="industry-turnover-card"><div class="card-head"><h3>類股成交金額比重分佈</h3><span id="industry-turnover-date">依成交金額占大盤比重，前6大類股</span></div><div id="industry-turnover-bars" class="turnover-bar-list"></div></article>
     </div>
 
     <header class="momentum-header">
@@ -346,6 +382,7 @@
     </header>
     <p id="industry-flow-meta" class="source-note"></p>
     <div id="industry-flow-treemap" class="industry-treemap" role="img" aria-label="產業資金流向 treemap"></div>
+    </div><!-- /.mkt-dark -->
 
     <header class="momentum-header">
       <div class="momentum-heading">
@@ -384,6 +421,6 @@
 
   <div id="loading" class="loading hidden"><span></span><p>正在組裝研究資料…</p></div>
   <div id="error-banner" class="error-banner hidden"></div>
-  <script src="/static/app.js?v=20260823-1"></script>
+  <script src="/static/app.js?v=20260823-2"></script>
 </body>
 </html>
