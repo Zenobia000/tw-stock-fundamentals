@@ -380,3 +380,74 @@ def test_build_market_overview_index_ohlc_includes_amplitude_and_spread(tmp_path
     # 高低價差 = 45254.84-44583.87，跟籌碼K線截圖的 670.97 一致
     assert round(twse["high_low_spread"], 2) == 670.97
     conn.close()
+
+
+def test_build_market_overview_merges_industry_capital_flow_with_rankings(tmp_path):
+    from app.db.repository import upsert_market_stock_snapshot
+    from app.scrapers.twse_market_snapshot import MarketStockSnapshot
+
+    conn = get_connection(tmp_path / "test.db")
+    _DATE = "2026-08-21"
+
+    # 半導體：2330 有法人資料(institutional_trading_daily)也有全市場快照，
+    # 2454 只有全市場快照(沒有法人資料)——驗證 member_count(全市場=2) 跟
+    # institutional_member_count(法人=1) 語意分開。
+    upsert_industry_chain(
+        conn,
+        [
+            IndustryChainTag(stock_id="2330", industry="半導體", sub_industry="IC設計", tagged_at=_DATE),
+            IndustryChainTag(stock_id="2454", industry="半導體", sub_industry="IC設計", tagged_at=_DATE),
+            IndustryChainTag(stock_id="2882", industry="金融", sub_industry="金控", tagged_at=_DATE),
+        ],
+    )
+    upsert_stock(
+        conn,
+        StockIsinInfo(
+            code="2330", name="台積電", market="上市", security_type="股票",
+            industry="半導體業", isin="TW0002330008", listed_date="1994/09/05",
+        ),
+    )
+    upsert_institutional_trading(
+        conn, "2330", [InstitutionalTrade(date=_DATE, institution="外資", net=1200)],
+    )
+    upsert_industry_capital_flow(
+        conn,
+        [
+            {
+                "date": _DATE, "industry": "半導體", "net_amount": 1200.0,
+                "turnover_amount": None, "member_count": 1, "formula_version": "v1",
+            }
+        ],
+    )
+
+    def _snapshot(code, change_pct, turnover):
+        return MarketStockSnapshot(
+            date=_DATE, code=code, name=f"股{code}", open=10.0, high=10.0, low=10.0,
+            close=10.0, change_pct=change_pct, volume=100.0, transaction_count=10.0,
+            turnover=turnover, pe_ratio=None,
+        )
+
+    upsert_market_stock_snapshot(
+        conn,
+        [
+            _snapshot("2330", 5.0, 1_000_000.0),
+            _snapshot("2454", 1.0, 500_000.0),
+            _snapshot("2882", 2.0, 300_000.0),
+        ],
+    )
+
+    overview = build_market_overview(conn)
+    by_industry = {row["industry"]: row for row in overview["industry_capital_flow"]}
+
+    semi = by_industry["半導體"]
+    assert semi["net_amount"] == 1200.0  # 來自法人資料(institutional_trading_daily)
+    assert semi["turnover"] == 1_500_000.0  # 全市場成交金額加總(2330+2454)
+    assert semi["member_count"] == 2  # 全市場成分股數
+    assert semi["institutional_member_count"] == 1  # 有法人資料的成分股數，語意不同
+    assert {m["code"] for m in semi["members"]} == {"2330", "2454"}
+
+    finance = by_industry["金融"]
+    assert finance["net_amount"] is None  # 沒有法人資料，不是 0
+    assert finance["turnover"] == 300_000.0
+    assert finance["institutional_member_count"] is None
+    conn.close()

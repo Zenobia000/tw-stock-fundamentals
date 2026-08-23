@@ -541,6 +541,91 @@ def build_market_sync_signal(conn: sqlite3.Connection) -> dict:
     }
 
 
+def _merge_industry_capital_flow_with_rankings(
+    flow_rows: list[dict], rankings_data: dict
+) -> list[dict]:
+    """把 `compute_industry_rankings()` 的全市場漲跌幅／成交值／成分股清單，
+    合併進 `industry_capital_flow_daily` 的法人買賣超（張）資料，供產業資金
+    流向熱力圖同時呈現三個指標，而不是只有買賣超張數。
+
+    以 `compute_industry_rankings()` 的產業清單（全市場，`stock_industry_chain`
+    分類，通常 40 幾個產業）為主體——這是真正的全市場覆蓋；`industry_capital_flow_daily`
+    只涵蓋使用者實際 ingest 過的少數股票（見 `app.calc.industry_capital_flow`
+    docstring 已知缺口），若只用它當主體會漏掉大多數產業。`net_amount`
+    （法人買賣超張數）改成「補丁」欄位：能對到就填，對不到就是 `None`，
+    不是 0——沒有法人資料不等於零買賣超。
+
+    每筆回傳 dict：
+    - `industry`、`turnover`（全市場成交金額，元）、`change_pct`（全市場
+      成交金額加權平均漲跌幅，近似值，見 `app.calc.industry_rankings`
+      docstring）、`member_count`（全市場成分股數）都來自 rankings_data。
+    - `net_amount`（法人買賣超張數，見 `app.calc.industry_capital_flow`
+      docstring 已知缺口：單位是張不是金額）、`institutional_member_count`
+      （有法人資料的成分股數，語意跟上面 `member_count` 不同，刻意分開兩個
+      欄位不合併）來自 `flow_rows`，對不到的產業兩者皆為 `None`。
+    - `members`：該產業全市場成分股清單（`{"code","name","change_pct","volume","turnover","close"}`），
+      供前端點擊下鑽用。
+    - `formula_version`／`date` 沿用 `flow_rows` 原本的欄位（找不到對應法人
+      資料時，`date` 用 `rankings_data["date"]`，`formula_version` 為
+      `None`——這個產業當天完全沒有走 `compute_industry_capital_flow` 那套
+      衍生計算，不能宣稱套用了那個公式版本）。舊欄位名 `turnover_amount`
+      不再輸出——它跟 `turnover` 是同一個數字的兩個名字（兩邊都是對
+      `market_stock_snapshot_daily` 全市場成交金額做同一種 DISTINCT
+      (industry, stock_id) 加總，只是分別在兩個計算模組裡各自算一次），
+      前端一律改讀 `turnover`。
+
+    依 `turnover` 由大到小排序（呼應「面積＝成交金額」的視覺設計）。
+    """
+    flow_by_industry = {row["industry"]: row for row in flow_rows}
+    members_by_industry = rankings_data.get("members_by_industry") or {}
+    ranking_entries = rankings_data.get("all_by_turnover") or []
+
+    merged = []
+    seen_industries = set()
+    for entry in ranking_entries:
+        industry = entry["industry"]
+        seen_industries.add(industry)
+        flow_row = flow_by_industry.get(industry)
+        merged.append(
+            {
+                "date": flow_row["date"] if flow_row else rankings_data.get("date"),
+                "industry": industry,
+                "net_amount": flow_row["net_amount"] if flow_row else None,
+                "turnover": entry["turnover"],
+                "change_pct": entry["change_pct"],
+                "member_count": entry["member_count"],
+                "institutional_member_count": (
+                    flow_row["member_count"] if flow_row else None
+                ),
+                "formula_version": flow_row["formula_version"] if flow_row else None,
+                "members": members_by_industry.get(industry, []),
+            }
+        )
+
+    # rankings_data 理論上涵蓋全市場，正常不會有 flow_rows 獨有的產業；防禦性地
+    # 補上以免真的出現落差時悄悄漏資料（例如某產業只有法人 ingest 過的股票，
+    # 剛好那批股票當天全部停牌、market_stock_snapshot_daily 抓不到）。
+    for industry, flow_row in flow_by_industry.items():
+        if industry in seen_industries:
+            continue
+        merged.append(
+            {
+                "date": flow_row["date"],
+                "industry": industry,
+                "net_amount": flow_row["net_amount"],
+                "turnover": flow_row["turnover_amount"],
+                "change_pct": None,
+                "member_count": None,
+                "institutional_member_count": flow_row["member_count"],
+                "formula_version": flow_row["formula_version"],
+                "members": [],
+            }
+        )
+
+    merged.sort(key=lambda row: (row["turnover"] is None, -(row["turnover"] or 0.0)))
+    return merged
+
+
 def build_market_overview(conn: sqlite3.Connection) -> dict:
     """大盤總覽的單一組裝入口 — 首頁不查個股就能看到的獨立頂層 view。
 
@@ -568,6 +653,13 @@ def build_market_overview(conn: sqlite3.Connection) -> dict:
     radar = build_market_radar(conn)
     sync_signal = build_market_sync_signal(conn)
     snapshot_date = queries.get_latest_market_stock_snapshot_date(conn)
+    industry_rankings_data = (
+        compute_industry_rankings(conn, snapshot_date)
+        if snapshot_date is not None
+        else {"date": None, "top_gainers": [], "top_losers": [], "top_volume": [], "top_turnover": [],
+              "all_by_gainers": [], "all_by_losers": [], "all_by_volume": [], "all_by_turnover": [],
+              "members_by_industry": {}}
+    )
     return {
         "index_trend": _dicts(
             queries.get_sector_index_series(conn, _SECTOR_BENCHMARK_INDEX_NAME)
@@ -593,7 +685,9 @@ def build_market_overview(conn: sqlite3.Connection) -> dict:
                 queries.get_sector_index_series(conn, _OTC_INDEX_NAME)
             ),
         },
-        "industry_capital_flow": _dicts(queries.get_industry_capital_flow_latest(conn)),
+        "industry_capital_flow": _merge_industry_capital_flow_with_rankings(
+            _dicts(queries.get_industry_capital_flow_latest(conn)), industry_rankings_data
+        ),
         "sync_signal": sync_signal,
         "stock_rankings": (
             compute_stock_rankings(conn, snapshot_date)
@@ -612,12 +706,7 @@ def build_market_overview(conn: sqlite3.Connection) -> dict:
             if snapshot_date is not None
             else []
         ),
-        "industry_rankings": (
-            compute_industry_rankings(conn, snapshot_date)
-            if snapshot_date is not None
-            else {"date": None, "top_gainers": [], "top_losers": [], "top_volume": [], "top_turnover": [],
-                  "all_by_gainers": [], "all_by_losers": [], "all_by_volume": [], "all_by_turnover": []}
-        ),
+        "industry_rankings": industry_rankings_data,
         "index_contribution": compute_index_contribution(conn, top_n=20),
         "market_order_book": (
             compute_market_order_book(conn, snapshot_date)
@@ -703,6 +792,52 @@ def _aggregate_momentum(member_ids: set[str], price_series: dict[str, list[float
     }
 
 
+def _member_stock_details(
+    conn: sqlite3.Connection,
+    member_ids: set[str],
+    name_by_id: dict[str, str],
+    snapshot_date: str | None,
+) -> list[dict]:
+    """member_ids 這組股票代碼的成分股清單（下鑽用途，供前端「點擊→看成分股」）。
+    `name` 來自呼叫端已查好的 stock_universe_top100 名稱對照（不重查該表）。
+    `change_pct`/`close` 另外查一次 `snapshot_date` 當日的 market_stock_snapshot_daily
+    ——當日沒有快照資料的股票（例如停牌）兩欄回 None，但仍留在清單裡，因為
+    member 名單本身跟「今天有沒有快照資料」無關。依 change_pct 由大到小排序，
+    None 排最後。
+    """
+    if not member_ids:
+        return []
+
+    snapshot_by_id: dict[str, sqlite3.Row] = {}
+    if snapshot_date is not None:
+        ids = list(member_ids)
+        placeholders = ",".join("?" for _ in ids)
+        rows = conn.execute(
+            f"""
+            SELECT code, change_pct, close
+            FROM market_stock_snapshot_daily
+            WHERE date = ? AND code IN ({placeholders})
+            """,
+            (snapshot_date, *ids),
+        ).fetchall()
+        snapshot_by_id = {row["code"]: row for row in rows}
+
+    details = []
+    for stock_id in member_ids:
+        snapshot = snapshot_by_id.get(stock_id)
+        details.append(
+            {
+                "code": stock_id,
+                "name": name_by_id.get(stock_id),
+                "change_pct": snapshot["change_pct"] if snapshot is not None else None,
+                "close": snapshot["close"] if snapshot is not None else None,
+            }
+        )
+
+    details.sort(key=lambda d: (d["change_pct"] is None, -(d["change_pct"] or 0.0)))
+    return details
+
+
 def _rank_entries(entries: list[dict]) -> None:
     """就地幫 entries 加上 rank_20d/60d/120d/rank；母體就是傳入的這批 entries。"""
     for horizon in ("20d", "60d", "120d"):
@@ -728,9 +863,20 @@ def build_sub_industry_momentum(conn: sqlite3.Connection) -> list[dict]:
     這樣「哪個細分類全市場最熱」還是看得到，不因為巢狀顯示而改變排名意義。
     沒有 REL 欄位（沒有天然的 benchmark 可比）。member_count 少的組排名參考
     價值較低，見 docs/specs/sector-momentum-formula-contract.md「細產業版」。
+
+    每個 industry entry 與每個 sub_industry entry 都額外帶一份 `members`
+    （`[{"code", "name", "change_pct", "close"}, ...]`，依 change_pct 由大到小
+    排序），供前端「點擊→看成分股」下鑽用；見 `_member_stock_details`。`name`
+    來自 stock_universe_top100，`change_pct`/`close` 來自當日
+    market_stock_snapshot_daily——當日沒有快照資料的股票（例如停牌）該兩欄為
+    None，但不會被排除在 members 之外，因為 member 名單本身跟今天有沒有快照
+    資料無關。
     """
     tags = queries.get_stock_industry_chain(conn)
-    top100_ids = {row["stock_id"] for row in queries.get_stock_universe_top100(conn)}
+    top100 = queries.get_stock_universe_top100(conn)
+    top100_ids = {row["stock_id"] for row in top100}
+    name_by_id = {row["stock_id"]: row["stock_name"] for row in top100}
+    snapshot_date = queries.get_latest_market_stock_snapshot_date(conn)
 
     price_series: dict[str, list[float]] = {}
     for stock_id in top100_ids:
@@ -751,6 +897,7 @@ def build_sub_industry_momentum(conn: sqlite3.Connection) -> list[dict]:
             "sub_industry": sub_industry,
             **_aggregate_momentum(member_ids, price_series),
         }
+        entry["members"] = _member_stock_details(conn, member_ids, name_by_id, snapshot_date)
         sub_entries_by_industry[industry].append(entry)
         all_sub_entries.append(entry)
     _rank_entries(all_sub_entries)
@@ -761,6 +908,7 @@ def build_sub_industry_momentum(conn: sqlite3.Connection) -> list[dict]:
             "industry": industry,
             **_aggregate_momentum(member_ids, price_series),
         }
+        entry["members"] = _member_stock_details(conn, member_ids, name_by_id, snapshot_date)
         entry["sub_industries"] = sub_entries_by_industry[industry]
         industries.append(entry)
     _rank_entries(industries)

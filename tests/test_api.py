@@ -179,6 +179,7 @@ def test_market_overview_endpoint_returns_shape_without_data(client):
     assert body["industry_rankings"] == {
         "date": None, "top_gainers": [], "top_losers": [], "top_volume": [], "top_turnover": [],
         "all_by_gainers": [], "all_by_losers": [], "all_by_volume": [], "all_by_turnover": [],
+        "members_by_industry": {},
     }
     assert body["index_contribution"] == {
         "weight_data_date": None,

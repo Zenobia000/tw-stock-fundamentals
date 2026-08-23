@@ -16,11 +16,13 @@ from app.db.repository import (
     Top100Entry,
     upsert_daily_prices,
     upsert_industry_chain,
+    upsert_market_stock_snapshot,
     upsert_stock,
     upsert_stock_universe_top100,
 )
 from app.scrapers.finmind_industry_chain import IndustryChainTag
 from app.scrapers.twse_isin import StockIsinInfo
+from app.scrapers.twse_market_snapshot import MarketStockSnapshot
 from app.scrapers.twse_stock_day import DailyPrice
 
 _DAYS = 121
@@ -200,4 +202,57 @@ def test_build_sub_industry_momentum_industry_level_unions_all_sub_industries(
     expected_r20 = n_day_return(expected_closes, 20)
     assert ind_a["return_20d"] == pytest.approx(expected_r20)
     assert ind_a["return_20d"] != pytest.approx(sub_by_name["SubA"]["return_20d"])
+    conn.close()
+
+
+def _snapshot(code: str, change_pct: float, close: float = 140.0) -> MarketStockSnapshot:
+    return MarketStockSnapshot(
+        date="2026-08-21",
+        code=code,
+        name=code,
+        open=close,
+        high=close,
+        low=close,
+        close=close,
+        change_pct=change_pct,
+        volume=1000.0,
+        transaction_count=10.0,
+        turnover=close * 1000.0,
+        pe_ratio=15.0,
+    )
+
+
+def test_build_sub_industry_momentum_attaches_member_stock_details(tmp_path):
+    """industry／sub_industry 兩層都要帶 members 清單，供前端下鑽用：
+    - name 對到 stock_universe_top100 的股名
+    - change_pct/close 對到當日 market_stock_snapshot_daily，依 change_pct 由大到小排序
+    - 當日沒有快照資料的股票（這裡是 S3）change_pct/close 為 None，但仍留在清單裡
+    """
+    conn = get_connection(tmp_path / "test.db")
+    _seed(conn)
+    upsert_market_stock_snapshot(
+        conn,
+        [
+            _snapshot("S1", change_pct=2.5),
+            _snapshot("S2", change_pct=5.0),
+            # S3 故意不給快照資料
+        ],
+    )
+
+    industries = build_sub_industry_momentum(conn)
+    by_name = {e["industry"]: e for e in industries}
+
+    ind_a = by_name["IndA"]
+    assert ind_a["members"] == [
+        {"code": "S2", "name": "S2", "change_pct": 5.0, "close": 140.0},
+        {"code": "S1", "name": "S1", "change_pct": 2.5, "close": 140.0},
+    ]
+    sub_a = ind_a["sub_industries"][0]
+    assert sub_a["members"] == ind_a["members"]
+
+    ind_b = by_name["IndB"]
+    assert ind_b["members"] == [
+        {"code": "S3", "name": "S3", "change_pct": None, "close": None},
+    ]
+    assert ind_b["sub_industries"][0]["members"] == ind_b["members"]
     conn.close()

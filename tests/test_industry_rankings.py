@@ -92,3 +92,53 @@ def test_full_lists_are_not_truncated_by_top_n(tmp_path):
     assert len(result["top_gainers"]) == 6
     assert len(result["all_by_gainers"]) == 8
     conn.close()
+
+
+def test_members_by_industry_contains_sorted_stock_details(tmp_path):
+    conn = get_connection(tmp_path / "test.db")
+    upsert_industry_chain(conn, [_tag("2330", "半導體"), _tag("2454", "半導體")])
+    upsert_market_stock_snapshot(
+        conn,
+        [
+            _snap("2330", 10.0, 100, turnover=900),
+            _snap("2454", -10.0, 100, turnover=100),
+        ],
+    )
+
+    result = compute_industry_rankings(conn, DATE)
+
+    members = result["members_by_industry"]["半導體"]
+    assert [m["code"] for m in members] == ["2330", "2454"]
+    assert members[0] == {
+        "code": "2330",
+        "name": "股2330",
+        "change_pct": 10.0,
+        "volume": 100,
+        "turnover": 900,
+        "close": 100.0,
+    }
+    assert members[1]["code"] == "2454"
+    assert members[1]["change_pct"] == -10.0
+    conn.close()
+
+
+def test_members_by_industry_sorts_none_change_pct_last(tmp_path):
+    conn = get_connection(tmp_path / "test.db")
+    upsert_industry_chain(
+        conn, [_tag("1101", "水泥"), _tag("1102", "水泥"), _tag("1103", "水泥")]
+    )
+    upsert_market_stock_snapshot(
+        conn,
+        [
+            _snap("1101", 3.0, 100, turnover=100),
+            _snap("1102", None, 100, turnover=100),
+            _snap("1103", 7.0, 100, turnover=100),
+        ],
+    )
+
+    result = compute_industry_rankings(conn, DATE)
+
+    members = result["members_by_industry"]["水泥"]
+    assert [m["code"] for m in members] == ["1103", "1101", "1102"]
+    assert members[-1]["change_pct"] is None
+    conn.close()

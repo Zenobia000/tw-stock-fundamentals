@@ -43,14 +43,22 @@ def compute_industry_rankings(conn: sqlite3.Connection, date: str, top_n: int = 
       這個 industry 的個股數。
 
     當日沒有任何 `market_stock_snapshot_daily` 資料時，所有清單回傳空陣列。
+
+    另外回傳 `members_by_industry`：`dict[str, list[dict]]`，key 是
+    `industry`，value 是該產業當日的成分股清單（供前端「點擊產業→看
+    成分股」下鑽用，不用再打第二次 API）。每筆成分股欄位：
+    `code`／`name`／`change_pct`／`volume`／`turnover`／`close`，
+    依 `change_pct` 由大到小排序（`change_pct` 為 `None` 的排在最後）。
     """
     rows = conn.execute(
         """
         SELECT chain.industry AS industry,
                snap.code AS code,
+               snap.name AS name,
                snap.change_pct AS change_pct,
                snap.volume AS volume,
-               snap.turnover AS turnover
+               snap.turnover AS turnover,
+               snap.close AS close
         FROM market_stock_snapshot_daily AS snap
         JOIN (
             SELECT DISTINCT industry, stock_id FROM stock_industry_chain
@@ -61,6 +69,7 @@ def compute_industry_rankings(conn: sqlite3.Connection, date: str, top_n: int = 
     ).fetchall()
 
     buckets: dict[str, dict] = {}
+    members_by_industry: dict[str, list[dict]] = {}
     for row in rows:
         industry = row["industry"]
         bucket = buckets.setdefault(
@@ -79,6 +88,22 @@ def compute_industry_rankings(conn: sqlite3.Connection, date: str, top_n: int = 
         bucket["volume"] += volume
         bucket["turnover"] += turnover
         bucket["member_count"] += 1
+
+        members_by_industry.setdefault(industry, []).append(
+            {
+                "code": row["code"],
+                "name": row["name"],
+                "change_pct": row["change_pct"],
+                "volume": row["volume"],
+                "turnover": row["turnover"],
+                "close": row["close"],
+            }
+        )
+
+    for members in members_by_industry.values():
+        members.sort(
+            key=lambda m: (m["change_pct"] is None, -(m["change_pct"] or 0.0))
+        )
 
     entries = []
     for industry, bucket in buckets.items():
@@ -115,4 +140,5 @@ def compute_industry_rankings(conn: sqlite3.Connection, date: str, top_n: int = 
         "all_by_losers": by_change_asc,
         "all_by_volume": by_volume,
         "all_by_turnover": by_turnover,
+        "members_by_industry": members_by_industry,
     }
