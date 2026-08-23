@@ -4,6 +4,7 @@ import sqlite3
 from collections import defaultdict
 from dataclasses import asdict
 
+from app.calc import market_sync
 from app.calc.market_valuation import market_median, relative_premium_pct
 from app.calc.nine_grid import compute_revenue_bollinger
 from app.calc.revenue import compute_revenue_signals
@@ -13,6 +14,7 @@ from app.calc.sector_momentum import (
     n_day_return,
     percentile_rank,
 )
+from app.calc.stock_candidates import compute_stock_candidates
 from app.calc.valuation import quarter_over_quarter_signal
 from app.calc.workbook_model import ValuationModelOptions
 from app.db import queries
@@ -433,6 +435,95 @@ def build_market_radar(conn: sqlite3.Connection) -> dict:
     }
 
 
+_OTC_INDEX_NAME = "櫃買指數"
+_LARGE_TRADER_GROUPS = ("十大交易人", "十大特定法人")
+
+
+def _index_close_summary(conn: sqlite3.Connection, index_name: str) -> dict | None:
+    """指數收盤摘要。開高低目前無官方資料（TWSE MI_INDEX 不提供，見
+    docs/specs/market-daily-digest-contract.md 3.2 節），固定回傳 None，
+    不得用收盤價回推假造。"""
+    rows = queries.get_sector_index_series(conn, index_name)
+    if not rows:
+        return None
+    latest = rows[-1]
+    return {
+        "date": latest["date"],
+        "close_index": latest["close_index"],
+        "change_pct": latest["change_pct"],
+        "open_index": None,
+        "high_index": None,
+        "low_index": None,
+    }
+
+
+def build_market_sync_signal(conn: sqlite3.Connection) -> dict:
+    """契約 4.1～4.4 節：現貨×期貨×融資融券×大戶集中度合成單一 sync_signal。
+
+    任一層資料不足（累積不到前一交易日、或大戶集中度新表當天還沒資料）一律
+    明講「資料不足」，不拿預設值套用 4.4 節公式假裝算出結果——呼應 4.3 節
+    「大戶一致性資料未到位時回傳 null，不得省略成 true」的同一個原則，這裡
+    套用到整個訊號燈：`insufficient_data=True` 時 `signal` 固定為 `YELLOW`
+    （契約 4.4 節「其餘情況」的一種），前端要顯示「資料不足」而不是當作真的
+    算出一般狀態。
+    """
+    foreign_rows = queries.get_market_foreign_net_recent(conn, limit=2)
+    futures_rows = queries.get_futures_oi_recent(conn, limit=2)
+    margin_rows = queries.get_market_margin_balance_recent(conn, limit=2)
+    large_trader_by_group = _map_by(
+        queries.get_futures_large_trader_latest(conn), "trader_group"
+    )
+
+    spot = None
+    if foreign_rows and foreign_rows[0]["foreign_net_amount"] is not None:
+        spot = market_sync.spot_direction(foreign_rows[0]["foreign_net_amount"])
+
+    futures_dir = None
+    if len(futures_rows) >= 2:
+        today_oi, prev_oi = futures_rows[0]["net_oi"], futures_rows[1]["net_oi"]
+        if today_oi is not None and prev_oi is not None:
+            futures_dir = market_sync.futures_direction(today_oi, prev_oi)
+
+    margin_change_pct = None
+    if len(margin_rows) >= 2:
+        today_bal, prev_bal = margin_rows[0]["margin_balance"], margin_rows[1]["margin_balance"]
+        if today_bal is not None and prev_bal:
+            margin_change_pct = (today_bal - prev_bal) / prev_bal
+
+    top10_trader = large_trader_by_group.get(_LARGE_TRADER_GROUPS[0])
+    top10_specific = large_trader_by_group.get(_LARGE_TRADER_GROUPS[1])
+    trader_agree = market_sync.large_trader_agree(
+        top10_trader["net_oi"] if top10_trader else None,
+        top10_specific["net_oi"] if top10_specific else None,
+    )
+
+    spot_futures_status = None
+    margin_label = None
+    signal = "YELLOW"
+    insufficient_data = True
+    if spot is not None and futures_dir is not None and margin_change_pct is not None:
+        spot_futures_status = market_sync.spot_futures_sync(spot, futures_dir)
+        margin_label = market_sync.margin_signal(spot, margin_change_pct)
+        signal = market_sync.sync_signal(spot_futures_status, margin_label)
+        insufficient_data = False
+
+    date = foreign_rows[0]["date"] if foreign_rows else (
+        futures_rows[0]["date"] if futures_rows else None
+    )
+
+    return {
+        "date": date,
+        "signal": signal,
+        "spot_direction": spot,
+        "futures_direction": futures_dir,
+        "spot_futures_status": spot_futures_status,
+        "margin_change_pct": margin_change_pct,
+        "margin_signal": margin_label,
+        "large_trader_agree": trader_agree,
+        "insufficient_data": insufficient_data,
+    }
+
+
 def build_market_overview(conn: sqlite3.Connection) -> dict:
     """大盤總覽的單一組裝入口 — 首頁不查個股就能看到的獨立頂層 view。
 
@@ -440,8 +531,20 @@ def build_market_overview(conn: sqlite3.Connection) -> dict:
     同一份 SQL；新增大盤層級三大法人買賣超、融資融券增減（TWSE/TPEX 各自
     最新一天）與大盤指數走勢，並整併原本獨立 overlay 的板塊動能／細產業動能，
     讓「指數→資金流向→籌碼→產業」一次到位，個股頁的快照卡也吃同一份資料。
+
+    契約新增欄位（`docs/specs/market-daily-digest-contract.md` API 邊界）：
+    `futures_large_trader`、`index_ohlc`、`industry_capital_flow`、
+    `sync_signal`、`stock_candidates`。缺資料一律回傳 `null`/空陣列，不省略
+    欄位、不用 0 偽裝。
     """
     radar = build_market_radar(conn)
+    sync_signal = build_market_sync_signal(conn)
+    candidates_date = queries.get_latest_industry_capital_flow_date(conn)
+    candidates = (
+        compute_stock_candidates(conn, candidates_date, sync_signal["signal"])
+        if candidates_date is not None
+        else []
+    )
     return {
         "index_trend": _dicts(
             queries.get_sector_index_series(conn, _SECTOR_BENCHMARK_INDEX_NAME)
@@ -455,6 +558,15 @@ def build_market_overview(conn: sqlite3.Connection) -> dict:
         "rankings": radar["rankings"],
         "sector_momentum": build_sector_momentum(conn),
         "sub_industry_momentum": build_sub_industry_momentum(conn),
+        "futures_large_trader": _dicts(queries.get_futures_large_trader_latest(conn)),
+        "index_ohlc": {
+            "twse": _index_close_summary(conn, _SECTOR_BENCHMARK_INDEX_NAME),
+            "otc": _index_close_summary(conn, _OTC_INDEX_NAME),
+            "futures": _dicts(queries.get_futures_price_latest(conn)),
+        },
+        "industry_capital_flow": _dicts(queries.get_industry_capital_flow_latest(conn)),
+        "sync_signal": sync_signal,
+        "stock_candidates": candidates,
     }
 
 

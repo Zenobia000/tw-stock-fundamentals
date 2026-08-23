@@ -153,10 +153,21 @@ def test_market_overview_endpoint_returns_shape_without_data(client):
         "rankings",
         "sector_momentum",
         "sub_industry_momentum",
+        "futures_large_trader",
+        "index_ohlc",
+        "industry_capital_flow",
+        "sync_signal",
+        "stock_candidates",
     }
     assert body["index_trend"] == []
     assert body["institutional_trading"] == []
     assert body["margin_short"] == []
+    assert body["futures_large_trader"] == []
+    assert body["index_ohlc"] == {"twse": None, "otc": None, "futures": []}
+    assert body["industry_capital_flow"] == []
+    assert body["sync_signal"]["signal"] == "YELLOW"
+    assert body["sync_signal"]["insufficient_data"] is True
+    assert body["stock_candidates"] == []
 
 
 def test_valuation_benchmark_endpoint_returns_none_fields_without_data(client):

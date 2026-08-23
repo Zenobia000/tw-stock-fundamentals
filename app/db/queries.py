@@ -320,3 +320,114 @@ def get_stock_universe_top100(conn: sqlite3.Connection) -> list[sqlite3.Row]:
         """,
         (watermark["data_as_of"], watermark["canonical_source"]),
     ).fetchall()
+
+
+# 外資「外資及陸資＋外資自營商」合計欄位名：TWSE／TPEX 兩邊 scraper 對「不含自營商」
+# 那一列的命名不同（見 app/scrapers/twse_market_institutional.py 與
+# tpex_market_institutional.py 的原始欄位名），這裡各取一個代表列＋外資自營商相加，
+# 避免用「XX合計」重複列（TPEX 的「外資及陸資合計」與「外資及陸資(不含自營商)」
+# 目前數值相同，是同一件事的兩個標籤，SUM 兩者會重複計算）。
+_FOREIGN_INSTITUTION_LABELS = (
+    "外資及陸資(不含外資自營商)",
+    "外資及陸資(不含自營商)",
+    "外資自營商",
+)
+
+
+def get_market_foreign_net_recent(
+    conn: sqlite3.Connection, limit: int = 2
+) -> list[sqlite3.Row]:
+    """契約 4.1 節「外資」= 外資及陸資 + 外資自營商，TWSE+TPEX 全市場合計，
+    近 `limit` 個交易日，最新在前。"""
+    placeholders = ",".join("?" for _ in _FOREIGN_INSTITUTION_LABELS)
+    return conn.execute(
+        f"""
+        SELECT date, SUM(net_amount) AS foreign_net_amount
+        FROM market_institutional_trading_daily
+        WHERE institution IN ({placeholders})
+        GROUP BY date
+        ORDER BY date DESC
+        LIMIT ?
+        """,
+        (*_FOREIGN_INSTITUTION_LABELS, limit),
+    ).fetchall()
+
+
+def get_market_margin_balance_recent(
+    conn: sqlite3.Connection, limit: int = 2
+) -> list[sqlite3.Row]:
+    """契約 4.2 節融資餘額，TWSE+TPEX 全市場合計，近 `limit` 個交易日，最新在前。"""
+    return conn.execute(
+        """
+        SELECT date, SUM(margin_balance) AS margin_balance
+        FROM market_margin_short_daily
+        GROUP BY date
+        ORDER BY date DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+
+
+def get_futures_oi_recent(
+    conn: sqlite3.Connection,
+    institution: str = "外資",
+    contract: str = "臺股期貨",
+    limit: int = 2,
+) -> list[sqlite3.Row]:
+    """契約 4.1 節期貨方向判斷用，近 `limit` 個交易日的外資臺股期貨未平倉，最新在前。"""
+    return conn.execute(
+        """
+        SELECT * FROM futures_oi_daily
+        WHERE institution = ? AND contract = ?
+        ORDER BY date DESC
+        LIMIT ?
+        """,
+        (institution, contract, limit),
+    ).fetchall()
+
+
+def get_futures_large_trader_latest(
+    conn: sqlite3.Connection, contract: str = "臺股期貨(TX+MTX/4+TMF/20)"
+) -> list[sqlite3.Row]:
+    """TAIFEX 大額交易人未沖銷部位結構表涵蓋所有商品（含個股期貨），不是只有台指期貨——
+    本專案契約 4.3 節與大盤總覽只關心台指期貨大戶集中度，這裡固定過濾 `contract`，
+    避免把 300 多檔個股期貨全部撈出來（見 app/scrapers/taifex_large_trader.py 的來源
+    表結構說明）。"""
+    return conn.execute(
+        """
+        SELECT * FROM futures_large_trader_oi_daily
+        WHERE contract = ? AND date = (
+            SELECT MAX(date) FROM futures_large_trader_oi_daily WHERE contract = ?
+        )
+        ORDER BY trader_group
+        """,
+        (contract, contract),
+    ).fetchall()
+
+
+def get_futures_price_latest(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return conn.execute(
+        """
+        SELECT * FROM futures_price_daily
+        WHERE date = (SELECT MAX(date) FROM futures_price_daily)
+        ORDER BY session
+        """
+    ).fetchall()
+
+
+def get_industry_capital_flow_latest(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return conn.execute(
+        """
+        SELECT * FROM industry_capital_flow_daily
+        WHERE date = (SELECT MAX(date) FROM industry_capital_flow_daily)
+        ORDER BY net_amount DESC
+        """
+    ).fetchall()
+
+
+def get_latest_industry_capital_flow_date(conn: sqlite3.Connection) -> str | None:
+    row = conn.execute(
+        "SELECT MAX(date) AS d FROM industry_capital_flow_daily"
+    ).fetchone()
+    return row["d"] if row else None
