@@ -105,4 +105,4 @@
 
 - 官方源（TWSE、MOPS、TAIFEX）優先；券商/入口網站僅補充，HTML 結構視為會變，parser 要能優雅失敗
 - 爬蟲節流：同股票同資料源每日最多一次；失敗時用快取舊資料，不整頁掛掉
-- `app-origin` 是新建的公開 repo（`Zenobia000/tw-stock-fundamentals`），跟這個資料夾原本掛的教材 repo `origin` 無關，不要動 `origin`
+- 唯一 remote 是 `origin`（新建的公開 repo `Zenobia000/tw-stock-fundamentals`；原本叫 `app-origin`，2026-08-23 改名回 `origin`）；這個資料夾原本掛的教材 repo 舊 `origin` 已移除，不會再有兩個同名 remote 混淆

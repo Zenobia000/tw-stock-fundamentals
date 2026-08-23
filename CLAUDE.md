@@ -22,8 +22,8 @@
 
 **Git workflow**
 
-- Remote：`app-origin` → `https://github.com/Zenobia000/tw-stock-fundamentals`（唯一 remote；這個資料夾原本教材 repo 的 `origin` 已移除）
-- Branch：`main`（唯一開發分支，push 到 `app-origin/main`；`product` 已於 2026-08-23 fast-forward 進 main 後刪除）
+- Remote：`origin` → `https://github.com/Zenobia000/tw-stock-fundamentals`（唯一 remote；原本叫 `app-origin`，這個資料夾原本教材 repo 的舊 `origin` 已移除，2026-08-23 把 `app-origin` 改名回 `origin`）
+- Branch：`main`（唯一開發分支，push 到 `origin/main`；`product` 已於 2026-08-23 fast-forward 進 main 後刪除）
 - Commit style：Conventional Commits，body 說明 WHY
 
 **Risk boundary**
