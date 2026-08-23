@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 
 import httpx
 
+from app.calc.industry_capital_flow import compute_industry_capital_flow
 from app.db.capital_reductions import upsert_capital_reductions
 from app.db.connection import get_connection
 from app.db.governance import upsert_board_holdings, upsert_major_shareholders
@@ -31,7 +32,10 @@ from app.db.repository import (
     upsert_finmind_balance_history,
     upsert_finmind_cashflow_history,
     upsert_futures_oi,
+    upsert_futures_price,
+    upsert_industry_capital_flow,
     upsert_institutional_trading,
+    upsert_large_trader_oi,
     upsert_margin_quarters,
     upsert_margin_short,
     upsert_market_cap_weights,
@@ -76,6 +80,8 @@ from app.scrapers.moneylink_balance import fetch_detailed_balance
 from app.scrapers.moneylink_cashflow import fetch_detailed_cashflow
 from app.scrapers.moneylink_income import fetch_detailed_income
 from app.scrapers.taifex_futures import fetch_futures_oi
+from app.scrapers.taifex_futures_price import fetch_futures_price
+from app.scrapers.taifex_large_trader import fetch_large_trader_oi
 from app.scrapers.taifex_market_cap import fetch_market_cap_weights
 from app.scrapers.tpex_market_institutional import (
     fetch_market_institutional_trading as fetch_tpex_market_institutional_trading,
@@ -438,6 +444,26 @@ _MARKET_STEPS = (
         lambda conn, client: upsert_futures_oi(conn, fetch_futures_oi(client)),
     ),
     (
+        "期貨大戶集中度",
+        "futures_large_trader_oi_daily",
+        "taifex-large-trader",
+        lambda conn, client: upsert_large_trader_oi(conn, fetch_large_trader_oi(client)),
+    ),
+    (
+        "台指期貨每日OHLC",
+        "futures_price_daily",
+        "taifex-futures-price",
+        lambda conn, client: upsert_futures_price(
+            conn, fetch_futures_price(_latest_market_date_iso(conn), client=client)
+        ),
+    ),
+    (
+        "產業資金流向",
+        "industry_capital_flow_daily",
+        "derived-industry-capital-flow",
+        lambda conn, client: _upsert_industry_capital_flow_step(conn),
+    ),
+    (
         "大盤三大法人買賣超(上市)",
         "market_institutional_trading_twse",
         "twse-bfi82u",
@@ -622,6 +648,26 @@ def _latest_market_date(conn: sqlite3.Connection) -> str:
     if row and row[0]:
         return str(row[0]).replace("-", "")
     return datetime.now(UTC).date().strftime("%Y%m%d")
+
+
+def _latest_market_date_iso(conn: sqlite3.Connection) -> str:
+    raw = _latest_market_date(conn)
+    return f"{raw[:4]}-{raw[4:6]}-{raw[6:]}"
+
+
+def _latest_institutional_trading_date(conn: sqlite3.Connection) -> str | None:
+    """個股籌碼是使用者查過的股票才有資料（非全市場覆蓋），
+    產業資金流向只能算「目前資料庫實際有資料」的最新一天，不能假設等於大盤排行的最新日。"""
+    row = conn.execute("SELECT MAX(date) FROM institutional_trading_daily").fetchone()
+    return row[0] if row and row[0] else None
+
+
+def _upsert_industry_capital_flow_step(conn: sqlite3.Connection) -> None:
+    """衍生計算，沒有外部請求；資料庫還沒有任何個股籌碼時不算是失敗，直接跳過。"""
+    date = _latest_institutional_trading_date(conn)
+    if date is None:
+        return
+    upsert_industry_capital_flow(conn, compute_industry_capital_flow(conn, date))
 
 
 def refresh_market(

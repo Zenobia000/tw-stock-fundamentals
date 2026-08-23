@@ -11,6 +11,8 @@ from app.scrapers.histock_dividend import DividendEvent
 from app.scrapers.histock_revenue import MonthlyRevenue
 from app.scrapers.histock_turnover import QuarterlyTurnover
 from app.scrapers.taifex_futures import FuturesOI
+from app.scrapers.taifex_futures_price import FuturesPrice
+from app.scrapers.taifex_large_trader import LargeTraderOI
 from app.scrapers.twse_financials import FinancialHealthQuarter
 from app.scrapers.twse_isin import StockIsinInfo
 from app.scrapers.twse_rankings import RankingEntry
@@ -231,6 +233,35 @@ def test_refresh_market_populates_futures_and_rankings(tmp_path):
         patch("app.ingest.fetch_market_rankings", return_value=[]),
         patch("app.ingest.fetch_market_cap_weights", side_effect=lambda client: []),
         patch("app.ingest.fetch_capital_reductions", return_value=[]),
+        patch(
+            "app.ingest.fetch_large_trader_oi",
+            side_effect=lambda client: [
+                LargeTraderOI(
+                    date="2026-08-21",
+                    contract="臺股期貨(TX+MTX/4+TMF/20)",
+                    trader_group="十大交易人",
+                    long_oi=100,
+                    short_oi=40,
+                    net_oi=60,
+                )
+            ],
+        ),
+        patch(
+            "app.ingest.fetch_futures_price",
+            side_effect=lambda query_date, client=None: [
+                FuturesPrice(
+                    date="2026-08-21",
+                    contract="臺股期貨",
+                    session="day",
+                    open=44900.0,
+                    high=45300.0,
+                    low=44800.0,
+                    close=45224.0,
+                    settlement_price=45224.0,
+                    change_pct=0.65,
+                )
+            ],
+        ),
     ]
     for p in patches:
         p.start()
@@ -243,6 +274,11 @@ def test_refresh_market_populates_futures_and_rankings(tmp_path):
     assert all(error is None for error in results.values()), results
     assert conn.execute("SELECT COUNT(*) c FROM futures_oi_daily").fetchone()["c"] == 1
     assert conn.execute("SELECT COUNT(*) c FROM rankings_daily").fetchone()["c"] == 1
+    assert (
+        conn.execute("SELECT COUNT(*) c FROM futures_large_trader_oi_daily").fetchone()["c"]
+        == 1
+    )
+    assert conn.execute("SELECT COUNT(*) c FROM futures_price_daily").fetchone()["c"] == 1
     conn.close()
 
 
@@ -270,6 +306,11 @@ def test_refresh_market_one_source_failing_does_not_block_others(tmp_path):
         patch("app.ingest.fetch_market_rankings", return_value=[]),
         patch("app.ingest.fetch_market_cap_weights", side_effect=lambda client: []),
         patch("app.ingest.fetch_capital_reductions", return_value=[]),
+        patch("app.ingest.fetch_large_trader_oi", side_effect=lambda client: []),
+        patch(
+            "app.ingest.fetch_futures_price",
+            side_effect=lambda query_date, client=None: [],
+        ),
     ]
     for p in patches:
         p.start()

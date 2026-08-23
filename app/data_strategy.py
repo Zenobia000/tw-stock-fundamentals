@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass
 from typing import Literal
 
 Scope = Literal["stock", "market"]
-SourceTier = Literal["official", "publisher", "portal", "manual"]
+SourceTier = Literal["official", "publisher", "portal", "manual", "derived"]
 Importance = Literal["critical", "supporting", "optional"]
 MergeRule = Literal[
     "primary_same_period_wins",
@@ -81,6 +81,9 @@ SOURCES = {
         DataSource("twse-bwibbu-all", "TWSE 本益比殖利率統計", "official"),
         DataSource("taifex-futures", "TAIFEX 三大法人期貨", "official"),
         DataSource("taifex-market-cap", "TAIFEX 市值權重", "official"),
+        DataSource("taifex-large-trader", "TAIFEX 大額交易人未沖銷部位結構表", "official"),
+        DataSource("taifex-futures-price", "TAIFEX 期貨每日交易行情", "official"),
+        DataSource("derived-industry-capital-flow", "產業資金流向（依 institutional_trading_daily 衍生計算）", "derived"),
         DataSource("twse-bfi82u", "TWSE 三大法人買賣金額統計表", "official"),
         DataSource("twse-mi-margn", "TWSE 融資融券餘額", "official"),
         DataSource("tpex-3insti-summary", "TPEX 三大法人買賣金額統計表", "official"),
@@ -626,6 +629,44 @@ _POLICIES = (
         scope_column="market",
         scope_value="TPEX",
         minimum_rows=1,
+    ),
+    _market(
+        "futures_large_trader_oi_daily",
+        "期貨大戶集中度(十大交易人/特定法人)",
+        "futures_large_trader_oi_daily",
+        "date",
+        "日×契約×身份別",
+        "口",
+        "交易日",
+        36,
+        "taifex-large-trader",
+        minimum_rows=5,
+    ),
+    _market(
+        "futures_price_daily",
+        "台指期貨每日OHLC(日盤/夜盤)",
+        "futures_price_daily",
+        "date",
+        "日×契約×盤別",
+        "點",
+        "交易日",
+        36,
+        "taifex-futures-price",
+        minimum_rows=1,
+    ),
+    _market(
+        "industry_capital_flow_daily",
+        "產業資金流向(依買賣超張數衍生計算)",
+        "industry_capital_flow_daily",
+        "date",
+        "日×產業",
+        "張",
+        "交易日",
+        36,
+        "derived-industry-capital-flow",
+        minimum_rows=1,
+        allow_empty=True,
+        importance="optional",
     ),
     _market(
         "ranking_turnover_listed",

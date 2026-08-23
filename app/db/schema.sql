@@ -434,6 +434,54 @@ CREATE TABLE IF NOT EXISTS market_margin_short_daily (
     PRIMARY KEY (date, market)
 );
 
+-- 期貨大戶集中度（TAIFEX 大額交易人未沖銷部位結構表，官方）。trader_group='十大交易人'
+-- 是全體，'十大特定法人' 是其子集；contract 用官方原始契約名稱（含組成公式，例如
+-- 「臺股期貨(TX+MTX/4+TMF/20)」），不是簡稱「臺股期貨」。
+CREATE TABLE IF NOT EXISTS futures_large_trader_oi_daily (
+    date TEXT NOT NULL,
+    contract TEXT NOT NULL,
+    trader_group TEXT NOT NULL,
+    long_oi INTEGER,
+    short_oi INTEGER,
+    net_oi INTEGER,
+    source TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (date, contract, trader_group)
+);
+
+-- 台指期貨每日 OHLC（TAIFEX 期貨每日交易行情下載，官方）。session='day'/'night'；
+-- 夜盤 date 是 TAIFEX 官方歸屬的次一營業日，不是自然日隔天。
+CREATE TABLE IF NOT EXISTS futures_price_daily (
+    date TEXT NOT NULL,
+    contract TEXT NOT NULL,
+    session TEXT NOT NULL,
+    open REAL,
+    high REAL,
+    low REAL,
+    close REAL,
+    settlement_price REAL,
+    change_pct REAL,
+    source TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (date, contract, session)
+);
+
+-- 產業資金流向（衍生計算，依 institutional_trading_daily × stock_industry_chain 分組加總，
+-- 不是原始擷取表，沒有官方 source）。注意 net_amount 目前實際單位是「張」不是新台幣金額——
+-- institutional_trading_daily 唯一資料源（Fubon）本身就是張數，不是金額；turnover_amount
+-- 目前資料庫沒有個股成交金額欄位可算，固定 NULL，不得用 volume×close 湊近似值。
+-- 詳見 app/calc/industry_capital_flow.py 模組說明。
+CREATE TABLE IF NOT EXISTS industry_capital_flow_daily (
+    date TEXT NOT NULL,
+    industry TEXT NOT NULL,
+    net_amount REAL,
+    turnover_amount REAL,
+    member_count INTEGER,
+    formula_version TEXT NOT NULL,
+    computed_at TEXT NOT NULL,
+    PRIMARY KEY (date, industry)
+);
+
 CREATE TABLE IF NOT EXISTS broker_branches_daily (
     code TEXT NOT NULL REFERENCES stocks(code),
     date TEXT NOT NULL,
@@ -495,3 +543,9 @@ CREATE INDEX IF NOT EXISTS idx_market_institutional_trading_date
     ON market_institutional_trading_daily(date DESC, market, institution);
 CREATE INDEX IF NOT EXISTS idx_market_margin_short_date
     ON market_margin_short_daily(date DESC, market);
+CREATE INDEX IF NOT EXISTS idx_futures_large_trader_date
+    ON futures_large_trader_oi_daily(date DESC, contract, trader_group);
+CREATE INDEX IF NOT EXISTS idx_futures_price_date
+    ON futures_price_daily(date DESC, contract, session);
+CREATE INDEX IF NOT EXISTS idx_industry_capital_flow_date
+    ON industry_capital_flow_daily(date DESC, net_amount DESC);

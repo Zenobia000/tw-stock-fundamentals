@@ -22,6 +22,8 @@ from app.scrapers.moneylink_balance import DetailedBalanceQuarter
 from app.scrapers.moneylink_cashflow import DetailedCashflowQuarter
 from app.scrapers.moneylink_income import DetailedIncomeQuarter
 from app.scrapers.taifex_futures import FuturesOI
+from app.scrapers.taifex_futures_price import FuturesPrice
+from app.scrapers.taifex_large_trader import LargeTraderOI
 from app.scrapers.taifex_market_cap import MarketCapWeight
 from app.scrapers.tpex_market_institutional import (
     MarketInstitutionalTrading as TpexMarketInstitutionalTrading,
@@ -608,6 +610,111 @@ def upsert_market_margin_short(
             source,
             fetched_at,
         ),
+    )
+    conn.commit()
+
+
+def upsert_large_trader_oi(conn: sqlite3.Connection, rows: list[LargeTraderOI]) -> None:
+    fetched_at = datetime.now(UTC).isoformat()
+    conn.executemany(
+        """
+        INSERT INTO futures_large_trader_oi_daily
+            (date, contract, trader_group, long_oi, short_oi, net_oi, source, fetched_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(date, contract, trader_group) DO UPDATE SET
+            long_oi = excluded.long_oi,
+            short_oi = excluded.short_oi,
+            net_oi = excluded.net_oi,
+            fetched_at = excluded.fetched_at
+        """,
+        [
+            (
+                row.date,
+                row.contract,
+                row.trader_group,
+                row.long_oi,
+                row.short_oi,
+                row.net_oi,
+                "taifex-large-trader",
+                fetched_at,
+            )
+            for row in rows
+        ],
+    )
+    conn.commit()
+
+
+def upsert_futures_price(conn: sqlite3.Connection, rows: list[FuturesPrice]) -> None:
+    fetched_at = datetime.now(UTC).isoformat()
+    conn.executemany(
+        """
+        INSERT INTO futures_price_daily (
+            date, contract, session, open, high, low, close,
+            settlement_price, change_pct, source, fetched_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(date, contract, session) DO UPDATE SET
+            open = excluded.open,
+            high = excluded.high,
+            low = excluded.low,
+            close = excluded.close,
+            settlement_price = excluded.settlement_price,
+            change_pct = excluded.change_pct,
+            source = excluded.source,
+            fetched_at = excluded.fetched_at
+        """,
+        [
+            (
+                row.date,
+                row.contract,
+                row.session,
+                row.open,
+                row.high,
+                row.low,
+                row.close,
+                row.settlement_price,
+                row.change_pct,
+                "taifex-futures-price",
+                fetched_at,
+            )
+            for row in rows
+        ],
+    )
+    conn.commit()
+
+
+def upsert_industry_capital_flow(conn: sqlite3.Connection, rows: list[dict]) -> None:
+    """寫入 app.calc.industry_capital_flow.compute_industry_capital_flow() 的輸出。
+
+    rows 每筆需含 date/industry/net_amount/turnover_amount/member_count/formula_version。
+    """
+    computed_at = datetime.now(UTC).isoformat()
+    conn.executemany(
+        """
+        INSERT INTO industry_capital_flow_daily (
+            date, industry, net_amount, turnover_amount, member_count,
+            formula_version, computed_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(date, industry) DO UPDATE SET
+            net_amount = excluded.net_amount,
+            turnover_amount = excluded.turnover_amount,
+            member_count = excluded.member_count,
+            formula_version = excluded.formula_version,
+            computed_at = excluded.computed_at
+        """,
+        [
+            (
+                row["date"],
+                row["industry"],
+                row["net_amount"],
+                row["turnover_amount"],
+                row["member_count"],
+                row["formula_version"],
+                computed_at,
+            )
+            for row in rows
+        ],
     )
     conn.commit()
 
