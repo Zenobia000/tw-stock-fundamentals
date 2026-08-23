@@ -17,7 +17,8 @@
 - Full test: `uv run pytest`
 - Lint: `uv run ruff check .`
 - Refresh data: `uv run python -m app.ingest 2330 3037`
-- Run dev server: `uv run uvicorn app.main:app --reload`
+- Run dev server（第一次啟動）: `uv run uvicorn app.main:app --reload`
+- Restart dev server（port 已有殘留進程、或路由沒更新到最新程式碼時用這個）: `./scripts/restart-dev-server.ps1`——用 `taskkill /F /T` 把整棵 process tree（含 `--reload` 用 multiprocessing 生出來的 worker 子行程）殺乾淨再重開，並自動 smoke-test `/api/market/overview`。只用 `Ctrl+C` 或關終端機結束 `--reload` 常會留下孤兒 worker 卡住 port，之後同一個 port 會被舊 worker 跟新 worker 隨機分流回應（見 2026-08-23 大盤總覽 404 的事故）
 
 **Git workflow**
 
