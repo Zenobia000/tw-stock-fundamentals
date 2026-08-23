@@ -319,6 +319,18 @@ body.health-open > #empty-state { display: none !important; }
 .pivot-caret { width: 7px; height: 7px; border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; transform: rotate(-45deg); transition: transform .2s cubic-bezier(.16, 1, .3, 1); }
 .pivot-toggle[aria-expanded="true"] .pivot-caret { transform: rotate(45deg) translate(-1px, -1px); }
 .pivot-child-name { display: inline-block; padding-left: 16px; }
+/* Name cell now holds the toggle/label plus a "view members" button side by side;
+   the toggle no longer needs to claim the full cell width. */
+.pivot-name-wrap { display: flex; align-items: center; gap: 8px; width: 100%; }
+.pivot-name-wrap .pivot-toggle { width: auto; flex: 1 1 auto; min-width: 0; }
+.pivot-members-btn {
+  flex: none; padding: 2px 9px; border: 1px solid var(--line); border-radius: 999px;
+  background: var(--paper); color: var(--muted); font: inherit; font-size: 10px;
+  font-weight: 500; cursor: pointer; white-space: nowrap;
+}
+.pivot-members-btn:hover { color: var(--blue-deep); border-color: var(--blue-deep); }
+.mkt-dark .pivot-members-btn { background: var(--mkt-card); border-color: var(--mkt-card-border); color: var(--mkt-muted); }
+.mkt-dark .pivot-members-btn:hover { color: var(--mkt-text); border-color: var(--mkt-muted-2); }
 .sparkline { display: block; width: 88px; height: 24px; margin: auto; overflow: visible; }
 .sparkline polyline { vector-effect: non-scaling-stroke; }
 .sparkline-empty { color: var(--muted); }
@@ -502,15 +514,24 @@ body.health-open > #empty-state { display: none !important; }
 .ohlc-row span { color: var(--muted); }
 .ohlc-block small { display: block; margin-top: 4px; color: var(--muted); font-size: 9px; }
 
-/* Simple flexbox treemap: area (flex-grow) = abs(net_amount), color/tier = sign + relative
-   strength, reusing the existing gain-heat/loss-heat/heat-tier-N tokens (no new hardcoded hex).
-   Units are 買賣超"張數", not turnover amount — turnover_amount is unavailable (see contract). */
-.industry-treemap { display: flex; flex-wrap: wrap; gap: 3px; min-height: 160px; margin: 10px 0 22px; }
-.industry-treemap .flow-tile { position: relative; flex-basis: 64px; flex-shrink: 0; min-width: 64px; min-height: 72px; padding: 8px 10px; border: 1px solid var(--line-strong); overflow: hidden; cursor: default; }
-.industry-treemap .flow-tile b { display: block; overflow: hidden; font-size: 12px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
-.industry-treemap .flow-tile span { display: block; margin-top: 4px; font: 700 11px/1.3 var(--mono); }
-.industry-treemap .flow-tile small { display: block; margin-top: 2px; font-size: 9px; opacity: .75; }
-.industry-treemap .flow-tile.is-empty { display: flex; align-items: center; justify-content: center; flex-basis: 100%; min-height: 80px; background: var(--paper-soft); color: var(--muted); }
+/* Flexbox treemap: area (flex-grow) = 成交金額 share (per wrapped line), color/tier =
+   change_pct sign + relative strength, reusing the existing gain-heat/loss-heat/heat-tier-N
+   tokens (no new hardcoded hex). net_amount (法人買賣超張數) is a separate display metric,
+   never the color/existence driver — most industries have no institutional data (null).
+   min-width 150px is sized for the widest real 產業 label (e.g. "半導體業", "其他電子業")
+   at 12px/750-weight without wrapping mid-character; flex-wrap lets ~47 tiles flow across
+   multiple lines instead of being squeezed into one. */
+.industry-treemap { display: flex; flex-wrap: wrap; gap: 6px; min-height: 160px; margin: 10px 0 22px; }
+.industry-treemap .flow-tile {
+  position: relative; display: flex; flex-direction: column; gap: 3px;
+  flex: 1 1 150px; flex-shrink: 0; min-width: 150px; min-height: 100px;
+  padding: 9px 11px; border: 1px solid var(--line-strong); overflow: hidden; cursor: pointer;
+}
+.industry-treemap .flow-tile:hover { filter: brightness(0.97); }
+.industry-treemap .flow-tile b { display: block; font-size: 12px; font-weight: 750; line-height: 1.3; overflow-wrap: break-word; white-space: normal; }
+.industry-treemap .flow-tile span { display: block; font: 700 11px/1.3 var(--mono); }
+.industry-treemap .flow-tile small { display: block; margin-top: auto; padding-top: 2px; font-size: 9px; opacity: .75; }
+.industry-treemap .flow-tile.is-empty { display: flex; align-items: center; justify-content: center; flex-basis: 100%; min-height: 80px; background: var(--paper-soft); color: var(--muted); cursor: default; }
 .stock-labels { display: flex; align-items: center; gap: 5px; min-width: 230px; }
 .stock-labels b { min-width: 72px; color: var(--ink); }
 .stock-labels small, .stock-labels span { padding: 3px 6px; border: 1px solid var(--line); color: var(--muted); font-size: 9px; line-height: 1; }
@@ -648,12 +669,12 @@ body.health-open > #empty-state { display: none !important; }
 .mkt-dark .industry-treemap .flow-tile small { color: var(--mkt-muted); opacity: 1; }
 .mkt-dark .industry-treemap .flow-tile.is-empty { background: var(--mkt-card); color: var(--mkt-muted); }
 .mkt-dark .industry-treemap .gain-heat { border-left: 3px solid var(--mkt-up); }
-.mkt-dark .industry-treemap .gain-heat span { color: var(--mkt-up); }
+.mkt-dark .industry-treemap .gain-heat .flow-tile-pct { color: var(--mkt-up); }
 .mkt-dark .industry-treemap .gain-heat.heat-tier-1 { background: rgba(157, 99, 104, .12); }
 .mkt-dark .industry-treemap .gain-heat.heat-tier-2 { background: rgba(157, 99, 104, .22); }
 .mkt-dark .industry-treemap .gain-heat.heat-tier-3 { background: rgba(157, 99, 104, .34); }
 .mkt-dark .industry-treemap .loss-heat { border-left: 3px solid var(--mkt-down); }
-.mkt-dark .industry-treemap .loss-heat span { color: var(--mkt-down); }
+.mkt-dark .industry-treemap .loss-heat .flow-tile-pct { color: var(--mkt-down); }
 .mkt-dark .industry-treemap .loss-heat.heat-tier-1 { background: rgba(95, 128, 111, .12); }
 .mkt-dark .industry-treemap .loss-heat.heat-tier-2 { background: rgba(95, 128, 111, .22); }
 .mkt-dark .industry-treemap .loss-heat.heat-tier-3 { background: rgba(95, 128, 111, .32); }

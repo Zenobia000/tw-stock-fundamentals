@@ -1375,33 +1375,70 @@ function flowHeatClass(value, maxAbs) {
   return Number(value) >= 0 ? `gain-heat heat-tier-${tier}` : `loss-heat heat-tier-${tier}`;
 }
 
-// Hand-rolled treemap: flex-wrap row of tiles, flex-grow = abs(net_amount) so tile width
-// approximates area (fixed row height). Known data gap: industry_capital_flow_daily.net_amount
-// is 買賣超"張數", not turnover amount (turnover_amount is always null — no per-stock 成交金額
-// source yet) — so area here is "張數規模", not "成交金額" as the original design note assumed.
+// Hand-rolled treemap: flex-wrap row of tiles, flex-grow = 成交金額 share so tile width
+// approximates area (fixed row height per wrapped line). Color/tier = change_pct sign +
+// relative strength (see flowHeatClass). net_amount (三大法人買賣超張數) is shown as a
+// separate metric only, not tied to color — most industries have no institutional data
+// at all (null, not 0), so existence must be checked on turnover, never on net_amount.
 function renderIndustryFlowTreemap(rows) {
   const container = byId("industry-flow-treemap");
   const meta = byId("industry-flow-meta");
   if (!container) return;
-  const data = (rows || []).filter((row) => isValue(row.net_amount));
+  const data = (rows || []).filter((row) => isValue(row.turnover) && Number(row.turnover) > 0);
+  state.industryFlowRows = data;
   if (!data.length) {
-    container.innerHTML = `<div class="flow-tile is-empty">待補產業資金流向資料（依買賣超張數）</div>`;
+    container.innerHTML = `<div class="flow-tile is-empty">尚無產業資金流向資料（依成交金額）</div>`;
     if (meta) meta.textContent = "";
     return;
   }
-  const maxAbs = Math.max(...data.map((row) => Math.abs(Number(row.net_amount))), 1);
+  const maxTurnover = Math.max(...data.map((row) => Number(row.turnover)), 1);
+  const maxAbsPct = Math.max(...data.filter((row) => isValue(row.change_pct)).map((row) => Math.abs(Number(row.change_pct))), 1);
   if (meta) {
-    meta.textContent = `資料日 ${data[0]?.date || "-"}｜面積＝買賣超張數絕對值，顏色＝買超(紅)／賣超(綠)相對強度｜單位：張（依買賣超張數，非成交金額）`;
+    meta.textContent = `資料日 ${data[0]?.date || "-"}｜面積＝成交金額佔比｜顏色＝漲跌幅相對強度（紅漲／綠跌）｜另列三大法人買賣超張數，"－"代表該產業無法人資料｜點擊任一產業看成分股`;
   }
-  container.innerHTML = data.map((row) => {
-    const abs = Math.abs(Number(row.net_amount));
-    const grow = Math.max(abs, maxAbs * 0.02).toFixed(2);
-    const heat = flowHeatClass(row.net_amount, maxAbs);
-    const tip = `${row.industry}｜買賣超 ${fmt(row.net_amount, 0)} 張｜成分股 ${fmt(row.member_count, 0)} 檔｜${row.date}`;
-    return `<div class="flow-tile ${heat}" style="flex-grow:${grow};" title="${escapeHtml(tip)}">` +
-      `<b>${escapeHtml(row.industry)}</b><span>${fmt(row.net_amount, 0)} 張</span><small>${fmt(row.member_count, 0)} 檔</small></div>`;
+  container.innerHTML = data.map((row, i) => {
+    const grow = Math.max((Number(row.turnover) / maxTurnover) * 100, 3).toFixed(2);
+    const heat = flowHeatClass(row.change_pct, maxAbsPct);
+    const changeText = isValue(row.change_pct) ? `${Number(row.change_pct) >= 0 ? "+" : ""}${pct(row.change_pct, 2, true)}` : "－";
+    const turnoverText = `${fmt(Number(row.turnover) / 1e8, 2)} 億`;
+    const netText = isValue(row.net_amount) ? `${fmt(row.net_amount, 0)} 張` : "－";
+    const tip = `${row.industry}｜漲跌幅 ${changeText}｜成交值 ${turnoverText}｜買賣超 ${netText}｜成分股 ${fmt(row.member_count, 0)} 檔｜${row.date}`;
+    return `<div class="flow-tile ${heat}" style="flex-grow:${grow};" data-flow-idx="${i}" title="${escapeHtml(tip)}">` +
+      `<b>${escapeHtml(row.industry)}</b>` +
+      `<span class="flow-tile-pct">${changeText}</span>` +
+      `<span class="flow-tile-turnover">${turnoverText}</span>` +
+      `<span class="flow-tile-net">買賣超 ${netText}</span>` +
+      `<small>${fmt(row.member_count, 0)} 檔</small>` +
+      `</div>`;
   }).join("");
 }
+
+function industryFlowMembersRows(members) {
+  if (!members?.length) return `<tr><td colspan="5"><div class="table-empty">尚無成分股資料</div></td></tr>`;
+  return members.map((m) => {
+    const cls = Number(m.change_pct) >= 0 ? "positive" : "negative";
+    const sign = Number(m.change_pct) >= 0 ? "+" : "";
+    return `<tr><td>${escapeHtml(m.code)}</td><td>${escapeHtml(m.name)}</td>` +
+      `<td class="${cls}">${sign}${pct(m.change_pct, 2, true)}</td>` +
+      `<td>${fmt(Number(m.turnover) / 1e8, 2)} 億</td>` +
+      `<td>${fmt(m.close, 2)}</td></tr>`;
+  }).join("");
+}
+
+function openIndustryFlowDrawer(row) {
+  const members = row?.members || [];
+  openDrawer(`產業成分股 · ${row.industry}（共 ${members.length} 檔）`, `
+    <table class="data-table"><thead><tr><th>代碼</th><th>名稱</th><th>漲跌幅</th><th>成交值</th><th>收盤價</th></tr></thead>
+    <tbody>${industryFlowMembersRows(members)}</tbody></table>
+  `);
+}
+
+byId("industry-flow-treemap")?.addEventListener("click", (event) => {
+  const tile = event.target.closest(".flow-tile[data-flow-idx]");
+  if (!tile) return;
+  const row = state.industryFlowRows?.[Number(tile.dataset.flowIdx)];
+  if (row) openIndustryFlowDrawer(row);
+});
 
 // 產業排行（漲幅／跌幅／成交量／成交金額）— 取代「產業資金流向」原本唯一的
 // treemap 視角，treemap 收進下方 <details> 摺疊區塊，不刪除只降階。
@@ -1955,12 +1992,16 @@ const _PIVOT_COLUMNS = [
   { key: "rank", label: "Rank", sortable: true },
 ];
 
-function _pivotRowHtml(entry, { indent = false, expandButton = null } = {}) {
-  const nameCell = expandButton
-    ? `<button type="button" class="pivot-toggle" aria-expanded="${expandButton}" aria-label="${expandButton === "true" ? "收合" : "展開"}${escapeHtml(entry.industry)}細產業"><span class="pivot-caret" aria-hidden="true"></span><span>${escapeHtml(entry.industry)}</span></button>`
-    : `<span class="pivot-child-name">${escapeHtml(entry.sub_industry)}</span>`;
+function _pivotRowHtml(entry, { indent = false, expandButton = null, membersKey = null } = {}) {
+  const name = expandButton !== null ? entry.industry : entry.sub_industry;
+  const nameCell = expandButton !== null
+    ? `<button type="button" class="pivot-toggle" aria-expanded="${expandButton}" aria-label="${expandButton === "true" ? "收合" : "展開"}${escapeHtml(name)}細產業"><span class="pivot-caret" aria-hidden="true"></span><span>${escapeHtml(name)}</span></button>`
+    : `<span class="pivot-child-name">${escapeHtml(name)}</span>`;
+  const membersButton = membersKey !== null
+    ? `<button type="button" class="pivot-members-btn" data-members-key="${escapeHtml(membersKey)}" aria-label="查看${escapeHtml(name)}成分股">成分股</button>`
+    : "";
   return `<tr class="pivot-row${indent ? " pivot-child" : " pivot-parent"}"${indent ? "" : ` data-industry="${escapeHtml(entry.industry)}"`}>` +
-    `<th scope="row" class="pivot-name">${nameCell}</th>` +
+    `<th scope="row" class="pivot-name"><span class="pivot-name-wrap">${nameCell}${membersButton}</span></th>` +
     `<td>${fmt(entry.member_count, 0)}</td>` +
     `<td>${sparklineSvg(entry.trend)}</td>` +
     `<td class="${rankHeatClass(entry.rank_20d)}">${fmt(entry.rank_20d, 0)}</td>` +
@@ -1993,11 +2034,13 @@ function renderSubIndustryMomentum(industries) {
     return pivotSortHeader(column);
   }).join("")}</tr></thead>`;
 
-  const body = sorted.map((industry) => {
+  const body = sorted.map((industry, industryIdx) => {
     const expanded = industryPivotExpanded.has(industry.industry);
-    const rows = [_pivotRowHtml(industry, { expandButton: expanded ? "true" : "false" })];
+    const rows = [_pivotRowHtml(industry, { expandButton: expanded ? "true" : "false", membersKey: `${industryIdx}` })];
     if (expanded) {
-      for (const sub of industry.sub_industries) rows.push(_pivotRowHtml(sub, { indent: true }));
+      industry.sub_industries.forEach((sub, subIdx) => {
+        rows.push(_pivotRowHtml(sub, { indent: true, membersKey: `${industryIdx}:${subIdx}` }));
+      });
     }
     return rows.join("");
   }).join("");
@@ -2020,6 +2063,37 @@ function renderSubIndustryMomentum(industries) {
     else industryPivotExpanded.add(name);
     renderSubIndustryMomentum(industries);
   }));
+
+  $$(".pivot-members-btn", table).forEach((button) => button.addEventListener("click", (event) => {
+    // Stop the click from bubbling up to the parent row's toggle handler above —
+    // otherwise "查看成分股" would also expand/collapse the sub_industry list.
+    event.stopPropagation();
+    const [industryIdx, subIdx] = button.dataset.membersKey.split(":");
+    const industry = sorted[Number(industryIdx)];
+    const entry = subIdx === undefined ? industry : industry.sub_industries[Number(subIdx)];
+    openSubIndustryMembersDrawer(entry);
+  }));
+}
+
+function subIndustryMembersRows(members) {
+  if (!members?.length) return `<tr><td colspan="4"><div class="table-empty">尚無成分股資料</div></td></tr>`;
+  return members.map((m) => {
+    const hasChange = isValue(m.change_pct);
+    const cls = hasChange ? (Number(m.change_pct) >= 0 ? "positive" : "negative") : "";
+    const sign = hasChange && Number(m.change_pct) >= 0 ? "+" : "";
+    return `<tr><td>${escapeHtml(m.code)}</td><td>${escapeHtml(m.name)}</td>` +
+      `<td class="${cls}">${hasChange ? `${sign}${pct(m.change_pct, 2, true)}` : "－"}</td>` +
+      `<td>${isValue(m.close) ? fmt(m.close, 2) : "－"}</td></tr>`;
+  }).join("");
+}
+
+function openSubIndustryMembersDrawer(entry) {
+  const members = entry?.members || [];
+  const name = entry.industry || entry.sub_industry;
+  openDrawer(`成分股 · ${name}（共 ${members.length} 檔）`, `
+    <table class="data-table"><thead><tr><th>代碼</th><th>名稱</th><th>漲跌幅</th><th>收盤價</th></tr></thead>
+    <tbody>${subIndustryMembersRows(members)}</tbody></table>
+  `);
 }
 
 let subIndustryMomentumLoaded = false;
