@@ -35,6 +35,8 @@ from app.db.repository import (
     upsert_margin_quarters,
     upsert_margin_short,
     upsert_market_cap_weights,
+    upsert_market_institutional_trading,
+    upsert_market_margin_short,
     upsert_monthly_pe,
     upsert_monthly_revenue,
     upsert_quarterly_cashflow,
@@ -75,6 +77,12 @@ from app.scrapers.moneylink_cashflow import fetch_detailed_cashflow
 from app.scrapers.moneylink_income import fetch_detailed_income
 from app.scrapers.taifex_futures import fetch_futures_oi
 from app.scrapers.taifex_market_cap import fetch_market_cap_weights
+from app.scrapers.tpex_market_institutional import (
+    fetch_market_institutional_trading as fetch_tpex_market_institutional_trading,
+)
+from app.scrapers.tpex_market_margin import (
+    fetch_market_margin as fetch_tpex_market_margin,
+)
 from app.scrapers.twse_board_holdings import fetch_board_holdings
 from app.scrapers.twse_capital_reduction import fetch_capital_reductions
 from app.scrapers.twse_financials import fetch_financial_health
@@ -86,6 +94,12 @@ from app.scrapers.twse_insider_transfer import (
 )
 from app.scrapers.twse_isin import fetch_stock_isin
 from app.scrapers.twse_major_shareholders import fetch_major_shareholders
+from app.scrapers.twse_market_institutional import (
+    fetch_market_institutional_trading as fetch_twse_market_institutional_trading,
+)
+from app.scrapers.twse_market_margin import (
+    fetch_market_margin as fetch_twse_market_margin,
+)
 from app.scrapers.twse_material_news import (
     fetch_material_news,
 )
@@ -422,6 +436,42 @@ _MARKET_STEPS = (
         "futures_oi_daily",
         "taifex-futures",
         lambda conn, client: upsert_futures_oi(conn, fetch_futures_oi(client)),
+    ),
+    (
+        "大盤三大法人買賣超(上市)",
+        "market_institutional_trading_twse",
+        "twse-bfi82u",
+        lambda conn, client: upsert_market_institutional_trading(
+            conn,
+            fetch_twse_market_institutional_trading(client=client),
+            source="twse-bfi82u",
+        ),
+    ),
+    (
+        "大盤三大法人買賣超(上櫃)",
+        "market_institutional_trading_tpex",
+        "tpex-3insti-summary",
+        lambda conn, client: upsert_market_institutional_trading(
+            conn,
+            fetch_tpex_market_institutional_trading(client=client),
+            source="tpex-3insti-summary",
+        ),
+    ),
+    (
+        "大盤融資融券增減(上市)",
+        "market_margin_short_twse",
+        "twse-mi-margn",
+        lambda conn, client: upsert_market_margin_short(
+            conn, fetch_twse_market_margin(client=client), source="twse-mi-margn"
+        ),
+    ),
+    (
+        "大盤融資融券增減(上櫃)",
+        "market_margin_short_tpex",
+        "tpex-margin-balance",
+        lambda conn, client: upsert_market_margin_short(
+            conn, fetch_tpex_market_margin(client=client), source="tpex-margin-balance"
+        ),
     ),
     (
         "上市成交值排行",

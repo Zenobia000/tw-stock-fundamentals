@@ -13,8 +13,8 @@
 | 營運基本面 | 營收、獲利與 EPS | 月營收與 YoY、3/12 月動能、八季損益、毛利/營益、業外、本業比率、推銷/管理/研發費、季與 TTM EPS |
 | 財務品質與股東回報 | 財務結構與現金回報 | 資產負債、收款/存貨/付款天數、負債與流動比、三大現金流、自由現金流、股利/發放率/殖利率/填息、公司事件（重大訊息/內部人持股轉讓）與減資、董監事持股與質押比例、大股東名單 |
 | 翁氏九宮格 | 九項核心品質指標 | 九張八季核心比較圖、月營收布林、合約負債、K 線；共用季度軸、單位與紅綠判讀 |
-| 籌碼與市場雷達 | 個股與全市場籌碼 | 法人/大戶/董監、融資券、券資比、分點、期貨日夜盤、上市櫃排行榜與市值占比 |
-| 板塊動能觀察 | 全市場板塊輪動 | TWSE 官方類股指數 20/60/120 日報酬同組百分位排名、對大盤超額報酬、20/40/40 加權綜合 Rank；不需先選股票，獨立頁籤；內含「細產業」子分頁（FinMind industry→sub_industry 兩層可展開樞紐表，台灣前100大成分股動能排名，含 120 日走勢 sparkline、可排序欄位、無 REL） |
+| 籌碼與市場雷達 | 個股籌碼，並列大盤快照 | 個股法人買賣超/大戶/董監、融資券、券資比、分點、ETF 持股、上市櫃排行榜；頂部附大盤快照卡（指數、三大法人合計買賣超、融資餘額）供相對強弱對照，完整大盤內容連到大盤總覽 |
+| 大盤總覽 | 全市場指數、籌碼與資金流向 | 獨立頂層 view，不需先搜尋股票代碼即可見，跟個股 workspace 平行：加權指數走勢、大盤層級三大法人買賣超與融資融券增減（上市/上櫃各自最新一天）、期貨法人未平倉、市值占大盤比重；下接「產業資金流向」— TWSE 官方類股指數 20/60/120 日報酬同組百分位排名、對大盤超額報酬、20/40/40 加權綜合 Rank，內含「細產業」子分頁（FinMind industry→sub_industry 兩層可展開樞紐表，台灣前100大成分股動能排名，含 120 日走勢 sparkline、可排序欄位、無 REL） |
 
 ## 跨頁能力
 
@@ -60,8 +60,9 @@
 - `GET /api/stocks/{code}/financial-quality`：財務品質與股東回報
 - `GET /api/stocks/{code}/nine-grid`：八季標準化圖表 view model
 - `GET /api/stocks/{code}/chips-market`：個股籌碼
-- `GET /api/market/radar`：期貨、排行榜與市值雷達
-- `GET /api/market/sector-momentum`：板塊動能排名（見 `docs/specs/sector-momentum-formula-contract.md`）
+- `GET /api/market/radar`：期貨、排行榜與市值雷達（個股頁排行榜仍用這支）
+- `GET /api/market/overview`：大盤總覽單一入口，整合指數走勢、大盤層級三大法人買賣超／融資融券、期貨、市值占比與板塊動能／細產業動能；大盤總覽頁與個股頁的大盤快照卡都吃這支
+- `GET /api/market/sector-momentum`：板塊動能排名（見 `docs/specs/sector-momentum-formula-contract.md`），已整併進大盤總覽頁的「產業資金流向」區塊
 - `GET /api/market/sub-industry-momentum`：細產業動能排名（同一份公式契約「細產業版」一節）
 - `POST /api/market/sub-industry-momentum/refresh` ／ `GET .../refresh-status`：手動觸發細產業資料回補的背景工作（比照個股 `refresh`／`refresh-status` 同一套輪詢模式）
 

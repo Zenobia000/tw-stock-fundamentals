@@ -433,6 +433,31 @@ def build_market_radar(conn: sqlite3.Connection) -> dict:
     }
 
 
+def build_market_overview(conn: sqlite3.Connection) -> dict:
+    """大盤總覽的單一組裝入口 — 首頁不查個股就能看到的獨立頂層 view。
+
+    複用 build_market_radar 的排行榜/期貨/市值佔比查詢，避免跟這裡重複定義
+    同一份 SQL；新增大盤層級三大法人買賣超、融資融券增減（TWSE/TPEX 各自
+    最新一天）與大盤指數走勢，並整併原本獨立 overlay 的板塊動能／細產業動能，
+    讓「指數→資金流向→籌碼→產業」一次到位，個股頁的快照卡也吃同一份資料。
+    """
+    radar = build_market_radar(conn)
+    return {
+        "index_trend": _dicts(
+            queries.get_sector_index_series(conn, _SECTOR_BENCHMARK_INDEX_NAME)
+        ),
+        "institutional_trading": _dicts(
+            queries.get_market_institutional_trading_latest(conn)
+        ),
+        "margin_short": _dicts(queries.get_market_margin_short_latest(conn)),
+        "futures": radar["futures"],
+        "market_cap": radar["market_cap"],
+        "rankings": radar["rankings"],
+        "sector_momentum": build_sector_momentum(conn),
+        "sub_industry_momentum": build_sub_industry_momentum(conn),
+    }
+
+
 def build_sector_momentum(conn: sqlite3.Connection) -> list[dict]:
     """板塊動能排名 — 仿 TheMarketMemo「全市場動量觀察表」邏輯的台股板塊版。
     母體是 TWSE 官方「XX類指數」（不含大盤/規模指數），benchmark 是發行量加權股價指數。

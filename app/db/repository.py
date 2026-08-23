@@ -1,6 +1,7 @@
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import TypeAlias
 
 from app.calc.opex import statement_operating_efficiency
 from app.scrapers.cmoney_stock import AnnualDividend, EtfHolding
@@ -22,12 +23,25 @@ from app.scrapers.moneylink_cashflow import DetailedCashflowQuarter
 from app.scrapers.moneylink_income import DetailedIncomeQuarter
 from app.scrapers.taifex_futures import FuturesOI
 from app.scrapers.taifex_market_cap import MarketCapWeight
+from app.scrapers.tpex_market_institutional import (
+    MarketInstitutionalTrading as TpexMarketInstitutionalTrading,
+)
+from app.scrapers.tpex_market_margin import MarketMarginShort as TpexMarketMarginShort
 from app.scrapers.twse_financials import FinancialHealthQuarter
 from app.scrapers.twse_isin import StockIsinInfo
+from app.scrapers.twse_market_institutional import (
+    MarketInstitutionalTrading as TwseMarketInstitutionalTrading,
+)
+from app.scrapers.twse_market_margin import MarketMarginShort as TwseMarketMarginShort
 from app.scrapers.twse_rankings import RankingEntry
 from app.scrapers.twse_sector_index import SectorIndex
 from app.scrapers.twse_stock_day import DailyPrice
 from app.scrapers.twse_valuation_stats import StockValuationStat
+
+MarketInstitutionalTradingRow: TypeAlias = (
+    TwseMarketInstitutionalTrading | TpexMarketInstitutionalTrading
+)
+MarketMarginShortRow: TypeAlias = TwseMarketMarginShort | TpexMarketMarginShort
 
 
 def upsert_stock(conn: sqlite3.Connection, info: StockIsinInfo) -> None:
@@ -515,6 +529,85 @@ def upsert_futures_oi(conn: sqlite3.Connection, rows: list[FuturesOI]) -> None:
             )
             for row in rows
         ],
+    )
+    conn.commit()
+
+
+def upsert_market_institutional_trading(
+    conn: sqlite3.Connection,
+    rows: list[MarketInstitutionalTradingRow],
+    source: str,
+) -> None:
+    fetched_at = datetime.now(UTC).isoformat()
+    conn.executemany(
+        """
+        INSERT INTO market_institutional_trading_daily (
+            date, market, institution, buy_amount, sell_amount, net_amount, source, fetched_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(date, market, institution) DO UPDATE SET
+            buy_amount = excluded.buy_amount,
+            sell_amount = excluded.sell_amount,
+            net_amount = excluded.net_amount,
+            source = excluded.source,
+            fetched_at = excluded.fetched_at
+        """,
+        [
+            (
+                row.date,
+                row.market,
+                row.institution,
+                row.buy_amount,
+                row.sell_amount,
+                row.net_amount,
+                source,
+                fetched_at,
+            )
+            for row in rows
+        ],
+    )
+    conn.commit()
+
+
+def upsert_market_margin_short(
+    conn: sqlite3.Connection,
+    row: MarketMarginShortRow,
+    source: str,
+) -> None:
+    fetched_at = datetime.now(UTC).isoformat()
+    conn.execute(
+        """
+        INSERT INTO market_margin_short_daily (
+            date, market, margin_buy, margin_sell, margin_redemption, margin_balance,
+            short_buy, short_sell, short_redemption, short_balance, source, fetched_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(date, market) DO UPDATE SET
+            margin_buy = excluded.margin_buy,
+            margin_sell = excluded.margin_sell,
+            margin_redemption = excluded.margin_redemption,
+            margin_balance = excluded.margin_balance,
+            short_buy = excluded.short_buy,
+            short_sell = excluded.short_sell,
+            short_redemption = excluded.short_redemption,
+            short_balance = excluded.short_balance,
+            source = excluded.source,
+            fetched_at = excluded.fetched_at
+        """,
+        (
+            row.date,
+            row.market,
+            row.margin_buy,
+            row.margin_sell,
+            row.margin_redemption,
+            row.margin_balance,
+            row.short_buy,
+            row.short_sell,
+            row.short_redemption,
+            row.short_balance,
+            source,
+            fetched_at,
+        ),
     )
     conn.commit()
 

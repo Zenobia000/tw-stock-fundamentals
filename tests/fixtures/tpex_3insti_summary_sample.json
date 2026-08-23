@@ -1,0 +1,9 @@
+[
+{"Date":"1150821","Investor":"外資及陸資合計","PurchaseAmount":"65957033870","SaleAmount":"66657261236","Net":"-700227366"},
+{"Date":"1150821","Investor":"　外資及陸資(不含自營商)","PurchaseAmount":"65957033870","SaleAmount":"66657261236","Net":"-700227366"},
+{"Date":"1150821","Investor":"　外資自營商","PurchaseAmount":"0","SaleAmount":"0","Net":"0"},
+{"Date":"1150821","Investor":"投信","PurchaseAmount":"5256205877","SaleAmount":"3929118761","Net":"1327087116"},
+{"Date":"1150821","Investor":"自營商合計","PurchaseAmount":"5030464963","SaleAmount":"5985817576","Net":"-955352613"},
+{"Date":"1150821","Investor":"　自營商(自行買賣)","PurchaseAmount":"1469017976","SaleAmount":"2531175792","Net":"-1062157816"},
+{"Date":"1150821","Investor":"　自營商(避險)","PurchaseAmount":"3561446987","SaleAmount":"3454641784","Net":"106805203"},
+{"Date":"1150821","Investor":"三大法人合計*","PurchaseAmount":"76243704710","SaleAmount":"76572197573","Net":"-328492863"}]

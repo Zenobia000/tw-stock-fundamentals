@@ -139,6 +139,26 @@ def test_sub_industry_momentum_endpoint_returns_empty_list_without_data(client):
     assert resp.json() == []
 
 
+def test_market_overview_endpoint_returns_shape_without_data(client):
+    """大盤總覽是獨立頂層 view，不需要先選股票就要能拿到資料（即使目前是空的）。"""
+    resp = client.get("/api/market/overview")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert set(body) == {
+        "index_trend",
+        "institutional_trading",
+        "margin_short",
+        "futures",
+        "market_cap",
+        "rankings",
+        "sector_momentum",
+        "sub_industry_momentum",
+    }
+    assert body["index_trend"] == []
+    assert body["institutional_trading"] == []
+    assert body["margin_short"] == []
+
+
 def test_valuation_benchmark_endpoint_returns_none_fields_without_data(client):
     resp = client.get("/api/stocks/2330/valuation-benchmark")
     assert resp.status_code == 200

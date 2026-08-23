@@ -403,6 +403,37 @@ CREATE TABLE IF NOT EXISTS margin_short_daily (
     PRIMARY KEY (code, date)
 );
 
+-- 大盤層級三大法人買賣超（TWSE/TPEX 官方每日合計，非個股加總）。
+CREATE TABLE IF NOT EXISTS market_institutional_trading_daily (
+    date TEXT NOT NULL,
+    market TEXT NOT NULL,          -- 'TWSE' / 'TPEX'
+    institution TEXT NOT NULL,     -- 自營商(自行買賣) / 自營商(避險) / 投信 / 外資及陸資 / 外資自營商 / 合計
+    buy_amount REAL,
+    sell_amount REAL,
+    net_amount REAL,
+    source TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (date, market, institution)
+);
+
+-- 大盤層級融資融券餘額（TWSE 為官方合計端點；TPEX 無官方合計端點，
+-- 由官方逐股資料在 scraper 內加總得出，仍屬官方數字非券商入口網站）。
+CREATE TABLE IF NOT EXISTS market_margin_short_daily (
+    date TEXT NOT NULL,
+    market TEXT NOT NULL,          -- 'TWSE' / 'TPEX'
+    margin_buy REAL,
+    margin_sell REAL,
+    margin_redemption REAL,
+    margin_balance REAL,
+    short_buy REAL,
+    short_sell REAL,
+    short_redemption REAL,
+    short_balance REAL,
+    source TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (date, market)
+);
+
 CREATE TABLE IF NOT EXISTS broker_branches_daily (
     code TEXT NOT NULL REFERENCES stocks(code),
     date TEXT NOT NULL,
@@ -460,3 +491,7 @@ CREATE INDEX IF NOT EXISTS idx_board_holdings_code_month
     ON board_holdings_monthly(code, report_month DESC);
 CREATE INDEX IF NOT EXISTS idx_major_shareholders_code_date
     ON major_shareholders(code, as_of_date DESC);
+CREATE INDEX IF NOT EXISTS idx_market_institutional_trading_date
+    ON market_institutional_trading_daily(date DESC, market, institution);
+CREATE INDEX IF NOT EXISTS idx_market_margin_short_date
+    ON market_margin_short_daily(date DESC, market);

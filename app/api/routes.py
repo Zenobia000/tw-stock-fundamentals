@@ -16,6 +16,7 @@ from app.dashboard_v2_service import (
     build_dashboard_v2,
     build_financial_quality,
     build_fundamentals,
+    build_market_overview,
     build_market_radar,
     build_nine_grid,
     build_sector_momentum,
@@ -289,6 +290,11 @@ def get_chips_market_v2(code: str, conn: Db):
 @router.get("/market/radar")
 def get_market_radar_v2(conn: Db):
     return build_market_radar(conn)
+
+
+@router.get("/market/overview")
+def get_market_overview(conn: Db):
+    return build_market_overview(conn)
 
 
 @router.get("/market/sector-momentum")

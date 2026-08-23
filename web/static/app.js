@@ -4,6 +4,7 @@ const state = {
   code: null,
   dashboard: null,
   radar: null,
+  marketOverview: null,
   valuationBenchmark: null,
   view: "overview",
   rankingTopic: "turnover",
@@ -755,32 +756,118 @@ function renderMarket(chips, radar) {
     { key: "date", label: "日期" }, { key: "branch", label: "分點" }, { key: "buy", label: "買", format: (v) => fmt(v, 0) },
     { key: "sell", label: "賣", format: (v) => fmt(v, 0) }, { key: "net", label: "淨", format: (v) => fmt(v, 0) },
   ], "待補券商分點資料");
-  const futuresRows = radar.futures || [];
-  const contracts = [...new Set(futuresRows.map((row) => row.contract))];
-  const futuresValues = new Map(futuresRows.map((row) => [`${row.contract}:${row.institution}`, row.net_oi]));
-  drawChart(byId("chart-futures"), institutions.map((institution) => ({
-    name: institution,
-    values: contracts.map((contract) => futuresValues.get(`${contract}:${institution}`) ?? null),
-    digits: 0,
-    suffix: " 口",
-  })), contracts, { bars: [0, 1, 2] });
-
-  tableFromRows(byId("futures-table"), futuresRows, [
-    { key: "institution", label: "身份" }, { key: "contract", label: "商品" },
-    { key: "long_oi", label: "多", format: (v) => fmt(v, 0) }, { key: "short_oi", label: "空", format: (v) => fmt(v, 0) },
-    { key: "net_oi", label: "淨額", format: (v) => fmt(v, 0), className: (row) => row.net_oi >= 0 ? "positive" : "negative" },
-  ], "待補 TAIFEX 未平倉資料");
   tableFromRows(byId("etf-table"), etfRows, [
     { key: "as_of_date", label: "日期" }, { key: "etf_code", label: "ETF" }, { key: "etf_name", label: "名稱" },
     { key: "holding_ratio", label: "權重", format: (v) => pct(v) },
   ], "目前資料源未查到持有此股票的 ETF；不以 0 代替");
-  tableFromRows(byId("market-cap-table"), radar.market_cap?.slice(0, 50), [
+  renderRanking(radar);
+  renderMarketSnapshotCard(state.marketOverview);
+}
+
+// 大盤層級的三大法人買賣超／融資融券只有 TWSE/TPEX 各一列（合計數字，不是逐股)，
+// 直接依 market 分組成表格即可，不需要像個股那樣按日期轉寬表。
+function institutionalTradingRow(row) {
+  const netClass = isValue(row.net_amount) ? (row.net_amount >= 0 ? "positive" : "negative") : "";
+  return `<tr><td>${escapeHtml(row.market)}</td><td>${escapeHtml(row.institution)}</td>` +
+    `<td class="${netClass}">${fmt(row.net_amount, 0)}</td><td>${escapeHtml(row.date)}</td></tr>`;
+}
+
+function renderMarketInstitutionalTable(rows) {
+  const table = byId("market-institutional-table");
+  if (!rows?.length) { emptyTable(table, 4, "待補大盤三大法人買賣超資料"); return; }
+  table.innerHTML = `<thead><tr><th>市場</th><th>法人</th><th>買賣超</th><th>資料日</th></tr></thead>` +
+    `<tbody>${rows.map(institutionalTradingRow).join("")}</tbody>`;
+}
+
+function renderMarketMarginTable(rows) {
+  tableFromRows(byId("market-margin-table"), rows, [
+    { key: "market", label: "市場" },
+    { key: "margin_balance", label: "融資餘額", format: (v) => fmt(v, 0) },
+    { key: "short_balance", label: "融券餘額", format: (v) => fmt(v, 0) },
+    { key: "date", label: "資料日" },
+  ], "待補大盤融資融券資料");
+}
+
+function renderMarketFutures(rows) {
+  const institutions = ["外資", "投信", "自營商"];
+  const contracts = [...new Set(rows.map((row) => row.contract))];
+  const values = new Map(rows.map((row) => [`${row.contract}:${row.institution}`, row.net_oi]));
+  drawChart(byId("chart-futures"), institutions.map((institution) => ({
+    name: institution,
+    values: contracts.map((contract) => values.get(`${contract}:${institution}`) ?? null),
+    digits: 0,
+    suffix: " 口",
+  })), contracts, { bars: [0, 1, 2] });
+  tableFromRows(byId("futures-table"), rows, [
+    { key: "institution", label: "身份" }, { key: "contract", label: "商品" },
+    { key: "long_oi", label: "多", format: (v) => fmt(v, 0) }, { key: "short_oi", label: "空", format: (v) => fmt(v, 0) },
+    { key: "net_oi", label: "淨額", format: (v) => fmt(v, 0), className: (row) => row.net_oi >= 0 ? "positive" : "negative" },
+  ], "待補 TAIFEX 未平倉資料");
+}
+
+function renderMarketOverview(overview) {
+  state.marketOverview = overview;
+  const trend = overview.index_trend || [];
+  drawChart(byId("chart-market-index"), [
+    { name: "加權指數", values: trend.map((row) => row.close_index), digits: 0 },
+  ], trend.map((row) => row.date), { labelCount: 8 });
+  renderMarketInstitutionalTable(overview.institutional_trading);
+  renderMarketMarginTable(overview.margin_short);
+  renderMarketFutures(overview.futures || []);
+  tableFromRows(byId("market-cap-table"), overview.market_cap?.slice(0, 50), [
     { key: "rank", label: "#" }, { key: "code", label: "代碼" },
     { key: "name", label: "名稱" },
     { key: "pct_of_market", label: "大盤比重", format: (v) => pct(v, 3) },
     { key: "date", label: "資料日期" },
   ], "待補全市場流通股本與市值資料源");
-  renderRanking(radar);
+  renderSectorMomentum(overview.sector_momentum);
+  renderMarketSnapshotCard(overview);
+}
+
+function marketSnapshotItem(label, value) {
+  return `<div><span>${escapeHtml(label)}</span><b>${value}</b></div>`;
+}
+
+function renderMarketSnapshotCard(overview) {
+  const body = byId("market-snapshot-body");
+  if (!body) return;
+  if (!overview) { body.innerHTML = emptyHtml("大盤資料讀取中"); return; }
+  const trend = overview.index_trend || [];
+  const latestIndex = trend.at(-1);
+  const twseInstitutional = (overview.institutional_trading || []).find(
+    (row) => row.market === "TWSE" && row.institution === "合計",
+  );
+  const twseMargin = (overview.margin_short || []).find((row) => row.market === "TWSE");
+  // change_pct 已經是百分比數值（例如 0.65 代表 0.65%），不是要再乘 100 的小數，
+  // 不能沿用 signedPct（它假設輸入是小數），這裡直接用 pct(..., alreadyPercent=true)。
+  const indexChangeText = latestIndex && isValue(latestIndex.change_pct)
+    ? `${Number(latestIndex.change_pct) >= 0 ? "+" : ""}${pct(latestIndex.change_pct, 2, true)}`
+    : "-";
+  body.innerHTML = [
+    marketSnapshotItem(
+      "加權指數",
+      latestIndex ? `${fmt(latestIndex.close_index, 0)}（${indexChangeText}）` : "-",
+    ),
+    marketSnapshotItem(
+      "三大法人合計買賣超(上市)",
+      twseInstitutional && isValue(twseInstitutional.net_amount)
+        ? `${fmt(Number(twseInstitutional.net_amount) / 1e8, 2)} 億`
+        : "-",
+    ),
+    marketSnapshotItem(
+      "融資餘額(上市)",
+      twseMargin ? `${fmt(twseMargin.margin_balance, 0)} 張` : "-",
+    ),
+  ].join("");
+}
+
+let marketOverviewLoaded = false;
+async function loadMarketOverview() {
+  try {
+    renderMarketOverview(await fetchJson(`${API}/market/overview`));
+  } catch (error) {
+    showError(`大盤總覽載入失敗：${error.message}`);
+  }
 }
 
 let sectorMomentumData = [];
@@ -929,29 +1016,6 @@ function renderSectorMomentum(rows) {
       : { key, dir: "desc" };
     renderSectorMomentum();
   }));
-}
-
-let sectorMomentumLoaded = false;
-async function loadSectorMomentum() {
-  try {
-    setLoading(true);
-    renderSectorMomentum(await fetchJson(`${API}/market/sector-momentum`));
-  } catch (error) {
-    showError(`板塊動能載入失敗：${error.message}`);
-  } finally {
-    setLoading(false);
-  }
-}
-
-function toggleSectorMomentum(forceShow) {
-  const panel = byId("sector-momentum-panel");
-  const willShow = forceShow ?? panel.classList.contains("hidden");
-  panel.classList.toggle("hidden", !willShow);
-  byId("empty-state").classList.toggle("hidden", willShow || !!state.code);
-  if (willShow && !sectorMomentumLoaded) {
-    sectorMomentumLoaded = true;
-    loadSectorMomentum();
-  }
 }
 
 // 純函式：走勢陣列 -> 一小段 inline SVG 折線圖。不重用 drawChart —— 那個是含座標軸／
@@ -1219,6 +1283,7 @@ async function loadStock(code, { modelOnly = false, bootstrapAttempt = false } =
       state.code = normalized;
       renderDashboard(dashboard, state.radar, state.valuationBenchmark);
       byId("empty-state").classList.add("hidden");
+      byId("market-overview-panel").classList.add("hidden");
       byId("stock-header").classList.remove("hidden");
       byId("freshness-rail").classList.remove("hidden");
       byId("workspace-nav").classList.remove("hidden");
@@ -1509,7 +1574,6 @@ $$('[data-ranking-market]').forEach((button) => button.addEventListener("click",
 const drawer = byId("method-drawer");
 byId("method-toggle").addEventListener("click", () => drawer.classList.toggle("hidden"));
 byId("method-close").addEventListener("click", () => drawer.classList.add("hidden"));
-byId("sector-momentum-toggle").addEventListener("click", () => toggleSectorMomentum());
 byId("health-toggle").addEventListener("click", openDataHealth);
 byId("health-close").addEventListener("click", () => closeDataHealth());
 byId("health-reload").addEventListener("click", loadDataHealth);
@@ -1558,7 +1622,10 @@ tickClock(); setInterval(tickClock, 1000);
 let resizeTimer;
 window.addEventListener("resize", () => {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => { if (state.dashboard) renderDashboard(state.dashboard, state.radar || { futures: [], rankings: {} }, state.valuationBenchmark || {}); }, 150);
+  resizeTimer = setTimeout(() => {
+    if (state.dashboard) renderDashboard(state.dashboard, state.radar || { futures: [], rankings: {} }, state.valuationBenchmark || {});
+    if (state.marketOverview && !state.code) renderMarketOverview(state.marketOverview);
+  }, 150);
 });
 
 const params = new URLSearchParams(window.location.search);
@@ -1571,5 +1638,5 @@ if (initialCode) {
   if (initialPanel === "data-health") state.code = initialCode;
   else loadStock(initialCode);
 }
-if (initialPanel === "sector-momentum") toggleSectorMomentum(true);
 if (initialPanel === "data-health") openDataHealth();
+loadMarketOverview();

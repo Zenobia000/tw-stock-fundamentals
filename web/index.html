@@ -17,7 +17,6 @@
       <div id="search-results" class="search-results"></div>
     </form>
     <button id="refresh-button" class="refresh-button hidden" type="button">更新資料</button>
-    <button id="sector-momentum-toggle" class="quiet-button" type="button">板塊</button>
     <button id="health-toggle" class="health-button" type="button">資料狀態 <b id="health-badge">按需</b></button>
     <button id="method-toggle" class="quiet-button" type="button">方法</button>
     <div id="clock" class="clock"></div>
@@ -97,41 +96,6 @@
     </div>
   </section>
 
-  <section id="sector-momentum-panel" class="sector-momentum hidden" aria-label="板塊／細產業動能觀察">
-    <header class="momentum-header">
-      <div class="momentum-heading">
-        <h2>板塊動能觀察</h2>
-        <p>比較短、中、長期相對強度，快速辨識資金輪動方向。</p>
-      </div>
-      <div class="mode-switch" role="group" aria-label="動能顆粒度">
-        <button class="active" data-momentum-mode="sector" type="button">官方板塊</button>
-        <button data-momentum-mode="sub-industry" type="button">細產業</button>
-      </div>
-    </header>
-    <div class="momentum-context">
-      <p class="source-note" id="momentum-source-note">來源：TWSE 官方類股指數（約 30–37 類）；REL 以發行量加權股價指數為基準。</p>
-      <div id="momentum-legend" class="momentum-legend" aria-label="指標判讀方式">
-        <span><i class="legend-swatch rank"></i>Rank 越高越強</span>
-        <span><i class="legend-swatch gain"></i>REL 正值領先大盤</span>
-        <span><i class="legend-swatch loss"></i>REL 負值落後大盤</span>
-      </div>
-    </div>
-    <div id="momentum-summary" class="momentum-summary" aria-live="polite">
-      <div><span>資料日</span><strong>讀取中</strong></div>
-      <div><span>板塊數</span><strong>—</strong></div>
-      <div><span>強勢板塊</span><strong>—</strong></div>
-      <div><span>目前領先</span><strong>—</strong></div>
-    </div>
-    <p class="momentum-scroll-hint">左右滑動可查看完整指標</p>
-    <div id="sector-momentum-view" class="momentum-table-frame table-scroll"><table id="sector-momentum-table" class="data-table momentum-table"></table></div>
-    <div id="sub-industry-momentum-view" class="momentum-table-frame table-scroll hidden">
-      <div class="sub-industry-refresh-bar">
-        <span id="sub-industry-refresh-message" class="sub-industry-refresh-message">產業標籤／前100大名單／股價都是手動回補的靜態快照，不會每天自動更新。</span>
-        <button id="sub-industry-refresh-button" class="refresh-button" type="button">重新回補細產業資料</button>
-      </div>
-      <table id="sub-industry-momentum-table" class="data-table momentum-table"></table>
-    </div>
-  </section>
 
   <aside id="method-drawer" class="method-drawer hidden" aria-label="公式與資料說明">
     <div class="drawer-head">
@@ -150,7 +114,7 @@
       <p><b>營運基本面：</b>營業收入、月營收、損益表與 EPS 趨勢</p>
       <p><b>財務品質：</b>資產負債、營運效率、股利、現金流與公司事件</p>
       <p><b>翁氏九宮格：</b>九項核心指標與歷史季度資料</p>
-      <p><b>籌碼市場：</b>大戶籌碼、ETF、三大法人期貨、排行榜、市值比重</p>
+      <p><b>籌碼市場：</b>個股大戶籌碼、法人買賣超、融資融券、券商分點、ETF、排行榜，並列大盤快照對照相對強弱</p>
     </div>
     <p class="source-note">資料不足時顯示「待補資料源」，不以 0 代替。所有金額與比率都沿用 API 回傳的明確單位。</p>
   </aside>
@@ -304,13 +268,11 @@
         </div>
       </details>
 
-      <details class="market-group" open>
-        <summary><span><b>整體市場背景</b>期貨部位與市值結構</span><em>需要時展開</em></summary>
-        <div class="content-grid two">
-          <article class="card"><div class="card-head"><h3>各商品法人期貨淨部位</h3><span>每個商品 × 法人</span></div><canvas id="chart-futures" class="chart" height="220"></canvas><div class="table-scroll compact-table"><table id="futures-table" class="data-table"></table></div></article>
-          <article class="card"><div class="card-head"><h3>市值占大盤比重</h3><span>全市場</span></div><div class="table-scroll"><table id="market-cap-table" class="data-table"></table></div></article>
-        </div>
-      </details>
+      <article class="card market-snapshot-card">
+        <div class="card-head"><h3>大盤快照</h3><span>與目前研究標的資金流對照，看相對強弱</span></div>
+        <div id="market-snapshot-body" class="market-snapshot-body"></div>
+        <a href="/" class="market-snapshot-link">查看完整大盤總覽 →</a>
+      </article>
     </section>
   </main>
 
@@ -331,6 +293,57 @@
       </div>
     </div>
     <p class="landing-note">資料依來源發布頻率更新，僅供個人研究。</p>
+  </section>
+
+  <section id="market-overview-panel" class="sector-momentum" aria-label="大盤總覽">
+    <header class="momentum-header">
+      <div class="momentum-heading">
+        <h2>大盤總覽</h2>
+        <p>指數走勢、三大法人與融資融券、期貨未平倉、產業資金流向 — 看盤先看大方向，再往下查個股。</p>
+      </div>
+    </header>
+
+    <div class="content-grid two market-overview-grid">
+      <article class="card wide-card"><div class="card-head"><h3>加權指數走勢</h3><span>發行量加權股價指數</span></div><canvas id="chart-market-index" class="chart" height="220"></canvas></article>
+      <article class="card"><div class="card-head"><h3>三大法人買賣超</h3><span>上市／上櫃各自最新一天</span></div><div class="table-scroll compact-table"><table id="market-institutional-table" class="data-table"></table></div></article>
+      <article class="card"><div class="card-head"><h3>融資融券增減</h3><span>上市／上櫃各自最新一天，張</span></div><div class="table-scroll compact-table"><table id="market-margin-table" class="data-table"></table></div></article>
+      <article class="card"><div class="card-head"><h3>各商品法人期貨淨部位</h3><span>每個商品 × 法人</span></div><canvas id="chart-futures" class="chart" height="200"></canvas><div class="table-scroll compact-table"><table id="futures-table" class="data-table"></table></div></article>
+      <article class="card"><div class="card-head"><h3>市值占大盤比重</h3><span>全市場</span></div><div class="table-scroll"><table id="market-cap-table" class="data-table"></table></div></article>
+    </div>
+
+    <header class="momentum-header">
+      <div class="momentum-heading">
+        <h2>產業資金流向</h2>
+        <p>比較短、中、長期相對強度，快速辨識資金輪動方向。</p>
+      </div>
+      <div class="mode-switch" role="group" aria-label="動能顆粒度">
+        <button class="active" data-momentum-mode="sector" type="button">官方板塊</button>
+        <button data-momentum-mode="sub-industry" type="button">細產業</button>
+      </div>
+    </header>
+    <div class="momentum-context">
+      <p class="source-note" id="momentum-source-note">來源：TWSE 官方類股指數（約 30–37 類）；REL 以發行量加權股價指數為基準。</p>
+      <div id="momentum-legend" class="momentum-legend" aria-label="指標判讀方式">
+        <span><i class="legend-swatch rank"></i>Rank 越高越強</span>
+        <span><i class="legend-swatch gain"></i>REL 正值領先大盤</span>
+        <span><i class="legend-swatch loss"></i>REL 負值落後大盤</span>
+      </div>
+    </div>
+    <div id="momentum-summary" class="momentum-summary" aria-live="polite">
+      <div><span>資料日</span><strong>讀取中</strong></div>
+      <div><span>板塊數</span><strong>—</strong></div>
+      <div><span>強勢板塊</span><strong>—</strong></div>
+      <div><span>目前領先</span><strong>—</strong></div>
+    </div>
+    <p class="momentum-scroll-hint">左右滑動可查看完整指標</p>
+    <div id="sector-momentum-view" class="momentum-table-frame table-scroll"><table id="sector-momentum-table" class="data-table momentum-table"></table></div>
+    <div id="sub-industry-momentum-view" class="momentum-table-frame table-scroll hidden">
+      <div class="sub-industry-refresh-bar">
+        <span id="sub-industry-refresh-message" class="sub-industry-refresh-message">產業標籤／前100大名單／股價都是手動回補的靜態快照，不會每天自動更新。</span>
+        <button id="sub-industry-refresh-button" class="refresh-button" type="button">重新回補細產業資料</button>
+      </div>
+      <table id="sub-industry-momentum-table" class="data-table momentum-table"></table>
+    </div>
   </section>
 
   <div id="loading" class="loading hidden"><span></span><p>正在組裝研究資料…</p></div>

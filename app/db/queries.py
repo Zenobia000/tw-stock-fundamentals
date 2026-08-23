@@ -97,6 +97,34 @@ def get_futures_oi_latest(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     ).fetchall()
 
 
+def get_market_institutional_trading_latest(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """每個市場（TWSE/TPEX）各自最新一天的三大法人買賣超，兩邊資料日期
+    可能不同步（例如其中一邊來源當天失敗），所以分開取各自的 MAX(date)。"""
+    return conn.execute(
+        """
+        SELECT t.* FROM market_institutional_trading_daily t
+        WHERE t.date = (
+            SELECT MAX(date) FROM market_institutional_trading_daily
+            WHERE market = t.market
+        )
+        ORDER BY t.market, t.institution
+        """
+    ).fetchall()
+
+
+def get_market_margin_short_latest(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return conn.execute(
+        """
+        SELECT t.* FROM market_margin_short_daily t
+        WHERE t.date = (
+            SELECT MAX(date) FROM market_margin_short_daily
+            WHERE market = t.market
+        )
+        ORDER BY t.market
+        """
+    ).fetchall()
+
+
 def get_rankings(
     conn: sqlite3.Connection, category: str, limit: int = 20
 ) -> list[sqlite3.Row]:
