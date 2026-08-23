@@ -1,0 +1,802 @@
+<title>資金鏈儀表板</title>
+<style>
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0c0f14;
+      --surface: #12161d;
+      --surface-2: #1a1f28;
+      --surface-3: #202632;
+      --text: #e9e4d8;
+      --text-dim: #8b93a0;
+      --text-faint: #5b6472;
+      --accent: #e0a24d;
+      --accent-strong: #f0b866;
+      --accent-soft: rgba(224, 162, 77, 0.14);
+      --rule: #262b35;
+      --rule-strong: #333a47;
+      --up: #e2564a;
+      --up-soft: rgba(226, 86, 74, 0.14);
+      --down: #3fb37a;
+      --down-soft: rgba(63, 179, 122, 0.14);
+      --code-bg: #171b23;
+      --shadow: rgba(0, 0, 0, 0.4);
+    }
+  }
+  :root {
+    --bg: #f3f1ea;
+    --surface: #ffffff;
+    --surface-2: #ece7d9;
+    --surface-3: #e2dcc9;
+    --text: #221f1a;
+    --text-dim: #625c4f;
+    --text-faint: #8a8371;
+    --accent: #b8752a;
+    --accent-strong: #96601f;
+    --accent-soft: rgba(184, 117, 42, 0.12);
+    --rule: #ddd6c4;
+    --rule-strong: #c9c0a8;
+    --up: #b3372c;
+    --up-soft: rgba(179, 55, 44, 0.1);
+    --down: #1f7a4d;
+    --down-soft: rgba(31, 122, 77, 0.1);
+    --code-bg: #ece7d9;
+    --shadow: rgba(60, 50, 30, 0.12);
+  }
+  :root[data-theme="dark"] {
+    --bg: #0c0f14;
+    --surface: #12161d;
+    --surface-2: #1a1f28;
+    --surface-3: #202632;
+    --text: #e9e4d8;
+    --text-dim: #8b93a0;
+    --text-faint: #5b6472;
+    --accent: #e0a24d;
+    --accent-strong: #f0b866;
+    --accent-soft: rgba(224, 162, 77, 0.14);
+    --rule: #262b35;
+    --rule-strong: #333a47;
+    --up: #e2564a;
+    --up-soft: rgba(226, 86, 74, 0.14);
+    --down: #3fb37a;
+    --down-soft: rgba(63, 179, 122, 0.14);
+    --code-bg: #171b23;
+    --shadow: rgba(0, 0, 0, 0.4);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'PingFang TC', 'Microsoft JhengHei', 'Noto Sans TC', system-ui, -apple-system, sans-serif;
+    font-size: 16.5px;
+    line-height: 1.9;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4 {
+    font-family: 'Noto Serif TC', 'Iowan Old Style', 'PingFang TC', 'Microsoft JhengHei', serif;
+    font-weight: 700;
+    text-wrap: balance;
+    color: var(--text);
+    letter-spacing: 0.01em;
+  }
+  a { color: var(--accent-strong); }
+  code, .mono, .num { font-family: ui-monospace, 'SFMono-Regular', 'Cascadia Mono', Consolas, monospace; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  .page {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 56px 24px 96px;
+  }
+
+  /* header */
+  .masthead {
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 28px;
+    margin-bottom: 8px;
+  }
+  .eyebrow {
+    font-family: 'Noto Serif TC', serif;
+    font-size: 0.8rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 14px;
+  }
+  h1.title {
+    font-size: clamp(1.8rem, 4vw, 2.5rem);
+    line-height: 1.3;
+    margin: 0 0 16px;
+  }
+  .thesis {
+    font-size: 1.08rem;
+    color: var(--text-dim);
+    max-width: 62ch;
+    margin: 0 0 24px;
+  }
+  .statusbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--surface);
+  }
+  .statusbar .cell {
+    flex: 1 1 140px;
+    padding: 10px 16px;
+    border-right: 1px solid var(--rule);
+  }
+  .statusbar .cell:last-child { border-right: none; }
+  .statusbar .cell .k {
+    font-size: 0.72rem;
+    color: var(--text-faint);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 3px;
+  }
+  .statusbar .cell .v {
+    font-family: ui-monospace, monospace;
+    font-size: 1.05rem;
+    color: var(--text);
+  }
+
+  /* nav chips */
+  .navchips {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 20px 0 32px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .navchips a {
+    flex: 0 0 auto;
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    text-decoration: none;
+    padding: 6px 12px;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .navchips a:hover { border-color: var(--accent); color: var(--accent-strong); }
+
+  section { margin: 56px 0; }
+  section > .sectitle {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 6px;
+  }
+  section > .sectitle .no {
+    font-family: ui-monospace, monospace;
+    font-size: 0.85rem;
+    color: var(--accent);
+  }
+  section h2 { font-size: 1.5rem; margin: 0; }
+  section .lede {
+    color: var(--text-dim);
+    max-width: 68ch;
+    margin: 10px 0 28px;
+  }
+  section h3 { font-size: 1.12rem; margin: 32px 0 12px; }
+  p { max-width: 68ch; }
+  p.wide { max-width: none; }
+
+  .prose-block { max-width: 68ch; }
+
+  /* callout thesis box */
+  .callout {
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    padding: 18px 22px;
+    border-radius: 4px;
+    font-size: 1.02rem;
+    color: var(--text);
+    max-width: 68ch;
+  }
+
+  /* tables */
+  .tablewrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 6px; }
+  table { border-collapse: collapse; width: 100%; min-width: 560px; background: var(--surface); }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--rule); vertical-align: top; font-size: 0.94rem; }
+  thead th {
+    background: var(--surface-2);
+    font-family: 'Noto Serif TC', serif;
+    font-weight: 700;
+    font-size: 0.82rem;
+    letter-spacing: 0.04em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--surface-2); }
+  td.dim { color: var(--text-dim); }
+
+  /* layer list (section 1) */
+  .layerlist { display: flex; flex-direction: column; gap: 0; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; }
+  .layer {
+    display: grid;
+    grid-template-columns: 168px 1fr;
+    border-bottom: 1px solid var(--rule);
+    background: var(--surface);
+  }
+  .layer:last-child { border-bottom: none; }
+  .layer .tag {
+    padding: 16px 18px;
+    background: var(--surface-2);
+    border-right: 1px solid var(--rule);
+    font-family: 'Noto Serif TC', serif;
+    font-weight: 700;
+    font-size: 0.92rem;
+    color: var(--accent-strong);
+  }
+  .layer .body { padding: 16px 20px; }
+  .layer .body .items { color: var(--text); font-size: 0.94rem; margin-bottom: 4px; }
+  .layer .body .purpose { color: var(--text-dim); font-size: 0.86rem; }
+
+  /* flow diagram */
+  .flow {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    overflow-x: auto;
+    padding: 8px 0 16px;
+  }
+  .flow .node {
+    flex: 1 1 0;
+    min-width: 148px;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .flow .node .t { font-size: 0.7rem; color: var(--accent); font-family: ui-monospace, monospace; letter-spacing: 0.03em; }
+  .flow .node .n { font-family: 'Noto Serif TC', serif; font-weight: 700; font-size: 0.98rem; }
+  .flow .node .d { font-size: 0.8rem; color: var(--text-dim); }
+  .flow .arrow {
+    flex: 0 0 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-faint);
+    font-size: 1.1rem;
+  }
+  @media (max-width: 720px) {
+    .flow { flex-direction: column; }
+    .flow .arrow { transform: rotate(90deg); padding: 2px 0; }
+  }
+
+  /* sync matrix cells */
+  .sig { display: inline-flex; align-items: center; gap: 6px; font-size: 0.86rem; padding: 3px 9px; border-radius: 999px; font-weight: 600; }
+  .sig.up { background: var(--up-soft); color: var(--up); }
+  .sig.down { background: var(--down-soft); color: var(--down); }
+  .sig.neutral { background: var(--surface-3); color: var(--text-dim); }
+
+  /* four-dimension grid */
+  .dimgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  @media (max-width: 620px) { .dimgrid { grid-template-columns: 1fr; } }
+  .dimcard { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 20px 22px; }
+  .dimcard .idx { font-family: ui-monospace, monospace; color: var(--accent); font-size: 0.78rem; margin-bottom: 8px; }
+  .dimcard h4 { margin: 0 0 8px; font-size: 1.02rem; }
+  .dimcard p { margin: 0; font-size: 0.88rem; color: var(--text-dim); max-width: none; }
+
+  /* principle list */
+  .plist { display: flex; flex-direction: column; gap: 0; }
+  .principle { display: grid; grid-template-columns: 34px 1fr; gap: 16px; padding: 18px 0; border-bottom: 1px solid var(--rule); }
+  .principle:last-child { border-bottom: none; }
+  .principle .pn { font-family: ui-monospace, monospace; color: var(--accent); font-size: 0.9rem; padding-top: 2px; }
+  .principle h4 { margin: 0 0 6px; font-size: 1rem; }
+  .principle p { margin: 0; color: var(--text-dim); font-size: 0.92rem; max-width: 62ch; }
+
+  /* gap analysis */
+  .gapstatus { font-size: 0.76rem; padding: 2px 8px; border-radius: 4px; font-weight: 700; letter-spacing: 0.02em; }
+  .gapstatus.have { background: var(--down-soft); color: var(--down); }
+  .gapstatus.partial { background: var(--accent-soft); color: var(--accent-strong); }
+  .gapstatus.missing { background: var(--up-soft); color: var(--up); }
+
+  /* open questions */
+  .qlist { display: flex; flex-direction: column; gap: 18px; }
+  .qcard { border: 1px solid var(--rule); border-radius: 8px; padding: 18px 22px; background: var(--surface); }
+  .qcard .qhead { display: flex; gap: 10px; align-items: baseline; margin-bottom: 8px; }
+  .qcard .qn { font-family: ui-monospace, monospace; color: var(--accent); font-size: 0.85rem; }
+  .qcard h4 { margin: 0; font-size: 1rem; }
+  .qcard .rec { margin-top: 10px; padding: 10px 14px; background: var(--accent-soft); border-radius: 4px; font-size: 0.88rem; }
+  .qcard .rec b { color: var(--accent-strong); }
+
+  /* citations */
+  details.cite { border: 1px solid var(--rule); border-radius: 6px; margin-bottom: 10px; background: var(--surface); }
+  details.cite summary {
+    cursor: pointer;
+    padding: 12px 16px;
+    font-family: 'Noto Serif TC', serif;
+    font-weight: 700;
+    font-size: 0.92rem;
+    color: var(--text);
+    list-style: none;
+  }
+  details.cite summary::-webkit-details-marker { display: none; }
+  details.cite summary::before { content: '▸ '; color: var(--accent); }
+  details.cite[open] summary::before { content: '▾ '; }
+  details.cite .citelist { padding: 0 16px 14px; display: flex; flex-direction: column; gap: 6px; }
+  details.cite .citelist a { font-size: 0.84rem; color: var(--text-dim); text-decoration: none; }
+  details.cite .citelist a:hover { color: var(--accent-strong); text-decoration: underline; }
+
+  footer {
+    margin-top: 72px;
+    padding-top: 24px;
+    border-top: 1px solid var(--rule);
+    color: var(--text-faint);
+    font-size: 0.82rem;
+  }
+
+  ::selection { background: var(--accent-soft); }
+</style>
+
+<div class="page">
+
+  <header class="masthead">
+    <p class="eyebrow">產品設計理念草稿 · 資金流向儀表板</p>
+    <h1 class="title">同一批錢，四個窗口</h1>
+    <p class="thesis">籌碼K線大盤頁不是把法人籌碼、期貨、產業熱力圖、融資融券拼成四個獨立功能，而是把同一批資金在「現貨／期貨兩個市場」「法人／散戶兩種身份」「大盤／產業／個股三個顆粒度」「事前／事中／事後三個時間點」留下的足跡，統一成一套可判讀的敘事語言。</p>
+    <div class="statusbar">
+      <div class="cell"><div class="k">截圖來源</div><div class="v">18 張 · 籌碼K線 App</div></div>
+      <div class="cell"><div class="k">研究方向</div><div class="v">4 條並行</div></div>
+      <div class="cell"><div class="k">引用來源</div><div class="v">57 則</div></div>
+      <div class="cell"><div class="k">狀態</div><div class="v">定位已確認 · 盤後選股系統</div></div>
+    </div>
+  </header>
+
+  <nav class="navchips">
+    <a href="#s0">0 · 產品定位</a>
+    <a href="#s1">1 · 截圖梳理</a>
+    <a href="#s2">2 · 資金鏈模型</a>
+    <a href="#s3">3 · 判讀矩陣</a>
+    <a href="#s4">4 · 設計原則</a>
+    <a href="#s5">5 · 現況落差</a>
+    <a href="#s6">6 · 決策記錄</a>
+    <a href="#s7">附錄 · 引用</a>
+  </nav>
+
+  <section id="s0">
+    <div class="sectitle"><span class="no">00</span><h2>產品定位：盤後選股系統，不是即時看盤</h2></div>
+    <p class="lede">籌碼K線大盤頁的即時分鐘走勢圖與事件時間軸，需要即時 tick 資料源。你已有的資料源全部是官方「盤後或次一營業日」公告的定案數字（TWSE 三大法人買賣金額統計表、TAIFEX 大額交易人未沖銷部位結構表、融資融券日報），撐得起「盤後結算」版本，撐不起「即時走勢／分鐘事件流」版本——即時監控留給訂閱的 XQ 全球贏家、籌碼K線處理，這套系統只做<b>收盤後跑一次批次</b>的每日回顧、市場概況與選股候選清單。</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>保留（官方 batch 資料撐得起）</th><th>移除（需要即時資料源，交給訂閱軟體）</th></tr></thead>
+        <tbody>
+          <tr><td>大盤／櫃買／台指期貨 當日 OHLC ＋ 結算摘要</td><td>大盤／期貨即時分鐘走勢圖（價／量切換）</td></tr>
+          <tr><td>三大法人（外資／投信／自營商）當日＋連續買賣超，大盤層級加總</td><td>產業即時動向的分鐘級事件時間軸（「10:31 XX 吸金焦點」）</td></tr>
+          <tr><td>期貨法人未平倉（外資／十大交易人／十大特定人／散戶），T+1 官方資料</td><td>大盤即時委買委賣</td></tr>
+          <tr><td>融資融券當日增減</td><td>盤中焦點快訊／即時新聞</td></tr>
+          <tr><td><b>三層同步判讀燈號</b>（核心價值，見第 3 節）</td><td class="dim">—</td></tr>
+          <tr><td>產業資金流向 daily ranking ＋ treemap（以當日收盤資料計算）</td><td class="dim">—</td></tr>
+          <tr><td>隔夜台指期／夜盤／SGX 富台指收盤結算比較（次日可查的定案數字，非即時走勢）</td><td class="dim">—</td></tr>
+          <tr><td><b>個股熱度／資金流向 Top N 排行 → 選股候選清單（系統真正的產出）</b></td><td class="dim">—</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout">信息架構的終點不是「儀表板呈現完就結束」，而是收斂成一份「今天資金流向支持買進／觀察的候選股清單」——儀表板是過程，清單才是每天要拿去用的東西。後續規格文件會把「產生候選清單」列為明確的功能終點，不只是資料視覺化。</div>
+  </section>
+
+  <section id="s1">
+    <div class="sectitle"><span class="no">01</span><h2>全盤梳理：截圖裡的九層功能</h2></div>
+    <p class="lede">依畫面出現順序整理，每一層都是同一套「資金流向」敘事的一個投影切面，不是互不相干的小工具堆疊。部分區塊有分頁切換（例如「類股輪動表現／產業鏈結構」「價／量」）沒有全部截到，但邏輯是同一套資料換不同視角。</p>
+    <div class="layerlist">
+      <div class="layer">
+        <div class="tag">指數層</div>
+        <div class="body">
+          <div class="items">加權指數 · 櫃買指數 · 台指電子盤（夜盤）· 新加坡富台期指（電子盤），日內走勢圖可切換「價／量」</div>
+          <div class="purpose">同框呈現現貨與期貨、境內與境外四個市場，讓使用者一眼比對領先落後關係</div>
+        </div>
+      </div>
+      <div class="layer">
+        <div class="tag">貢獻度層</div>
+        <div class="body">
+          <div class="items">加權指數貢獻排行（正貢獻點數 Top 5 ／負貢獻點數 Top 5）</div>
+          <div class="purpose">分辨「普遍上漲」還是「少數權值股拉盤」，比漲跌家數更貼近資金真相</div>
+        </div>
+      </div>
+      <div class="layer">
+        <div class="tag">產業資金流層</div>
+        <div class="body">
+          <div class="items">產業類股漲跌分佈 · 資金流向（依產業列流入／流出金額）· 產業熱力圖（treemap，面積=量能，顏色=漲跌）· 產業排行（漲幅／跌幅／成交量／預估量）· 產業鏈結構視圖（上中下游 treemap）· 類股輪動表現（焦點股+資金流量排序）· 產業即時動向（時間軸事件流，「吸金焦點」「資金渙散」「量能增強」標籤疊加在走勢圖上）</div>
+          <div class="purpose">大盤資金往哪個產業流動、流動路徑沿供應鏈怎麼傳導，並用時間軸把盤中輪動變成一條可回放的故事線</div>
+        </div>
+      </div>
+      <div class="layer">
+        <div class="tag">法人籌碼層</div>
+        <div class="body">
+          <div class="items">三大法人（外資／投信／自營商）買賣超金額，分加權與櫃買兩個市場</div>
+          <div class="purpose">拆開三種資金屬性各自的當日與連續買賣超，避免加總後訊號互相抵消</div>
+        </div>
+      </div>
+      <div class="layer">
+        <div class="tag">信用交易層</div>
+        <div class="body">
+          <div class="items">融資融券增減（餘額與張數變化），分加權與櫃買兩個市場</div>
+          <div class="purpose">法人不能信用交易，融資融券是唯一可公開取得的散戶多空氣氛代理指標</div>
+        </div>
+      </div>
+      <div class="layer">
+        <div class="tag">期貨籌碼層</div>
+        <div class="body">
+          <div class="items">期貨法人與散戶淨未平倉：外資 · 10大交易人 · 10大特定人 · 散戶（口數與增減）</div>
+          <div class="purpose">現貨買賣超是「確認訊號」，期貨未平倉是反應更快的「領先訊號」，兩者要對照著看</div>
+        </div>
+      </div>
+      <div class="layer">
+        <div class="tag">個股熱度層</div>
+        <div class="body">
+          <div class="items">熱股排行（強勢／弱勢／成交量／成交額／漲停／跌停）· 個股漲跌分佈統計（漲停27檔、股價月新高59檔等）</div>
+          <div class="purpose">資金鏈最終落地到可交易標的，是整條敘事的「所以呢」</div>
+        </div>
+      </div>
+      <div class="layer">
+        <div class="tag">委買委賣層</div>
+        <div class="body">
+          <div class="items">大盤即時委買委賣（總委買／總委賣的張數、筆數、均張）</div>
+          <div class="purpose">均張反映大單小單結構，均張偏高暗示大戶掛單較多</div>
+        </div>
+      </div>
+      <div class="layer">
+        <div class="tag">資訊層</div>
+        <div class="body">
+          <div class="items">焦點快訊、推薦討論（社群留言疊加）</div>
+          <div class="purpose">把量化的資金訊號補上質化的「為什麼」，兩者互相印證</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="s2">
+    <div class="sectitle"><span class="no">02</span><h2>核心邏輯：資金鏈模型</h2></div>
+    <p class="lede">把九層功能收斂成四個維度：<b>誰在動、在哪個市場動、動到多細、什麼時候動</b>。任何一層資料都可以歸類到這四個維度的某個交叉點，這也是為什麼整套 App 感覺「同一套邏輯，只是視角不同」。</p>
+
+    <div class="dimgrid">
+      <div class="dimcard">
+        <div class="idx">維度一</div>
+        <h4>誰在動——法人光譜 × 散戶代理</h4>
+        <p>外資、投信、自營商三種資金屬性、決策週期、行為動機完全不同，不能加總成單一數字。期貨的十大交易人、十大特定人再補一層大戶集中度驗證。散戶因不能信用交易，只能靠融資融券間接觀察。</p>
+      </div>
+      <div class="dimcard">
+        <div class="idx">維度二</div>
+        <h4>在哪個市場——現貨 × 期貨 × 境內外</h4>
+        <p>加權／櫃買是現貨的最終結算價；台指期（日盤＋夜盤）與新加坡富台指是同一批資金在期貨市場、不同時段、不同計價幣別留下的先行足跡。</p>
+      </div>
+      <div class="dimcard">
+        <div class="idx">維度三</div>
+        <h4>動到多細——大盤 × 產業 × 個股</h4>
+        <p>資金流向指標由上而下三層下鑽：大盤指數走勢 → 產業 treemap（含供應鏈上中下游視角）→ 個股熱度排行，每一層都能點回上一層的原始數字。</p>
+      </div>
+      <div class="dimcard">
+        <div class="idx">維度四</div>
+        <h4>什麼時候動——事前 × 事中 × 事後</h4>
+        <p>SGX富台指與夜盤是「事前」的隔夜足跡；產業即時動向時間軸是「事中」的敘事標註；三大法人與期貨籌碼的官方公告則是「事後」（次一營業日或當日兩次）的確認資料。</p>
+      </div>
+    </div>
+
+    <h3>2.1　資金傳導時間鏈——為何要四個市場對照</h3>
+    <p>加權指數、櫃買指數、台指期貨（日盤＋夜盤）、新加坡富台期指放在同一套邏輯裡，本質是把「同一筆國際資金在不同市場、不同交易時段、不同計價幣別留下的足跡」串成一條時間軸，而非四個互不相干的報價。<b>下圖是概念上的傳導邏輯，本專案的落地版本用次日可查的收盤／結算定案數字做每日一格的對照卡片，不做即時同框走勢圖</b>（見第 0 節產品定位）。</p>
+    <div class="flow">
+      <div class="node">
+        <div class="t">美股收盤前後</div>
+        <div class="n">SGX 富台指</div>
+        <div class="d">美元計價，台積電權重更高，最先反映國際法人隔夜情緒</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="node">
+        <div class="t">15:00–次日 05:00</div>
+        <div class="n">台指期夜盤</div>
+        <div class="d">19 小時，與歐美交易時段高度重疊，疊加本地資金再解讀</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="node">
+        <div class="t">08:45</div>
+        <div class="n">台指期日盤開盤</div>
+        <div class="d">把夜盤與海外盤已消化的資訊先結算一次</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="node">
+        <div class="t">09:00</div>
+        <div class="n">加權指數開盤</div>
+        <div class="d">現貨一次性結算所有隔夜訊息，常見跳空缺口</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="node">
+        <div class="t">盤中</div>
+        <div class="n">產業 → 個股輪動</div>
+        <div class="d">資金流向下鑽到 treemap 與熱股排行，事件時間軸即時標註</div>
+      </div>
+    </div>
+    <p>期貨與現貨殘留的<b>正／逆價差</b>是量化「市場對後市強弱預期」的讀數：正價差反映持有成本與多頭買盤溢價；逆價差常見於除權息旺季（6–8 月）或恐慌性避險賣壓，兩者不能不分青紅皂白直接讀成多空訊號。</p>
+
+    <h3>2.2　資金流向的計算方式——不是漲跌幅</h3>
+    <p>「資金流向」在台股籌碼分析中，是把三大法人買賣超金額（TWSE 官方三大法人買賣金額統計表）依產業別彙總，再疊加該產業成交金額相對前期的增減率，形成「買超＋量增＝資金流入」「賣超＋量縮＝資金流出」的複合訊號——藉此濾掉單純價格噪音的一日行情，這也是為什麼熱力圖的顏色欄位是「資金流向強度」而不是單純漲跌幅。</p>
+
+    <h3>2.3　產業 treemap 與產業鏈結構——兩種下鑽視角</h3>
+    <p>Treemap（面積＝成交量／資金流量，顏色＝漲跌強度）源自 2007 年 Finviz Map 的經典範式，解決了排行榜列表看不出「誰真正撐起大盤」的問題。籌碼K線再疊加一層「產業鏈結構」視圖——依供應鏈上中下游角色重新分組，而非證交所的粗顆粒產業分類，可以看出資金沿供應鏈傳導的路徑，這是一般類股熱力圖看不到的資訊，對應到官方的 TPEx 產業價值鏈資訊平台（30 大主題產業鏈、逾 2,100 家公司）。</p>
+
+    <h3>2.4　時間軸事件流——把資料降維成故事</h3>
+    <p>「10:31 電子上游-PCB材料 吸金焦點」這類標籤疊加在大盤走勢圖上，對應學術上 Segel &amp; Heer（2010）定義的 Annotated Chart 敘事視覺化手法，以及 Bloomberg Terminal、TradingView 等實務工具的 news／event markers。目的是把連續、高頻的盤中資金訊號降維成人類可略讀的故事線，讓使用者不必即時盯盤，也能靠事後回放重建「資金從哪裡開始流、流向哪裡」。</p>
+  </section>
+
+  <section id="s3">
+    <div class="sectitle"><span class="no">03</span><h2>三層同步判讀矩陣</h2></div>
+    <p class="lede">這是整套邏輯裡最有價值、也最容易被誤用的部分：單一數字永遠有雜訊（自營商避險、假外資真主力、除權息季節效應），只有多線同步或背離才是可判讀的訊號。</p>
+
+    <h3>3.1　現貨買賣超 × 期貨淨未平倉（以外資為例）</h3>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>現貨</th><th>期貨</th><th>訊號</th><th>常見解讀</th></tr></thead>
+        <tbody>
+          <tr><td><span class="sig up">買超</span></td><td><span class="sig up">淨多單增加</span></td><td><b>同步</b></td><td>多頭趨勢確立，最強多方訊號</td></tr>
+          <tr><td><span class="sig down">賣超</span></td><td><span class="sig down">淨空單增加</span></td><td><b>同步</b></td><td>空頭趨勢確立，最強空方訊號</td></tr>
+          <tr><td><span class="sig up">買超</span></td><td><span class="sig down">轉空單</span></td><td>背離</td><td>現貨拉高出貨，或單純為既有部位避險，不必然全面看空</td></tr>
+          <tr><td><span class="sig down">賣超</span></td><td><span class="sig up">轉多單</span></td><td>背離（罕見）</td><td>現貨調節同時預期反彈布局期貨</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>3.2　法人方向 × 融資融券方向</h3>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>法人</th><th>融資融券</th><th>經典訊號</th><th>常見解讀</th></tr></thead>
+        <tbody>
+          <tr><td><span class="sig up">買超</span></td><td><span class="sig up">融資大增</span></td><td>對做警訊</td><td>散戶追價接手法人籌碼，股價卻不漲，留意出貨風險</td></tr>
+          <tr><td><span class="sig up">買超</span></td><td><span class="sig down">融資大減 / 斷頭</span></td><td>築底訊號</td><td>浮額出清、籌碼由弱手轉移到強手，重挫後止跌訊號</td></tr>
+          <tr><td class="dim">賣超</td><td class="dim">融資增加</td><td class="dim">一般背離</td><td class="dim">散戶逆勢加碼，訊號權重較低，需搭配量能判斷</td></tr>
+          <tr><td class="dim">賣超</td><td class="dim">融資減少</td><td class="dim">同步下跌</td><td class="dim">法人與散戶同步出場，趨勢確認但無額外訊號</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>3.3　第三重驗證：大戶集中度</h3>
+    <p>期貨的「十大交易人」（不分身份別的最大部位前十名）與「十大特定人」（限定證券商、外資、投信等法定身份）方向一致時，代表大戶與法人立場相同；若兩者背離，暗示有大額非法人大戶與法人立場不同，市場集中度風險升高——這是判讀期貨籌碼時容易被忽略的第三條線。</p>
+  </section>
+
+  <section id="s4">
+    <div class="sectitle"><span class="no">04</span><h2>UI／UX 設計原則</h2></div>
+    <p class="lede">從四條研究線索歸納出的具體設計原則，其中大多數已呼應本專案既有的「儀表板先回答決策問題，再提供明細」與「深色終端風格」原則，只是缺少落地細節。</p>
+    <div class="plist">
+      <div class="principle">
+        <div class="pn">01</div>
+        <div><h4>三層漸進式揭露，不超過三層</h4><p>決策層（首屏必見：大盤走勢＋法人淨額＋指數貢獻度前後三檔）→ 佐證層（同頁可見但視覺降階：產業排行、個股熱度）→ 明細層（點擊才載入：分點、期貨十大交易人、逐日融資融券）。</p></div>
+      </div>
+      <div class="principle">
+        <div class="pn">02</div>
+        <div><h4>資金語言統一貫穿全頁</h4><p>三大法人買賣超、融資融券增減、期貨未平倉、產業資金流向全部正規化成同一個「淨流入／淨流出」度量與視覺符號，讓使用者掃過整頁讀到的是一條連貫故事，而非四種圖表語言的獨立卡片堆疊。</p></div>
+      </div>
+      <div class="principle">
+        <div class="pn">03</div>
+        <div><h4>同步度儀表 / 訊號燈</h4><p>把「現貨法人方向」「期貨外資方向」「融資融券方向」三個布林值合成一個燈號（同步／部分背離／明顯對做），放在儀表板最顯眼位置當一句話結論，細節留給下鑽。這是矩陣（第 3 節）的具體 UI 化。</p></div>
+      </div>
+      <div class="principle">
+        <div class="pn">04</div>
+        <div><h4>Treemap 的面積與顏色分工要單一</h4><p>面積一律綁定成交金額（量能），顏色一律綁定資金流向強度（正規化後的買賣超金額），不是單純漲跌幅；漲跌幅另外放在 tooltip，避免「價格表現」與「資金證據」兩個視覺通道互相污染。</p></div>
+      </div>
+      <div class="principle">
+        <div class="pn">05</div>
+        <div><h4>事件標記軌獨立於走勢線</h4><p>時間軸事件標籤放在走勢圖下方獨立的 marker rail，而不是直接疊在線上蓋住價格；hover 展開明細卡片，點擊可跳轉到當下的 treemap 快照，文字列表與圖表標記雙向連結高亮。</p></div>
+      </div>
+      <div class="principle">
+        <div class="pn">06</div>
+        <div><h4>紅漲綠跌是在地心智模型，不是美學選項</h4><p>沿用台股紅漲綠跌慣例，但漲跌狀態必須同時用箭頭或正負號文字編碼，色彩不能是唯一通道（約 8% 男性有紅綠色盲）。首屏決策層用高對比飽和色，明細層降低飽和度趨近中性灰階，避免整頁紅綠疲勞。</p></div>
+      </div>
+      <div class="principle">
+        <div class="pn">07</div>
+        <div><h4>先定義使用者是研究型還是決策型</h4><p>Bloomberg 式高密度（攤開十大交易人、分點明細）與 Robinhood 式漸進揭露是兩種互斥的資訊密度取捨，不能同時討好，否則首屏決策層會被明細稀釋。</p></div>
+      </div>
+      <div class="principle">
+        <div class="pn">08</div>
+        <div><h4>每個標籤都能點回原始數字</h4><p>「敘事化」不能淪為好看但不可追溯的黑箱著色——每一格 treemap、每一則事件標籤都要能點回官方資料源與時間戳，這也是本專案風險邊界一貫要求的可追溯性。</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="s5">
+    <div class="sectitle"><span class="no">05</span><h2>與現有專案的落差分析</h2></div>
+    <p class="lede">對照 <code>docs/agents/project.md</code> 現有 schema 與資訊架構。專案目前偏向「個股籌碼＋板塊動能排名」，還沒有「大盤層級、多市場同框、資金流向敘事化」的儀表板。</p>
+    <p class="lede" style="margin-top:-18px">修正：初版草稿誤判了幾項現況——實際查證 <code>app/dashboard_v2_service.py</code>、<code>app/db/schema.sql</code> 與既有測試後，「大盤總覽」頁與 <code>/api/market/overview</code> 已經是成熟、有測試覆蓋的功能，比原先設想的完整得多。</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>能力</th><th>現況</th><th>說明</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>大盤層級三大法人買賣超</td>
+            <td><span class="gapstatus have">已有</span></td>
+            <td><code>market_institutional_trading_daily(date, market, institution, buy_amount, sell_amount, net_amount)</code>，TWSE／TPEX 分開，且比一般「三大法人」更細——拆到「自營商(自行買賣)」「自營商(避險)」「投信」「外資及陸資」「外資自營商」「合計」六個身份別，已對應第 3 節矩陣需要的細節</td>
+          </tr>
+          <tr>
+            <td>大盤層級融資融券</td>
+            <td><span class="gapstatus have">已有</span></td>
+            <td><code>market_margin_short_daily(date, market, margin_balance, short_balance, …)</code>，TWSE／TPEX 分開</td>
+          </tr>
+          <tr>
+            <td>大盤總覽單一入口</td>
+            <td><span class="gapstatus have">已有</span></td>
+            <td><code>build_market_overview()</code> ＋ <code>GET /api/market/overview</code>，已整合指數走勢、大盤法人／融資融券、期貨、市值占比、板塊動能與細產業動能；前端 <code>renderMarketOverview()</code> 已上線</td>
+          </tr>
+          <tr>
+            <td>個股籌碼資料</td>
+            <td><span class="gapstatus have">已有</span></td>
+            <td><code>chips_daily</code>、<code>institutional_trading_daily</code>（個股層級）、<code>margin_short_daily</code>、<code>broker_branches_daily</code></td>
+          </tr>
+          <tr>
+            <td>期貨三大法人未平倉</td>
+            <td><span class="gapstatus have">已有</span></td>
+            <td><code>futures_oi_daily(date, institution, contract, long_oi, short_oi, net_oi)</code>，institution 為自營商／投信／外資，來源 TAIFEX <code>futContractsDateExcel</code></td>
+          </tr>
+          <tr>
+            <td>期貨十大交易人／十大特定人／散戶淨未平倉</td>
+            <td><span class="gapstatus missing">缺</span></td>
+            <td>現有期貨表只有三大法人身份別，沒有 TAIFEX「大額交易人未沖銷部位結構表」的十大交易人／十大特定人／散戶三條線，第 3.3 節「大戶集中度」驗證缺這塊資料</td>
+          </tr>
+          <tr>
+            <td>板塊動能排名</td>
+            <td><span class="gapstatus have">已有</span></td>
+            <td><code>sector_index_daily</code> + <code>/api/market/sector-momentum</code>，但口徑是「20/60/120日相對強度排名」，跟研究裡定義的「資金流向（買賣超金額×量能變化）」是不同指標，兩者互補而非取代</td>
+          </tr>
+          <tr>
+            <td>依買賣超金額計算的產業資金流向</td>
+            <td><span class="gapstatus missing">缺</span></td>
+            <td>可用既有 <code>institutional_trading_daily</code>（個股籌碼）依 <code>stock_industry_chain</code> 彙總得出，但目前沒有這支彙總邏輯與 API</td>
+          </tr>
+          <tr>
+            <td>細產業／產業鏈標籤</td>
+            <td><span class="gapstatus partial">部分</span></td>
+            <td><code>stock_industry_chain(stock_id, industry, sub_industry)</code> 是兩層標籤，還不是完整的上中下游供應鏈結構（見 Q5 決議，MVP 沿用現有標籤）</td>
+          </tr>
+          <tr>
+            <td>大盤／期貨每日 OHLC（非即時走勢圖，已定案改為此範圍）</td>
+            <td><span class="gapstatus partial">部分</span></td>
+            <td><code>sector_index_daily</code> 只有 <code>close_index</code>／<code>change_pct</code>，沒有開高低；台指期貨完全沒有價格表（<code>futures_oi_daily</code> 只有未平倉口數，沒有結算價）</td>
+          </tr>
+          <tr>
+            <td>資金流向 Treemap 視覺化</td>
+            <td><span class="gapstatus missing">缺</span></td>
+            <td>前端目前沒有 treemap 元件；板塊動能是表格呈現</td>
+          </tr>
+          <tr>
+            <td>分鐘級時間軸事件標註機制</td>
+            <td><span class="gapstatus missing">已排除範圍</span></td>
+            <td>需要即時 tick 資料源才能產生分鐘級事件，已定案排除（見第 0 節），不列入這套系統的開發範圍</td>
+          </tr>
+          <tr>
+            <td>三層同步判讀邏輯（第 3 節矩陣）＋選股候選清單</td>
+            <td><span class="gapstatus missing">缺</span></td>
+            <td>目前沒有把法人籌碼、期貨籌碼、融資融券、大戶集中度交叉比對並產生候選股清單的計算邏輯，這是整套系統唯一真正的新公式</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="lede">結論：這套系統<b>九成骨架已經在 <code>/api/market/overview</code> 裡了</b>，真正要新增的只有四件事——期貨大戶集中度資料、大盤/期貨每日 OHLC、依金額計算的產業資金流向、以及把既有資料串起來的三層同步判讀＋選股清單公式。詳見 <code>docs/specs/market-daily-digest-contract.md</code>。</p>
+  </section>
+
+  <section id="s6">
+    <div class="sectitle"><span class="no">06</span><h2>決策記錄</h2></div>
+    <p class="lede">依「盤後選股系統、不做即時看盤」的產品定位（第 0 節），以下五題已定案，可直接轉入正式規格文件。</p>
+    <div class="qlist">
+      <div class="qcard">
+        <div class="qhead"><span class="qn">Q1</span><h4>這個資金流向儀表板要做成新頁籤，還是併入現有「板塊動能觀察」？</h4></div>
+        <p>現有板塊動能觀察是排行榜視角（20/60/120 日相對強度百分位），這套邏輯是「今天」的單日快照，時間顆粒度不同。</p>
+        <div class="rec"><b>決定：</b>獨立成「大盤日報」頁籤，收盤後跑一次批次產生，不即時刷新；與板塊動能觀察互相連結而非合併——日報看「今天」，動能觀察看「趨勢」。</div>
+      </div>
+      <div class="qcard">
+        <div class="qhead"><span class="qn">Q2</span><h4>目標使用者是研究型（要看十大交易人、分點明細）還是決策型（一句話結論）？</h4></div>
+        <p>系統只服務單一使用者（自己），不需要為兩種 persona 分別設計。</p>
+        <div class="rec"><b>決定：</b>決策優先、明細自助——首屏給同步度結論＋候選股清單，十大交易人、分點等明細收進點擊才載入的第三層，想深挖時自己點進去，不做成兩套介面。</div>
+      </div>
+      <div class="qcard">
+        <div class="qhead"><span class="qn">Q3</span><h4>大盤日內走勢圖的資料源要接哪裡？</h4></div>
+        <p>即時分鐘走勢圖需要 tick 級資料源，超出目前爬蟲架構的節流假設與定位。</p>
+        <div class="rec"><b>決定：</b>拿掉即時走勢圖與分鐘級事件時間軸，改成「當日 OHLC ＋ 法人／期貨／融資融券當日結算值 ＋ 近 5–10 日迷你趨勢圖」，全部用現有官方 batch 資料源，不碰即時資料節流風險邊界。</div>
+      </div>
+      <div class="qcard">
+        <div class="qhead"><span class="qn">Q4</span><h4>「同步度燈號」這種自動判讀要做到多敢？</h4></div>
+        <p>業界規則本身有例外（權證造市避險、除權息季節效應、假外資），自動化判讀不能省略這些排除條件。</p>
+        <div class="rec"><b>決定：</b>做，而且盤後版本比即時版本更適合——所有輸入都是官方定案數字，不會像即時資料中途反覆修正。維持「顯示客觀同步／背離事實，不下多空建議」的分寸，文字提示用「留意」而非「應該」。</div>
+      </div>
+      <div class="qcard">
+        <div class="qhead"><span class="qn">Q5</span><h4>產業鏈上中下游分類要接 TPEx 官方產業價值鏈平台，還是沿用現有 <code>stock_industry_chain</code> 兩層標籤？</h4></div>
+        <p>官方平台顆粒度更細（30 大主題產業鏈），但目前專案的資料源優先序契約裡未登錄此來源。</p>
+        <div class="rec"><b>決定：</b>先用現有兩層標籤做出「產業 treemap」MVP，之後若實際使用時發現顆粒度不夠，再評估把 TPEx 產業價值鏈平台正式登錄進資料源優先序契約。</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="s7">
+    <div class="sectitle"><span class="no">附錄</span><h2>引用來源</h2></div>
+    <p class="lede">依研究方向分組，共 57 則，來源優先取台灣本地財經媒體、券商研究、交易所官方文件與學術／業界設計研究。</p>
+
+    <details class="cite">
+      <summary>方向 A · 法人與期貨資金鏈邏輯（16 則）</summary>
+      <div class="citelist">
+        <a href="https://rich01.com/three-institutional-investors-tw/" target="_blank" rel="noopener">三大法人是什麼意思？外資/投信/自營商如何影響股市漲跌？ — Mr.Market市場先生</a>
+        <a href="https://finance.ettoday.net/news/2695808" target="_blank" rel="noopener">三大法人是什麼？「外資、投信、自營商」一次懂 — ETtoday財經雲</a>
+        <a href="https://www.twse.com.tw/zh/trading/foreign/bfi82u.html" target="_blank" rel="noopener">三大法人買賣金額統計表 — TWSE 臺灣證券交易所</a>
+        <a href="https://www.twse.com.tw/zh/trading/foreign/t86.html" target="_blank" rel="noopener">三大法人買賣超日報 — TWSE 臺灣證券交易所</a>
+        <a href="https://www.optree.tw/home/trade_blogs/前十大交易人特定法人是指哪些單位" target="_blank" rel="noopener">前十大交易人、特定法人是指哪些單位 — 選擇權搖錢樹</a>
+        <a href="https://www.gorich.com.tw/tw/article/17306" target="_blank" rel="noopener">期貨未平倉量是什麼？運用前五大和前十大交易人籌碼判讀 — 豹投資</a>
+        <a href="https://www.taifex.com.tw/cht/3/largeTraderFutQry" target="_blank" rel="noopener">大額交易人未沖銷部位結構表 — 台灣期貨交易所</a>
+        <a href="https://smart.businessweekly.com.tw/Reading/WebArticle.aspx?id=66736" target="_blank" rel="noopener">透過外資籌碼紀錄表 判斷大盤多空趨勢 — Smart自學網（商業周刊）</a>
+        <a href="https://www.stockfeel.com.tw/外資-外資買賣超-外資期貨空單/" target="_blank" rel="noopener">外資是什麼？外資買賣超怎麼看？外資期貨空單如何影響股市？ — StockFeel 股感</a>
+        <a href="https://ithelp.ithome.com.tw/articles/10287885" target="_blank" rel="noopener">Day 05 - 散戶指標：融資融券餘額 — iT邦幫忙</a>
+        <a href="https://www.sinotrade.com.tw/richclub/XQ-Gold/-融資-增加代表散戶進場--一文顛覆你對融資的認識---68a6d56e79edc55ce1f55615" target="_blank" rel="noopener">「融資」增加代表散戶進場? — 豐雲學堂（元大投顧）</a>
+        <a href="https://www.cmoney.tw/notes/note-detail.aspx?nid=1237923" target="_blank" rel="noopener">融資斷頭潮退場中！19檔「融資大減＋法人買超」股出列 — CMoney</a>
+        <a href="https://www.thenewslens.com/article/125708" target="_blank" rel="noopener">三大法人介紹（1）：如何分辨假外資、偽外資的操作手法？ — 關鍵評論網</a>
+        <a href="https://blog.wistock.ai/wistalk/fake-foreign-investors-taiwan-stock-indicators/" target="_blank" rel="noopener">假外資怎麼看？三大辨識指標教你避開台股籌碼陷阱 — wistock</a>
+        <a href="https://blog.wistock.ai/wistalk/taiwan-stocks-window-dressing-2026-etf-strategy-guide/" target="_blank" rel="noopener">台股作帳行情是什麼？投信買超邏輯與操作策略完整解析 — wistock</a>
+        <a href="https://www.stockfeel.com.tw/投信-投信買賣超-投信買賣超排行/" target="_blank" rel="noopener">投信是什麼？投信買賣超怎麼看？ — StockFeel 股感</a>
+      </div>
+    </details>
+
+    <details class="cite">
+      <summary>方向 B · 現貨期貨聯動方法論（13 則）</summary>
+      <div class="citelist">
+        <a href="https://www.sinotrade.com.tw/richclub/futures/-台股夜盤懶人包-台指期夜盤是什麼-夜盤是投資人避險關鍵-交易時間-如何看盤與操作重點一次看-68ef3778b694f49c6241084d" target="_blank" rel="noopener">台股夜盤懶人包 — 豐雲學堂</a>
+        <a href="https://tw.stock.yahoo.com/news/「台指期」是什麼？現貨開盤前的風向球！看懂「夜盤」領先指標-093248708.html" target="_blank" rel="noopener">「台指期」是什麼？現貨開盤前的風向球 — Yahoo股市</a>
+        <a href="https://www.taifex.com.tw/cht/4/aHIntroduction" target="_blank" rel="noopener">臺灣期貨交易所－盤後交易介紹（官方）</a>
+        <a href="https://www.stockfeel.com.tw/期貨-正價差-逆價差/" target="_blank" rel="noopener">期貨正價差、逆價差是什麼？ — StockFeel 股感</a>
+        <a href="https://news.cnyes.com/news/id/6522027" target="_blank" rel="noopener">台股的期現貨正價差，比多數人想得更大更離譜 — 鉅亨網</a>
+        <a href="https://winsmart.tw/en/online_teaching/正價差逆價差/" target="_blank" rel="noopener">台指期正價差逆價差是什麼？ — Winsmart</a>
+        <a href="https://opas.school/posts/twindex02" target="_blank" rel="noopener">什麼是正逆價差？深度拆解台指期與大盤指數的連動關係 — Forexify</a>
+        <a href="https://uptogo.com.tw/財經/摩台期是什麼/" target="_blank" rel="noopener">摩台期是什麼？從富台指、台指期看外資避險利器 — UpToGo</a>
+        <a href="https://uptogo.com.tw/財經/什麼是摩台指/" target="_blank" rel="noopener">摩台指是什麼？成分股結構、結算日與富台指差異全解析 — UpToGo</a>
+        <a href="https://www.goblintrader.blog/什麼是富台指-台指期-vs-富台指/" target="_blank" rel="noopener">什麼是富台指？台指期 vs 富台指 — 哥布林的理財日記</a>
+        <a href="https://www.sgx.com/zh-hans/derivatives/products/twnfc?cc=TWN" target="_blank" rel="noopener">FTSE Taiwan Index Futures and Options Suite — 新加坡交易所官方</a>
+        <a href="https://www.ebc.com/zh/jinrong/294251.html" target="_blank" rel="noopener">台股外資賣超是套利操作嗎? — EBC金融集團</a>
+        <a href="https://richkpi.com/futures-beginner/1471/" target="_blank" rel="noopener">台指期夜盤與日盤各是什麼？台指全交易時間？ — Leo投資教學</a>
+      </div>
+    </details>
+
+    <details class="cite">
+      <summary>方向 C · 產業資金流向敘事化（15 則）</summary>
+      <div class="citelist">
+        <a href="https://cmnews.com.tw/article/chipk-359860a5-5ee7-11f1-89e9-52f5102beef2" target="_blank" rel="noopener">【籌碼K線 APP】獨家！盤中產業即時功能你會使用嗎？ — 籌碼K先生</a>
+        <a href="https://www.cmoney.tw/notes/note-detail.aspx?nid=61802" target="_blank" rel="noopener">這張圖 教你看懂市場「資金流向」！ — CMoney</a>
+        <a href="https://www.cmoney.tw/finance/f00018.aspx" target="_blank" rel="noopener">資金流向 | 產業分析 — CMoney股市</a>
+        <a href="https://www.moneydj.com/Z/ZB/ZBA/ZBA.djhtm" target="_blank" rel="noopener">大盤資金流向表-台股 — MoneyDJ理財網</a>
+        <a href="https://ic.tpex.org.tw/" target="_blank" rel="noopener">產業價值鏈資訊平台 — 櫃買中心</a>
+        <a href="https://money.udn.com/money/story/11074/8861621" target="_blank" rel="noopener">產業價值鏈資訊平台 新增「自動化」類別 — 經濟日報</a>
+        <a href="https://rich01.com/what-is-tpex-org/" target="_blank" rel="noopener">如何查詢個股的產業供應鏈關係？ — Mr.Market市場先生</a>
+        <a href="https://finviz.blog/finviz-heat-maps-a-visual-guide-to-market-trends/" target="_blank" rel="noopener">Finviz Heat Maps: A Visual Guide to Market Trends</a>
+        <a href="https://finviz.com/blog/evolving-the-heatmap-dow-jones-nasdaq-100-russell-2000-and-more/" target="_blank" rel="noopener">Evolving the Heatmap — Finviz</a>
+        <a href="https://hci.ucsd.edu/220/NarrativeVisualization.pdf" target="_blank" rel="noopener">Narrative Visualization: Telling Stories with Data — Segel &amp; Heer (2010)</a>
+        <a href="https://www.tradingview.com/support/solutions/43000707391-tradingview-calendar-key-economic-and-corporate-events/" target="_blank" rel="noopener">TradingView Calendar: key economic and corporate events</a>
+        <a href="https://www.bloomberg.com/professional/products/bloomberg-terminal/news/" target="_blank" rel="noopener">News — Bloomberg Professional Services</a>
+        <a href="https://www.fidelity.com/learning-center/trading-investing/markets-sectors/intro-sector-rotation-strats" target="_blank" rel="noopener">Sector Rotation Strategies — Fidelity</a>
+        <a href="https://www.twse.com.tw/zh/trading/foreign/bfi82u.html" target="_blank" rel="noopener">三大法人買賣金額統計表 — TWSE</a>
+        <a href="https://www.twse.com.tw/zh/trading/foreign/t86.html" target="_blank" rel="noopener">三大法人買賣超日報 — TWSE</a>
+      </div>
+    </details>
+
+    <details class="cite">
+      <summary>方向 D · 看盤 App 設計語言（12 則）</summary>
+      <div class="citelist">
+        <a href="https://cmnews.com.tw/article/cmoney-a0f8b451-a359-11f0-b624-3a953e849e2f" target="_blank" rel="noopener">【籌碼K線PC版教學】新手投資人必看 — CMoney官方</a>
+        <a href="https://appworks.yourator.co/blogs/46" target="_blank" rel="noopener">Fugle 富果獨家版面設計，讓投資新手快速入門</a>
+        <a href="https://www.xq.com.tw/learning/功能介紹：如何使用-xq-產業數據？/" target="_blank" rel="noopener">功能介紹：如何使用 XQ 產業數據？</a>
+        <a href="https://www.xq.com.tw/lesson/indicator/從細產業資金流向看類股輪動/" target="_blank" rel="noopener">從細產業資金流向看類股輪動 — XQ 全球贏家</a>
+        <a href="https://www.sinotrade.com.tw/richclub/DawhotouAPP/產業熱力圖-一張圖看出市場資金方向-68f5e2b2032bb601160b3bfc" target="_blank" rel="noopener">產業熱力圖 一張圖看出市場資金方向 — 豐雲學堂</a>
+        <a href="https://ai.finlab.tw/industry/" target="_blank" rel="noopener">台股產業熱圖 (Treemap) — FinLab 量化交易平台</a>
+        <a href="https://colorarchive.org/guides/financial-ui-color-guide/" target="_blank" rel="noopener">Color in Financial UI — ColorArchive Guides</a>
+        <a href="https://www.storm.mg/lifestyle/5352624" target="_blank" rel="noopener">為何台股跌是綠色、漲是紅色？ — 風傳媒</a>
+        <a href="https://www.nngroup.com/articles/progressive-disclosure/" target="_blank" rel="noopener">Progressive Disclosure — Nielsen Norman Group</a>
+        <a href="https://lollypop.design/blog/2026/june/trading-app-design/" target="_blank" rel="noopener">Trading App Design: The Complete Guide to UI, UX &amp; System Architecture — Lollypop</a>
+        <a href="https://www.ithome.com.tw/people/150043" target="_blank" rel="noopener">2周高速開發App的秘訣，CMoney從技術與組織同時翻轉開發流程 — iThome</a>
+      </div>
+    </details>
+  </section>
+
+  <footer>
+    研究方法：Workflow 平行分派 4 個獨立方向（法人期貨資金鏈邏輯／現貨期貨聯動／產業資金流向敘事化／看盤App設計語言），每個方向獨立網路研究並回傳結構化引用，本文為整合結果。產品定位（第 0 節）與五題決策（第 6 節）已定案；下一步是把這套邏輯轉為 <code>docs/specs/</code> 底下的正式規格契約，尚未進入開發階段。
+  </footer>
+
+</div>
