@@ -805,21 +805,203 @@ function renderMarketFutures(rows) {
   ], "待補 TAIFEX 未平倉資料");
 }
 
+function renderFuturesLargeTrader(rows) {
+  tableFromRows(byId("futures-large-trader-table"), rows, [
+    { key: "trader_group", label: "身份" }, { key: "contract", label: "商品" },
+    { key: "long_oi", label: "多方", format: (v) => fmt(v, 0) }, { key: "short_oi", label: "空方", format: (v) => fmt(v, 0) },
+    { key: "net_oi", label: "淨額", format: (v) => fmt(v, 0), className: (row) => isValue(row.net_oi) ? (row.net_oi >= 0 ? "positive" : "negative") : "" },
+    { key: "date", label: "資料日" },
+  ], "待補 TAIFEX 大額交易人未沖銷部位資料");
+}
+
+function renderFuturesPriceTable(rows) {
+  tableFromRows(byId("futures-price-table"), rows, [
+    { key: "contract", label: "商品" },
+    { key: "session", label: "盤別", format: (v) => v === "day" ? "日盤" : v === "night" ? "夜盤" : escapeHtml(v) },
+    { key: "open", label: "開", format: (v) => fmt(v, 0) },
+    { key: "high", label: "高", format: (v) => fmt(v, 0) },
+    { key: "low", label: "低", format: (v) => fmt(v, 0) },
+    { key: "close", label: "收", format: (v) => fmt(v, 0) },
+    { key: "settlement_price", label: "結算價", format: (v) => fmt(v, 0) },
+    {
+      key: "change_pct", label: "漲跌%",
+      format: (v) => isValue(v) ? `${Number(v) >= 0 ? "+" : ""}${pct(v, 2, true)}` : "-",
+      className: (row) => isValue(row.change_pct) ? (row.change_pct >= 0 ? "positive" : "negative") : "",
+    },
+    { key: "date", label: "資料日" },
+  ], "待補 TAIFEX 期貨每日行情資料");
+}
+
+// TWSE MI_INDEX has no official open/high/low for the index itself (known gap, see
+// docs/specs/market-daily-digest-contract.md §3.2) — those stay "-" via fmt(), never 0.
+function indexOhlcBlock(label, data) {
+  if (!data) return `<div class="ohlc-block"><b>${escapeHtml(label)}</b><div class="ohlc-row"><span>資料</span><em>-</em></div></div>`;
+  const changeClass = isValue(data.change_pct) ? (data.change_pct >= 0 ? "positive" : "negative") : "";
+  const changeText = isValue(data.change_pct) ? `${Number(data.change_pct) >= 0 ? "+" : ""}${pct(data.change_pct, 2, true)}` : "-";
+  return `<div class="ohlc-block"><b>${escapeHtml(label)}</b>` +
+    `<div class="ohlc-row"><span>開</span><em>${fmt(data.open_index, 0)}</em></div>` +
+    `<div class="ohlc-row"><span>高</span><em>${fmt(data.high_index, 0)}</em></div>` +
+    `<div class="ohlc-row"><span>低</span><em>${fmt(data.low_index, 0)}</em></div>` +
+    `<div class="ohlc-row"><span>收</span><em>${fmt(data.close_index, 0)}</em></div>` +
+    `<div class="ohlc-row"><span>漲跌</span><em class="${changeClass}">${changeText}</em></div>` +
+    `<small>${escapeHtml(data.date || "-")}</small></div>`;
+}
+
+function renderIndexOhlc(ohlc) {
+  const strip = byId("index-ohlc-strip");
+  if (!strip) return;
+  strip.innerHTML = indexOhlcBlock("加權指數", ohlc?.twse) + indexOhlcBlock("櫃買指數", ohlc?.otc);
+  renderFuturesPriceTable(ohlc?.futures || []);
+}
+
+const SYNC_SIGNAL_META = {
+  GREEN: { label: "同步", cls: "state-green" },
+  YELLOW: { label: "部分背離", cls: "state-yellow" },
+  RED: { label: "明顯背離", cls: "state-red" },
+};
+
+// Plain-language conclusion for the hero banner. Tone is always "留意" (never
+// "應該／建議") per contract §4.4 — this reports an objective sync/diverge fact,
+// not a buy/sell call.
+function syncSignalText(sync) {
+  const spotText = sync.spot_direction === "BUY" ? "現貨買超" : sync.spot_direction === "SELL" ? "現貨賣超" : "現貨方向不明";
+  const futuresText = sync.futures_direction === "INCREASING" ? "期貨淨多單增加" : sync.futures_direction === "DECREASING" ? "期貨淨空單增加" : "期貨方向不明";
+  if (sync.margin_signal === "法人-散戶對做警訊") {
+    return `外資${spotText}同時融資大增，留意法人與散戶對做、現貨拉高出貨的可能性。`;
+  }
+  if (sync.margin_signal === "築底訊號") {
+    return `外資${spotText}同時融資大減，留意浮額出清後的築底訊號。`;
+  }
+  if (sync.spot_futures_status === "SYNCED") {
+    return `外資${spotText}同時${futuresText}，方向一致，留意趨勢是否延續。`;
+  }
+  if (sync.spot_futures_status === "DIVERGED") {
+    return `外資${spotText}但${futuresText}方向不一致，留意現貨與期貨籌碼出現背離。`;
+  }
+  return "留意大盤現貨、期貨與融資籌碼的同步度變化。";
+}
+
+function renderSyncSignal(sync) {
+  const badge = byId("sync-signal-badge");
+  const label = byId("sync-signal-label");
+  const text = byId("sync-signal-text");
+  const dateNote = byId("sync-signal-date");
+  const facts = byId("sync-signal-facts");
+  if (!badge) return;
+  if (!sync) {
+    badge.className = "sync-badge state-unknown";
+    label.textContent = "讀取中";
+    text.textContent = "大盤同步度資料讀取中…";
+    if (dateNote) dateNote.textContent = "";
+    facts.innerHTML = "";
+    return;
+  }
+  if (dateNote) dateNote.textContent = sync.date ? `資料日 ${sync.date}（非即時，收盤後批次計算）` : "";
+  if (sync.insufficient_data) {
+    badge.className = "sync-badge state-unknown";
+    label.textContent = "資料不足";
+    text.textContent = "大盤法人／融資融券歷史資料目前累積天數不足，還算不出「相較前一日」的同步度，這不是已判讀出的一般狀態，留意暫時無法給結論。";
+  } else {
+    const meta = SYNC_SIGNAL_META[sync.signal] || SYNC_SIGNAL_META.YELLOW;
+    badge.className = `sync-badge ${meta.cls}`;
+    label.textContent = meta.label;
+    text.textContent = syncSignalText(sync);
+  }
+  facts.innerHTML = [
+    marketSnapshotItem("現貨方向", sync.spot_direction === "BUY" ? "買超" : sync.spot_direction === "SELL" ? "賣超" : "-"),
+    marketSnapshotItem("期貨方向", sync.futures_direction === "INCREASING" ? "淨多單增加" : sync.futures_direction === "DECREASING" ? "淨空單增加" : "-"),
+    marketSnapshotItem("現貨期貨", sync.spot_futures_status === "SYNCED" ? "同步" : sync.spot_futures_status === "DIVERGED" ? "背離" : "-"),
+    marketSnapshotItem("融資變動", isValue(sync.margin_change_pct) ? pct(sync.margin_change_pct, 2, true) : "-"),
+    marketSnapshotItem("融資訊號", sync.margin_signal || "-"),
+    marketSnapshotItem("大戶多空一致", sync.large_trader_agree === true ? "一致" : sync.large_trader_agree === false ? "不一致" : "資料待補"),
+  ].join("");
+}
+
+function stockCandidateRow(row) {
+  const meta = SYNC_SIGNAL_META[row.sync_signal] || SYNC_SIGNAL_META.YELLOW;
+  return `<tr class="${row.paused_today ? "paused-row" : ""}">` +
+    `<td>${escapeHtml(row.code)}</td>` +
+    `<td>${escapeHtml(row.name)}</td>` +
+    `<td>${escapeHtml(row.industry)}</td>` +
+    `<td>${fmt(row.consecutive_buy_days, 0)}</td>` +
+    `<td>${fmt(row.industry_rank, 0)}</td>` +
+    `<td><span class="sync-pill ${meta.cls}">${meta.label}</span>${row.paused_today ? '<span class="pause-tag">今日暫停新增</span>' : ""}</td>` +
+    `</tr>`;
+}
+
+function renderStockCandidates(rows) {
+  const table = byId("stock-candidates-table");
+  if (!table) return;
+  if (!rows?.length) { emptyTable(table, 6, "今日無符合條件的候選股"); return; }
+  table.innerHTML = `<thead><tr><th>代碼</th><th>名稱</th><th>產業</th><th>連續買超天數</th><th>產業排名</th><th>狀態</th></tr></thead>` +
+    `<tbody>${rows.map(stockCandidateRow).join("")}</tbody>`;
+}
+
+// Reuses the existing gain-heat/loss-heat/heat-tier-N tokens (see signedHeatClass) so the
+// treemap's color channel stays on the same red=inflow/green=outflow scale as every other
+// table in this app, instead of inventing a new palette.
+function flowHeatClass(value, maxAbs) {
+  if (!isValue(value) || !maxAbs) return "is-empty";
+  const ratio = Math.abs(Number(value)) / maxAbs;
+  const tier = ratio >= 0.66 ? 3 : ratio >= 0.33 ? 2 : 1;
+  return Number(value) >= 0 ? `gain-heat heat-tier-${tier}` : `loss-heat heat-tier-${tier}`;
+}
+
+// Hand-rolled treemap: flex-wrap row of tiles, flex-grow = abs(net_amount) so tile width
+// approximates area (fixed row height). Known data gap: industry_capital_flow_daily.net_amount
+// is 買賣超"張數", not turnover amount (turnover_amount is always null — no per-stock 成交金額
+// source yet) — so area here is "張數規模", not "成交金額" as the original design note assumed.
+function renderIndustryFlowTreemap(rows) {
+  const container = byId("industry-flow-treemap");
+  const meta = byId("industry-flow-meta");
+  if (!container) return;
+  const data = (rows || []).filter((row) => isValue(row.net_amount));
+  if (!data.length) {
+    container.innerHTML = `<div class="flow-tile is-empty">待補產業資金流向資料（依買賣超張數）</div>`;
+    if (meta) meta.textContent = "";
+    return;
+  }
+  const maxAbs = Math.max(...data.map((row) => Math.abs(Number(row.net_amount))), 1);
+  if (meta) {
+    meta.textContent = `資料日 ${data[0]?.date || "-"}｜面積＝買賣超張數絕對值，顏色＝買超(紅)／賣超(綠)相對強度｜單位：張（依買賣超張數，非成交金額）`;
+  }
+  container.innerHTML = data.map((row) => {
+    const abs = Math.abs(Number(row.net_amount));
+    const grow = Math.max(abs, maxAbs * 0.02).toFixed(2);
+    const heat = flowHeatClass(row.net_amount, maxAbs);
+    const tip = `${row.industry}｜買賣超 ${fmt(row.net_amount, 0)} 張｜成分股 ${fmt(row.member_count, 0)} 檔｜${row.date}`;
+    return `<div class="flow-tile ${heat}" style="flex-grow:${grow};" title="${escapeHtml(tip)}">` +
+      `<b>${escapeHtml(row.industry)}</b><span>${fmt(row.net_amount, 0)} 張</span><small>${fmt(row.member_count, 0)} 檔</small></div>`;
+  }).join("");
+}
+
 function renderMarketOverview(overview) {
   state.marketOverview = overview;
   const trend = overview.index_trend || [];
   drawChart(byId("chart-market-index"), [
     { name: "加權指數", values: trend.map((row) => row.close_index), digits: 0 },
   ], trend.map((row) => row.date), { labelCount: 8 });
+  renderIndexOhlc(overview.index_ohlc);
   renderMarketInstitutionalTable(overview.institutional_trading);
   renderMarketMarginTable(overview.margin_short);
   renderMarketFutures(overview.futures || []);
+  renderFuturesLargeTrader(overview.futures_large_trader || []);
   tableFromRows(byId("market-cap-table"), overview.market_cap?.slice(0, 50), [
     { key: "rank", label: "#" }, { key: "code", label: "代碼" },
     { key: "name", label: "名稱" },
     { key: "pct_of_market", label: "大盤比重", format: (v) => pct(v, 3) },
     { key: "date", label: "資料日期" },
   ], "待補全市場流通股本與市值資料源");
+  renderSyncSignal(overview.sync_signal);
+  renderStockCandidates(overview.stock_candidates);
+  const candidatesDateNote = byId("stock-candidates-date");
+  const candidatesDate = overview.industry_capital_flow?.[0]?.date;
+  if (candidatesDateNote) {
+    candidatesDateNote.textContent = candidatesDate
+      ? `依產業資金流向＋連續買超篩出（資料日 ${candidatesDate}），不含目標價或買賣建議`
+      : "依產業資金流向＋連續買超篩出，不含目標價或買賣建議";
+  }
+  renderIndustryFlowTreemap(overview.industry_capital_flow);
   renderSectorMomentum(overview.sector_momentum);
   renderMarketSnapshotCard(overview);
 }

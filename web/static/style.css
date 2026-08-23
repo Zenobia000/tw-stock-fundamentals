@@ -453,6 +453,56 @@ body.health-open > #empty-state { display: none !important; }
 .market-snapshot-link { align-self: flex-start; color: var(--blue-deep); font-size: 12px; text-decoration: none; }
 .market-snapshot-link:hover { text-decoration: underline; }
 .market-overview-grid .card.wide-card { min-height: 260px; }
+
+/* Hero: sync-signal conclusion + candidate list come first in market-overview-panel,
+   ahead of any raw table — decision first, detail on demand (design note §06). */
+#market-hero { display: grid; gap: 12px; margin: 16px 0 22px; }
+.sync-signal-banner { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px; padding: 16px 18px; border: 1px solid var(--line-strong); background: var(--paper); }
+.sync-badge { display: flex; flex-shrink: 0; align-items: center; gap: 10px; padding: 10px 16px; border: 1px solid var(--line-strong); background: var(--paper-soft); white-space: nowrap; }
+.sync-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--muted); }
+.sync-badge strong { font-size: 15px; }
+.sync-badge.state-green { border-color: #a9c2b1; background: #e9f0eb; }
+.sync-badge.state-green .sync-dot { background: var(--green); }
+.sync-badge.state-green strong { color: var(--green); }
+.sync-badge.state-yellow { border-color: #d5b990; background: #f2ede4; }
+.sync-badge.state-yellow .sync-dot { background: var(--amber); }
+.sync-badge.state-yellow strong { color: var(--amber); }
+.sync-badge.state-red { border-color: #d6a4a9; background: #f2e5e6; }
+.sync-badge.state-red .sync-dot { background: var(--red); }
+.sync-badge.state-red strong { color: var(--red); }
+.sync-badge.state-unknown .sync-dot { background: var(--line-strong); }
+.sync-badge.state-unknown strong { color: var(--muted); }
+.sync-signal-detail { flex: 1; min-width: 240px; }
+.sync-signal-detail p { margin: 2px 0 10px; color: var(--ink); font-size: 13px; line-height: 1.5; }
+.sync-signal-facts.market-snapshot-body { gap: 8px; }
+.sync-signal-facts .market-snapshot-body > div, .sync-signal-facts > div { padding: 7px 10px; background: var(--canvas); }
+.sync-signal-facts b { font-size: 12px; }
+.sync-pill { display: inline-block; padding: 2px 7px; font: 700 10px/1.5 var(--mono); }
+.sync-pill.state-green { background: #e9f0eb; color: var(--green); }
+.sync-pill.state-yellow { background: #f2ede4; color: var(--amber); }
+.sync-pill.state-red { background: #f2e5e6; color: var(--red); }
+.sync-pill.state-unknown { background: #edf0ee; color: var(--muted); }
+.pause-tag { display: inline-block; margin-left: 6px; padding: 2px 6px; border: 1px solid #d8c6aa; background: #f2ede4; color: #705735; font-size: 9px; }
+#stock-candidates-table tr.paused-row { opacity: .62; }
+
+/* Index OHLC strip layered onto the existing 加權指數走勢 card; open/high/low stay
+   as "-" (fmt()'s null placeholder) rather than 0 while TWSE MI_INDEX has no OHL data. */
+.index-ohlc-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-top: 10px; }
+.ohlc-block { padding: 9px 11px; border: 1px solid var(--line); background: var(--paper-soft); }
+.ohlc-block > b { display: block; margin-bottom: 6px; font-size: 11px; }
+.ohlc-row { display: flex; justify-content: space-between; font: 11px/1.6 var(--mono); }
+.ohlc-row span { color: var(--muted); }
+.ohlc-block small { display: block; margin-top: 4px; color: var(--muted); font-size: 9px; }
+
+/* Simple flexbox treemap: area (flex-grow) = abs(net_amount), color/tier = sign + relative
+   strength, reusing the existing gain-heat/loss-heat/heat-tier-N tokens (no new hardcoded hex).
+   Units are 買賣超"張數", not turnover amount — turnover_amount is unavailable (see contract). */
+.industry-treemap { display: flex; flex-wrap: wrap; gap: 3px; min-height: 160px; margin: 10px 0 22px; }
+.industry-treemap .flow-tile { position: relative; flex-basis: 64px; flex-shrink: 0; min-width: 64px; min-height: 72px; padding: 8px 10px; border: 1px solid var(--line-strong); overflow: hidden; cursor: default; }
+.industry-treemap .flow-tile b { display: block; overflow: hidden; font-size: 12px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+.industry-treemap .flow-tile span { display: block; margin-top: 4px; font: 700 11px/1.3 var(--mono); }
+.industry-treemap .flow-tile small { display: block; margin-top: 2px; font-size: 9px; opacity: .75; }
+.industry-treemap .flow-tile.is-empty { display: flex; align-items: center; justify-content: center; flex-basis: 100%; min-height: 80px; background: var(--paper-soft); color: var(--muted); }
 .stock-labels { display: flex; align-items: center; gap: 5px; min-width: 230px; }
 .stock-labels b { min-width: 72px; color: var(--ink); }
 .stock-labels small, .stock-labels span { padding: 3px 6px; border: 1px solid var(--line); color: var(--muted); font-size: 9px; line-height: 1; }
