@@ -77,7 +77,7 @@ button:active { transform: translateY(1px); }
   color: #bdc7ca; font-weight: 700; white-space: nowrap; cursor: pointer;
 }
 .topbar-tab:hover { border-color: #8599a1; background: #31434d; color: #f0f2ef; }
-.topbar-tab.active { border-color: #eda940; background: rgba(237, 169, 64, .16); color: #eda940; }
+.topbar-tab.active { border-color: var(--amber); background: rgba(169, 130, 86, .22); color: #e3c9a8; }
 
 body.health-open { background: var(--canvas); }
 body.health-open > #market-overview-panel,
@@ -517,59 +517,37 @@ body.health-open > #empty-state { display: none !important; }
 .stock-labels span { border-color: #b6c7c9; background: var(--blue-soft); color: var(--blue-deep); }
 
 /* ===================================================================================
-   大盤總覽 dark theme — scoped entirely to .mkt-dark, a wrapper <div> that now covers
-   the *entire* #market-overview-panel, "大盤總覽" through "板塊動能". Originally this
-   stopped before "板塊動能" (a separate pre-existing feature with no reference-screenshot
-   equivalent, left on the site's light theme rather than reskinned without a reference).
-   That split put a hard light/dark seam mid-panel, inside what the header now presents
-   as a single tab — flagged as inconsistent UI, so the dark theme was extended to cover
-   板塊動能 too (2026-08-24), reusing the same tokens and the alpha-tier technique already
-   established below for the treemap's gain/loss heat.
-
-   New tokens only (--mkt-*), not reassignments of the global --paper/--ink/--line/--red/
-   --green tokens, so nothing here can affect any other view; --mkt-* is undefined outside
-   .mkt-dark and simply doesn't exist elsewhere in the cascade.
-
-   Every hex below was sampled with System.Drawing pixel-reads off 參考/*.png (not
-   guessed):
-     bg/card            #242424   (same value behind and inside cards — cards are told
-                                    apart by border only, exactly as in the reference)
-     card border        #3D3D3D
-     hairline/divider    #363636
-     text (primary)      #F1F1F1
-     text (strong/white) #FFFFFF
-     muted (labels)       #999999
-     muted (col headers)  #C0C0C0
-     up / 漲＝紅          #D73D38
-     down / 跌＝綠         #60B357
-     accent (▎bar/amber)  #EDA940
-   The screenshots' red/green "正貢獻點數／負貢獻點數" table-head bands belong to
-   「加權指數貢獻排行」, which this round explicitly skips — sampled (#842C1E / #2E642C)
-   but intentionally not wired into any rule below. */
+   大盤總覽 theme tokens — scoped entirely to .mkt-dark, a wrapper <div> that covers the
+   *entire* #market-overview-panel, "大盤總覽" through "板塊動能". The class name is now
+   a historical misnomer, kept to avoid a 130-occurrence rename across this file/HTML/JS
+   for a pure naming nicety: this block originally held a dark terminal palette (sampled
+   off 籌碼K線 reference screenshots) with its own --mkt-* custom properties so nothing
+   here could touch any other view. 2026-08-24: the dark palette was retired in favor of
+   unifying with the rest of the site's light morandi theme (--canvas/--paper/--ink/
+   --red/--green/--amber, the same tokens every other page already uses) — every rule
+   below still reads through --mkt-*, so this one block is the entire conversion; no
+   individual .mkt-dark X rule needed touching. Only the few places that had to restate
+   literal hex (custom properties don't reach across the .mkt-dark ancestor boundary,
+   or can't be used as an rgba() alpha channel) were edited separately — see the
+   rgba(157,99,104,·)/rgba(95,128,111,·)/rgba(169,130,86,·) triplets below, which are
+   the --red/--green/--amber RGB values restated the same way the dark hex used to be. */
 .mkt-dark {
-  --mkt-bg: #242424;
-  --mkt-card: #242424;
-  --mkt-card-alt: #2b2b2b;
-  --mkt-card-border: #3d3d3d;
-  --mkt-line: #363636;
-  --mkt-text: #f1f1f1;
-  --mkt-text-strong: #ffffff;
-  --mkt-muted: #999999;
-  --mkt-muted-2: #c0c0c0;
-  --mkt-up: #d73d38;
-  --mkt-down: #60b357;
-  --mkt-accent: #eda940;
+  --mkt-bg: var(--canvas);
+  --mkt-card: var(--paper);
+  --mkt-card-alt: var(--paper-soft);
+  --mkt-card-border: var(--line-strong);
+  --mkt-line: var(--line);
+  --mkt-text: var(--ink);
+  --mkt-text-strong: var(--shell-deep);
+  --mkt-muted: var(--muted);
+  --mkt-muted-2: var(--muted);
+  --mkt-up: var(--red);
+  --mkt-down: var(--green);
+  --mkt-accent: var(--amber);
   padding: 24px clamp(16px, 3vw, 32px) 30px;
   background: var(--mkt-bg);
   color: var(--mkt-text);
 }
-/* #market-overview-panel keeps .sector-momentum's padding/centering rules (its
-   `> *` max-width rule is still needed by every direct child, dark or not), but the
-   section's own background/border must switch too now that .mkt-dark wraps its full
-   content — otherwise .sector-momentum's light --canvas shows through as a frame
-   around the dark panel. Literal hex restated (custom properties on .mkt-dark aren't
-   reachable from this ancestor selector). */
-#market-overview-panel.sector-momentum { background: #242424; border-bottom-color: #3d3d3d; }
 
 .mkt-dark .momentum-header { border-bottom-color: var(--mkt-card-border); }
 .mkt-dark .momentum-heading h2 { position: relative; padding-left: 14px; color: var(--mkt-text-strong); }
@@ -597,13 +575,13 @@ body.health-open > #empty-state { display: none !important; }
 .mkt-dark .sync-badge { border: 2px solid var(--mkt-card-border); background: var(--mkt-card-alt); }
 .mkt-dark .sync-dot { background: var(--mkt-muted); }
 .mkt-dark .sync-badge strong { color: var(--mkt-text); }
-.mkt-dark .sync-badge.state-green { border-color: var(--mkt-down); background: rgba(96, 179, 87, .12); }
+.mkt-dark .sync-badge.state-green { border-color: var(--mkt-down); background: rgba(95, 128, 111, .12); }
 .mkt-dark .sync-badge.state-green .sync-dot { background: var(--mkt-down); }
 .mkt-dark .sync-badge.state-green strong { color: var(--mkt-down); }
-.mkt-dark .sync-badge.state-yellow { border-color: var(--mkt-accent); background: rgba(237, 169, 64, .12); }
+.mkt-dark .sync-badge.state-yellow { border-color: var(--mkt-accent); background: rgba(169, 130, 86, .12); }
 .mkt-dark .sync-badge.state-yellow .sync-dot { background: var(--mkt-accent); }
 .mkt-dark .sync-badge.state-yellow strong { color: var(--mkt-accent); }
-.mkt-dark .sync-badge.state-red { border-color: var(--mkt-up); background: rgba(215, 61, 56, .12); }
+.mkt-dark .sync-badge.state-red { border-color: var(--mkt-up); background: rgba(157, 99, 104, .12); }
 .mkt-dark .sync-badge.state-red .sync-dot { background: var(--mkt-up); }
 .mkt-dark .sync-badge.state-red strong { color: var(--mkt-up); }
 .mkt-dark .sync-badge.state-unknown .sync-dot { background: var(--mkt-muted); }
@@ -612,11 +590,11 @@ body.health-open > #empty-state { display: none !important; }
 .mkt-dark .sync-signal-facts.market-snapshot-body > div { background: var(--mkt-card-alt); border: 1px solid var(--mkt-card-border); }
 .mkt-dark .sync-signal-facts span { color: var(--mkt-muted); }
 .mkt-dark .sync-signal-facts b { color: var(--mkt-text); }
-.mkt-dark .sync-pill.state-green { background: rgba(96, 179, 87, .16); color: var(--mkt-down); }
-.mkt-dark .sync-pill.state-yellow { background: rgba(237, 169, 64, .16); color: var(--mkt-accent); }
-.mkt-dark .sync-pill.state-red { background: rgba(215, 61, 56, .16); color: var(--mkt-up); }
+.mkt-dark .sync-pill.state-green { background: rgba(95, 128, 111, .16); color: var(--mkt-down); }
+.mkt-dark .sync-pill.state-yellow { background: rgba(169, 130, 86, .16); color: var(--mkt-accent); }
+.mkt-dark .sync-pill.state-red { background: rgba(157, 99, 104, .16); color: var(--mkt-up); }
 .mkt-dark .sync-pill.state-unknown { background: var(--mkt-card-alt); color: var(--mkt-muted); }
-.mkt-dark .pause-tag { border-color: var(--mkt-accent); background: rgba(237, 169, 64, .12); color: var(--mkt-accent); }
+.mkt-dark .pause-tag { border-color: var(--mkt-accent); background: rgba(169, 130, 86, .12); color: var(--mkt-accent); }
 /* .source-note is also used by the health center's amber note box (unrelated context);
    scoped to .mkt-dark this strips that box styling for #sync-signal-date /
    #industry-flow-meta down to plain muted caption text. */
@@ -665,14 +643,14 @@ body.health-open > #empty-state { display: none !important; }
 .mkt-dark .industry-treemap .flow-tile.is-empty { background: var(--mkt-card); color: var(--mkt-muted); }
 .mkt-dark .industry-treemap .gain-heat { border-left: 3px solid var(--mkt-up); }
 .mkt-dark .industry-treemap .gain-heat span { color: var(--mkt-up); }
-.mkt-dark .industry-treemap .gain-heat.heat-tier-1 { background: rgba(215, 61, 56, .12); }
-.mkt-dark .industry-treemap .gain-heat.heat-tier-2 { background: rgba(215, 61, 56, .22); }
-.mkt-dark .industry-treemap .gain-heat.heat-tier-3 { background: rgba(215, 61, 56, .34); }
+.mkt-dark .industry-treemap .gain-heat.heat-tier-1 { background: rgba(157, 99, 104, .12); }
+.mkt-dark .industry-treemap .gain-heat.heat-tier-2 { background: rgba(157, 99, 104, .22); }
+.mkt-dark .industry-treemap .gain-heat.heat-tier-3 { background: rgba(157, 99, 104, .34); }
 .mkt-dark .industry-treemap .loss-heat { border-left: 3px solid var(--mkt-down); }
 .mkt-dark .industry-treemap .loss-heat span { color: var(--mkt-down); }
-.mkt-dark .industry-treemap .loss-heat.heat-tier-1 { background: rgba(96, 179, 87, .12); }
-.mkt-dark .industry-treemap .loss-heat.heat-tier-2 { background: rgba(96, 179, 87, .22); }
-.mkt-dark .industry-treemap .loss-heat.heat-tier-3 { background: rgba(96, 179, 87, .32); }
+.mkt-dark .industry-treemap .loss-heat.heat-tier-1 { background: rgba(95, 128, 111, .12); }
+.mkt-dark .industry-treemap .loss-heat.heat-tier-2 { background: rgba(95, 128, 111, .22); }
+.mkt-dark .industry-treemap .loss-heat.heat-tier-3 { background: rgba(95, 128, 111, .32); }
 
 /* ===================================================================================
    4 new .mkt-dark sections (加權指數貢獻排行／個股漲跌分佈／類股成交金額比重分佈／
@@ -684,8 +662,8 @@ body.health-open > #empty-state { display: none !important; }
 /* 加權指數貢獻排行 — red/green banded two-column ranking, reference screenshot 1. */
 .contribution-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 4px; }
 .contribution-head { padding: 7px 10px; margin-bottom: 6px; text-align: center; font-size: 12px; font-weight: 700; }
-.contribution-head.gain { background: rgba(215, 61, 56, .22); color: var(--mkt-up); }
-.contribution-head.loss { background: rgba(96, 179, 87, .22); color: var(--mkt-down); }
+.contribution-head.gain { background: rgba(157, 99, 104, .22); color: var(--mkt-up); }
+.contribution-head.loss { background: rgba(95, 128, 111, .22); color: var(--mkt-down); }
 .contribution-table td { padding: 6px 4px; }
 .contribution-rank { width: 20px; color: var(--mkt-muted); font: 700 12px var(--mono); }
 .contribution-name b { display: block; color: var(--mkt-text); font-size: 12.5px; font-weight: 650; }
@@ -706,12 +684,12 @@ body.health-open > #empty-state { display: none !important; }
 .change-bucket-count { margin-bottom: 4px; color: var(--mkt-text); font: 700 11px var(--mono); }
 .change-bucket-bar { width: 100%; max-width: 34px; min-height: 2px; }
 .change-bucket-bar.neutral-bar { background: var(--mkt-muted); opacity: .6; }
-.change-bucket-bar.gain-heat.heat-tier-1 { background: rgba(215, 61, 56, .38); }
-.change-bucket-bar.gain-heat.heat-tier-2 { background: rgba(215, 61, 56, .68); }
-.change-bucket-bar.gain-heat.heat-tier-3 { background: rgba(215, 61, 56, 1); }
-.change-bucket-bar.loss-heat.heat-tier-1 { background: rgba(96, 179, 87, .38); }
-.change-bucket-bar.loss-heat.heat-tier-2 { background: rgba(96, 179, 87, .68); }
-.change-bucket-bar.loss-heat.heat-tier-3 { background: rgba(96, 179, 87, 1); }
+.change-bucket-bar.gain-heat.heat-tier-1 { background: rgba(157, 99, 104, .38); }
+.change-bucket-bar.gain-heat.heat-tier-2 { background: rgba(157, 99, 104, .68); }
+.change-bucket-bar.gain-heat.heat-tier-3 { background: rgba(157, 99, 104, 1); }
+.change-bucket-bar.loss-heat.heat-tier-1 { background: rgba(95, 128, 111, .38); }
+.change-bucket-bar.loss-heat.heat-tier-2 { background: rgba(95, 128, 111, .68); }
+.change-bucket-bar.loss-heat.heat-tier-3 { background: rgba(95, 128, 111, 1); }
 .change-bucket small { display: block; margin-top: 6px; color: var(--mkt-muted); font-size: 9px; text-align: center; }
 .change-bucket-summary { display: flex; justify-content: center; gap: 24px; margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--mkt-line); font: 700 12px var(--mono); }
 .change-bucket-summary .change-flat { color: var(--mkt-muted); font-weight: 600; }
@@ -728,7 +706,7 @@ body.health-open > #empty-state { display: none !important; }
 /* 個股漲跌分佈：漲停/跌停兩塊可點進去看清單（月新高/月新低資料累積中，不可點）。
    .clickable 由 app.js 依資料是否存在動態加上，不是所有 4 塊都有這個 class。 */
 .change-stat-tile.clickable { cursor: pointer; }
-.change-stat-tile.clickable:hover { border-color: var(--mkt-accent); background: rgba(237, 169, 64, .08); }
+.change-stat-tile.clickable:hover { border-color: var(--mkt-accent); background: rgba(169, 130, 86, .08); }
 
 /* 「更多 ▸」— 打開 #detail-drawer 的觸發按鈕，全站共用同一個視覺樣式。 */
 .drawer-more {
@@ -760,7 +738,7 @@ body.health-open > #empty-state { display: none !important; }
    「目前研究標的的資金流」同一個摺疊元件），這裡只覆蓋深色主題需要的顏色。 */
 .mkt-dark details.market-group { border-color: var(--mkt-card-border); background: var(--mkt-card); }
 .mkt-dark .market-group summary span { color: var(--mkt-text); }
-.mkt-dark .market-group summary strong { background: rgba(237, 169, 64, .16); color: var(--mkt-accent); }
+.mkt-dark .market-group summary strong { background: rgba(169, 130, 86, .16); color: var(--mkt-accent); }
 .mkt-dark .market-group summary em { color: var(--mkt-muted); }
 
 /* 大盤委買委賣小卡 — tucked into the 加權指數走勢 card, under index-ohlc-strip. */
@@ -788,14 +766,12 @@ body.health-open > #empty-state { display: none !important; }
 .mkt-dark .momentum-table-frame { border-color: var(--mkt-card-border); background: var(--mkt-card); }
 .mkt-dark .sub-industry-refresh-bar { border-bottom-color: var(--mkt-card-border); background: var(--mkt-card-alt); }
 .mkt-dark .sub-industry-refresh-message { color: var(--mkt-muted); }
-.mkt-dark .sub-industry-refresh-bar .refresh-button { border-color: var(--mkt-accent); background: var(--mkt-accent); color: var(--mkt-bg); }
-.mkt-dark .sub-industry-refresh-bar .refresh-button:hover { background: #f0b866; }
 .mkt-dark .mode-switch, .mkt-dark .market-switch { border-color: var(--mkt-card-border); background: var(--mkt-card); }
 .mkt-dark .mode-switch button, .mkt-dark .market-switch button { border-right-color: var(--mkt-card-border); color: var(--mkt-muted); }
 .mkt-dark .mode-switch button.active, .mkt-dark .market-switch button.active { background: var(--mkt-accent); color: var(--mkt-bg); }
 .mkt-dark .momentum-table th, .mkt-dark .momentum-table td { border-right-color: var(--mkt-line); border-bottom-color: var(--mkt-line); }
 .mkt-dark .momentum-table thead th { background: var(--mkt-card-alt); color: var(--mkt-muted-2); border-bottom-color: var(--mkt-card-border); }
-.mkt-dark .momentum-table thead .rank-band { background: rgba(237, 169, 64, .28); color: var(--mkt-text); }
+.mkt-dark .momentum-table thead .rank-band { background: rgba(169, 130, 86, .28); color: var(--mkt-text); }
 .mkt-dark .momentum-table thead .rel-band { background: rgba(150, 170, 200, .2); color: var(--mkt-text); }
 .mkt-dark .momentum-table thead tr > :first-child { background: var(--mkt-card-alt); }
 .mkt-dark .momentum-table tbody tr:not(.momentum-group) > :first-child { background: var(--mkt-card); color: var(--mkt-text); }
@@ -805,25 +781,25 @@ body.health-open > #empty-state { display: none !important; }
 .mkt-dark .momentum-name small { color: var(--mkt-muted); }
 .mkt-dark .momentum-price, .mkt-dark .momentum-date { color: var(--mkt-muted-2); }
 .mkt-dark .momentum-group th { border-top-color: var(--mkt-card-border); }
-.mkt-dark .momentum-group-leader th { background: rgba(237, 169, 64, .22); color: var(--mkt-accent); }
+.mkt-dark .momentum-group-leader th { background: rgba(169, 130, 86, .22); color: var(--mkt-accent); }
 .mkt-dark .momentum-group-middle th { background: var(--mkt-card-alt); color: var(--mkt-muted-2); }
-.mkt-dark .momentum-group-lagger th { background: rgba(96, 179, 87, .14); color: var(--mkt-down); }
+.mkt-dark .momentum-group-lagger th { background: rgba(95, 128, 111, .14); color: var(--mkt-down); }
 .mkt-dark .momentum-group-missing th { background: var(--mkt-card); color: var(--mkt-muted); }
 .mkt-dark .table-sort:hover, .mkt-dark .table-sort.active { color: var(--mkt-text-strong); }
 .mkt-dark .metric-heat.is-empty { background: var(--mkt-card-alt); color: var(--mkt-muted); }
-.mkt-dark .rank-heat.rank-tier-1 { background: rgba(237, 169, 64, .10); color: var(--mkt-muted-2); }
-.mkt-dark .rank-heat.rank-tier-2 { background: rgba(237, 169, 64, .18); color: var(--mkt-text); }
-.mkt-dark .rank-heat.rank-tier-3 { background: rgba(237, 169, 64, .32); color: var(--mkt-text-strong); }
-.mkt-dark .rank-heat.rank-tier-4 { background: rgba(237, 169, 64, .55); color: #2b1c05; }
+.mkt-dark .rank-heat.rank-tier-1 { background: rgba(169, 130, 86, .10); color: var(--mkt-muted-2); }
+.mkt-dark .rank-heat.rank-tier-2 { background: rgba(169, 130, 86, .18); color: var(--mkt-text); }
+.mkt-dark .rank-heat.rank-tier-3 { background: rgba(169, 130, 86, .32); color: var(--mkt-text-strong); }
+.mkt-dark .rank-heat.rank-tier-4 { background: rgba(169, 130, 86, .55); color: var(--ink); }
 .mkt-dark .rank-heat.composite-rank { box-shadow: inset 1px 0 var(--mkt-accent), inset -1px 0 var(--mkt-accent); }
 .mkt-dark .gain-heat { color: var(--mkt-up); }
-.mkt-dark .gain-heat.heat-tier-1 { background: rgba(215, 61, 56, .12); }
-.mkt-dark .gain-heat.heat-tier-2 { background: rgba(215, 61, 56, .22); }
-.mkt-dark .gain-heat.heat-tier-3 { background: rgba(215, 61, 56, .34); color: var(--mkt-text-strong); }
+.mkt-dark .gain-heat.heat-tier-1 { background: rgba(157, 99, 104, .12); }
+.mkt-dark .gain-heat.heat-tier-2 { background: rgba(157, 99, 104, .22); }
+.mkt-dark .gain-heat.heat-tier-3 { background: rgba(157, 99, 104, .34); color: var(--mkt-text-strong); }
 .mkt-dark .loss-heat { color: var(--mkt-down); }
-.mkt-dark .loss-heat.heat-tier-1 { background: rgba(96, 179, 87, .12); }
-.mkt-dark .loss-heat.heat-tier-2 { background: rgba(96, 179, 87, .22); }
-.mkt-dark .loss-heat.heat-tier-3 { background: rgba(96, 179, 87, .32); color: var(--mkt-text-strong); }
+.mkt-dark .loss-heat.heat-tier-1 { background: rgba(95, 128, 111, .12); }
+.mkt-dark .loss-heat.heat-tier-2 { background: rgba(95, 128, 111, .22); }
+.mkt-dark .loss-heat.heat-tier-3 { background: rgba(95, 128, 111, .32); color: var(--mkt-text-strong); }
 .mkt-dark .delta-chip.is-empty { background: var(--mkt-card-alt); color: var(--mkt-muted); }
 
 .market-discovery { display: grid; grid-template-columns: minmax(220px, .7fr) 1.7fr; gap: 16px 24px; padding: 18px; border: 1px solid var(--line); background: var(--paper); box-shadow: 0 12px 28px rgba(57, 75, 83, .07); }
@@ -912,6 +888,13 @@ body.health-open > #empty-state { display: none !important; }
 .detail-drawer-head .icon-button:hover { border-color: var(--mkt-accent); color: var(--mkt-accent); }
 .detail-drawer-body .industry-ranking-list,
 .detail-drawer-body .table-scroll { margin-top: 0; }
+
+/* 加權指數走勢細項抽屜的統計格（開高低收／振幅／高低價差／委買委賣／漲跌與
+   漲跌停家數）— 沿用 .mkt-dark 的 --mkt-* token（drawer panel 本身已掛這個 class）。 */
+.index-detail-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-top: 18px; }
+.index-detail-stat { padding: 10px; border: 1px solid var(--mkt-card-border); background: var(--mkt-card-alt); text-align: center; }
+.index-detail-stat span { display: block; margin-bottom: 5px; color: var(--mkt-muted); font-size: 10px; }
+.index-detail-stat b { font: 750 15px/1 var(--mono); color: var(--mkt-text-strong); }
 
 @media (max-width: 1180px) {
   .stock-header { grid-template-columns: 1fr; }

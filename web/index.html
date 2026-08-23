@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="個人台股研究平台，整合估值、營運基本面、財務品質、翁氏九宮格與籌碼市場。" />
   <title>台股基本面研究工作台</title>
-  <link rel="stylesheet" href="/static/style.css?v=20260824-2" />
+  <link rel="stylesheet" href="/static/style.css?v=20260824-3" />
 </head>
 <body>
   <header class="topbar">
@@ -377,6 +377,7 @@
         <canvas id="chart-market-index" class="chart" height="220"></canvas>
         <div id="index-ohlc-strip" class="index-ohlc-strip"></div>
         <div id="market-order-book" class="order-book-mini"></div>
+        <button id="index-detail-trigger" class="drawer-more" type="button">查看K線細項（日／週／月） ▸</button>
       </article>
       <article class="card"><div class="card-head"><h3>三大法人買賣超</h3><span id="market-institutional-date">上市／上櫃各自最新一天</span></div><div class="table-scroll compact-table"><table id="market-institutional-table" class="data-table"></table></div></article>
       <article class="card"><div class="card-head"><h3>融資融券增減</h3><span>上市／上櫃各自最新一天，張</span></div><div class="table-scroll compact-table"><table id="market-margin-table" class="data-table"></table></div></article>
@@ -460,6 +461,6 @@
 
   <div id="loading" class="loading hidden"><span></span><p>正在組裝研究資料…</p></div>
   <div id="error-banner" class="error-banner hidden"></div>
-  <script src="/static/app.js?v=20260824-2"></script>
+  <script src="/static/app.js?v=20260824-3"></script>
 </body>
 </html>

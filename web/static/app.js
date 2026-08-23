@@ -446,6 +446,232 @@ function chronological(rows, key) {
   return [...(rows || [])].sort((a, b) => String(a[key]).localeCompare(String(b[key])));
 }
 
+// 互動式K線圖（可滾輪縮放／拖曳平移）— 給大盤總覽「加權指數走勢」詳情抽屜的
+// 日K／週K／月K 用。沿用 drawCandles 同一套畫法（wick+body、installChartInteraction
+// 的 hover tooltip 直接借用「每個 OHLC 欄位當一條 series」的技巧），額外加的是
+// 可視範圍（zoom/pan 只改 canvas._candleView.start/end，不重新請求資料）跟深色主題。
+const CANDLESTICK_MIN_VISIBLE = 15;
+
+function candlestickPalette(theme) {
+  return theme === "dark" ? { up: "#d73d38", down: "#60b357" } : { up: "#9d686f", down: "#678473" };
+}
+
+function drawCandlestickChart(canvas, allBars, opts = {}) {
+  const theme = opts.theme || "light";
+  let view = canvas._candleView;
+  if (!view || view.barsRef !== allBars) {
+    const visible = Math.min(allBars.length, opts.defaultVisible || 60);
+    view = { barsRef: allBars, start: Math.max(0, allBars.length - visible), end: Math.max(0, allBars.length - 1) };
+    canvas._candleView = view;
+  }
+  canvas._candleRedraw = () => drawCandlestickChart(canvas, allBars, opts);
+
+  const { ctx, width, height } = canvasFrame(canvas);
+  if (!allBars?.length) { noChartData(ctx, width, height, "尚無K線資料", theme); return; }
+  const start = Math.max(0, Math.min(view.start, allBars.length - 1));
+  const end = Math.max(start, Math.min(view.end, allBars.length - 1));
+  const bars = allBars.slice(start, end + 1);
+  const valid = bars.filter((b) => [b.open, b.high, b.low, b.close].every(isValue));
+  if (!valid.length) { noChartData(ctx, width, height, "尚無K線資料", theme); return; }
+
+  const domain = { min: Math.min(...valid.map((b) => Number(b.low))), max: Math.max(...valid.map((b) => Number(b.high))) };
+  if (domain.min === domain.max) { domain.min -= 1; domain.max += 1; }
+  const pad = (domain.max - domain.min) * 0.05 || 1;
+  domain.min -= pad; domain.max += pad;
+
+  const compact = width < 370;
+  const padding = { left: compact ? 47 : 56, right: 14, top: 14, bottom: 29 };
+  drawAxes(ctx, width, height, domain, bars.map((b) => b.date), padding, false, true, compact ? 9 : 11, 6, theme);
+  const plotW = width - padding.left - padding.right;
+  const plotH = height - padding.top - padding.bottom;
+  const step = plotW / Math.max(bars.length, 1);
+  const bodyWidth = Math.max(1.5, step * .62);
+  const yOf = (value) => padding.top + ((domain.max - Number(value)) / (domain.max - domain.min)) * plotH;
+  const colors = candlestickPalette(theme);
+  bars.forEach((bar, index) => {
+    if (![bar.open, bar.high, bar.low, bar.close].every(isValue)) return;
+    const x = padding.left + step * index + step / 2;
+    const rising = Number(bar.close) >= Number(bar.open);
+    ctx.strokeStyle = rising ? colors.up : colors.down;
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, yOf(bar.high)); ctx.lineTo(x, yOf(bar.low)); ctx.stroke();
+    const yOpen = yOf(bar.open); const yClose = yOf(bar.close);
+    ctx.fillRect(x - bodyWidth / 2, Math.min(yOpen, yClose), bodyWidth, Math.max(Math.abs(yOpen - yClose), 1));
+  });
+
+  installChartInteraction(canvas, {
+    labels: bars.map((b) => b.date),
+    series: [
+      { name: "開盤", values: bars.map((b) => b.open), digits: 2 },
+      { name: "最高", values: bars.map((b) => b.high), digits: 2 },
+      { name: "最低", values: bars.map((b) => b.low), digits: 2 },
+      { name: "收盤", values: bars.map((b) => b.close), digits: 2 },
+    ],
+    padding, banded: true,
+  });
+  installCandlestickZoomPan(canvas, allBars, padding, plotW);
+}
+
+function installCandlestickZoomPan(canvas, allBars, padding, plotW) {
+  canvas._candleZoomMeta = { allBars, padding, plotW };
+  if (canvas.dataset.candleZoomInteractive) return;
+  canvas.dataset.candleZoomInteractive = "true";
+
+  canvas.addEventListener("wheel", (event) => {
+    const view = canvas._candleView;
+    const meta = canvas._candleZoomMeta;
+    if (!view || !meta) return;
+    event.preventDefault();
+    const total = meta.allBars.length;
+    const range = view.end - view.start + 1;
+    const factor = event.deltaY > 0 ? 1.15 : 1 / 1.15;
+    let newRange = Math.round(range * factor);
+    newRange = Math.max(CANDLESTICK_MIN_VISIBLE, Math.min(total, newRange));
+    if (newRange === range) return;
+    const rect = canvas.getBoundingClientRect();
+    const relX = Math.min(1, Math.max(0, (event.clientX - rect.left - meta.padding.left) / meta.plotW));
+    const anchorIndex = view.start + relX * range;
+    let newStart = Math.round(anchorIndex - relX * newRange);
+    newStart = Math.max(0, Math.min(total - newRange, newStart));
+    view.start = newStart;
+    view.end = newStart + newRange - 1;
+    canvas._candleRedraw?.();
+  }, { passive: false });
+
+  let dragging = false;
+  let dragStartX = 0;
+  let dragStartView = null;
+  canvas.addEventListener("pointerdown", (event) => {
+    dragging = true;
+    dragStartX = event.clientX;
+    dragStartView = { ...canvas._candleView };
+    canvas.setPointerCapture(event.pointerId);
+  });
+  canvas.addEventListener("pointermove", (event) => {
+    if (!dragging) return;
+    const view = canvas._candleView;
+    const meta = canvas._candleZoomMeta;
+    const total = meta.allBars.length;
+    const range = dragStartView.end - dragStartView.start + 1;
+    const dx = event.clientX - dragStartX;
+    const barsDelta = Math.round((-dx / meta.plotW) * range);
+    let newStart = dragStartView.start + barsDelta;
+    newStart = Math.max(0, Math.min(total - range, newStart));
+    view.start = newStart;
+    view.end = newStart + range - 1;
+    canvas._candleRedraw?.();
+  });
+  const stopDrag = () => { dragging = false; };
+  canvas.addEventListener("pointerup", stopDrag);
+  canvas.addEventListener("pointercancel", stopDrag);
+}
+
+// ISO 8601 週編號（週一為週首、每年第一個週四所在週為第1週）— 週K聚合用的分桶
+// key，避免用「第幾個7天」這種跟自然週對不上的簡化算法。
+function isoWeekKey(dateStr) {
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  const day = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - day + 3);
+  const firstThursday = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+  const week = 1 + Math.round(((d - firstThursday) / 86400000 - 3 + ((firstThursday.getUTCDay() + 6) % 7)) / 7);
+  return `${d.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
+// 日K → 週K／月K：開＝區間第一天開盤，收＝區間最後一天收盤，高／低＝區間極值。
+// dailyBars 必須已經按日期由舊到新排序（index_trend 本來就是 ASC）。
+function aggregateOhlcBars(dailyBars, granularity) {
+  if (granularity === "day") return dailyBars;
+  const keyOf = granularity === "week" ? (b) => isoWeekKey(b.date) : (b) => b.date.slice(0, 7);
+  const order = [];
+  const buckets = new Map();
+  for (const bar of dailyBars) {
+    const key = keyOf(bar);
+    if (!buckets.has(key)) { buckets.set(key, []); order.push(key); }
+    buckets.get(key).push(bar);
+  }
+  return order.map((key) => {
+    const group = buckets.get(key);
+    const highs = group.map((b) => b.high).filter(isValue);
+    const lows = group.map((b) => b.low).filter(isValue);
+    return {
+      date: key,
+      open: group[0].open,
+      high: highs.length ? Math.max(...highs) : null,
+      low: lows.length ? Math.min(...lows) : null,
+      close: group[group.length - 1].close,
+    };
+  });
+}
+
+// 加權指數走勢細項抽屜 — 點卡片展開，日K／週K／月K 並排切換 + 統計格（開高低收、
+// 振幅、高低價差、尾盤委買委賣、漲跌／漲停跌停家數，都是已經在 overview 裡的資料，
+// 不用額外打 API）。
+function indexTrendToBars(trend) {
+  return (trend || []).map((row) => ({
+    date: row.date, open: row.open_index, high: row.high_index, low: row.low_index, close: row.close_index,
+  }));
+}
+
+function indexDetailStat(label, value) {
+  return `<div class="index-detail-stat"><span>${escapeHtml(label)}</span><b>${value}</b></div>`;
+}
+
+function indexDetailStatGrid(overview) {
+  const ohlc = overview.index_ohlc?.twse;
+  const dist = overview.stock_change_distribution;
+  const orderBook = overview.market_order_book;
+  if (!ohlc && !dist && !orderBook) return emptyHtml("待補加權指數統計資料");
+  return `<div class="index-detail-stats">` +
+    indexDetailStat("開盤", fmt(ohlc?.open_index, 0)) +
+    indexDetailStat("最高", fmt(ohlc?.high_index, 0)) +
+    indexDetailStat("最低", fmt(ohlc?.low_index, 0)) +
+    indexDetailStat("收盤", fmt(ohlc?.close_index, 0)) +
+    indexDetailStat("振幅", pct(ohlc?.amplitude_pct, 2, true)) +
+    indexDetailStat("高低價差", fmt(ohlc?.high_low_spread, 2)) +
+    indexDetailStat("尾盤委買(上市,張)", fmt(orderBook?.total_bid_volume, 0)) +
+    indexDetailStat("尾盤委賣(上市,張)", fmt(orderBook?.total_ask_volume, 0)) +
+    indexDetailStat("上漲家數", fmt(dist?.up_count, 0)) +
+    indexDetailStat("下跌家數", fmt(dist?.down_count, 0)) +
+    indexDetailStat("漲停家數", fmt(dist?.limit_up_count, 0)) +
+    indexDetailStat("跌停家數", fmt(dist?.limit_down_count, 0)) +
+    `</div>`;
+}
+
+const INDEX_DETAIL_TABS = [
+  { key: "day", label: "日K" },
+  { key: "week", label: "週K" },
+  { key: "month", label: "月K" },
+];
+
+function renderIndexDetailChart(overview, granularity) {
+  const canvas = byId("index-detail-candlestick");
+  if (!canvas) return;
+  canvas._candleView = null; // 換週期要重設可視範圍，不能沿用上一個週期的 index 範圍
+  const dailyBars = indexTrendToBars(overview.index_trend);
+  const bars = aggregateOhlcBars(dailyBars, granularity);
+  const visible = granularity === "day" ? 60 : granularity === "week" ? 52 : 24;
+  drawCandlestickChart(canvas, bars, { defaultVisible: visible });
+}
+
+function openIndexDetailDrawer() {
+  const overview = state.marketOverview;
+  if (!overview) return;
+  openDrawer("加權指數走勢細項", `
+    <div class="mode-switch" id="index-detail-tabs" role="group" aria-label="K線週期">
+      ${INDEX_DETAIL_TABS.map((t, i) => `<button class="${i === 0 ? "active" : ""}" data-index-detail-tab="${t.key}" type="button">${t.label}</button>`).join("")}
+    </div>
+    <canvas id="index-detail-candlestick" class="chart" height="280"></canvas>
+    <p class="source-note">滾輪縮放，拖曳平移。開高低收來自 TWSE 官方 MI_5MINS_HIST；週K／月K 由日線聚合（開＝區間首日開盤，收＝區間末日收盤，高／低＝區間極值）。</p>
+    ${indexDetailStatGrid(overview)}
+  `);
+  renderIndexDetailChart(overview, "day");
+  $$('#index-detail-tabs [data-index-detail-tab]').forEach((button) => button.addEventListener("click", () => {
+    $$('#index-detail-tabs [data-index-detail-tab]').forEach((item) => item.classList.toggle("active", item === button));
+    renderIndexDetailChart(overview, button.dataset.indexDetailTab);
+  }));
+}
+
 function renderStockHeader(stock, freshness = {}, valuationBenchmark = {}) {
   byId("stock-name").textContent = stock.name || stock.code;
   byId("stock-code").textContent = stock.code;
@@ -857,7 +1083,7 @@ function renderMarketFutures(rows) {
     values: contracts.map((contract) => values.get(`${contract}:${institution}`) ?? null),
     digits: 0,
     suffix: " 口",
-  })), contracts, { bars: [0, 1, 2], theme: "dark" });
+  })), contracts, { bars: [0, 1, 2] });
   tableFromRows(byId("futures-table"), rows, [
     { key: "institution", label: "身份" }, { key: "contract", label: "商品" },
     { key: "long_oi", label: "多", format: (v) => fmt(v, 0) }, { key: "short_oi", label: "空", format: (v) => fmt(v, 0) },
@@ -1335,7 +1561,7 @@ function renderMarketOverview(overview) {
   const trend = overview.index_trend || [];
   drawChart(byId("chart-market-index"), [
     { name: "加權指數", values: trend.map((row) => row.close_index), digits: 0 },
-  ], trend.map((row) => row.date), { labelCount: 8, theme: "dark" });
+  ], trend.map((row) => row.date), { labelCount: 8 });
   renderMarketIndexCards(overview);
   renderIndexOhlc(overview.index_ohlc);
   renderMarketOrderBook(overview.market_order_book);
@@ -1811,6 +2037,7 @@ byId("industry-rankings-more").addEventListener("click", openIndustryRankingsDra
 
 byId("index-contribution-more").addEventListener("click", openIndexContributionDrawer);
 byId("market-cap-share-link").addEventListener("click", openMarketCapShareDrawer);
+byId("index-detail-trigger").addEventListener("click", openIndexDetailDrawer);
 
 function renderRanking(radar = state.radar) {
   const category = `${state.rankingTopic}_${state.rankingMarket}`;
