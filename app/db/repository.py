@@ -35,6 +35,7 @@ from app.scrapers.twse_market_institutional import (
     MarketInstitutionalTrading as TwseMarketInstitutionalTrading,
 )
 from app.scrapers.twse_market_margin import MarketMarginShort as TwseMarketMarginShort
+from app.scrapers.twse_market_snapshot import MarketStockSnapshot
 from app.scrapers.twse_rankings import RankingEntry
 from app.scrapers.twse_sector_index import SectorIndex
 from app.scrapers.twse_stock_day import DailyPrice
@@ -610,6 +611,111 @@ def upsert_market_margin_short(
             source,
             fetched_at,
         ),
+    )
+    conn.commit()
+
+
+def upsert_market_stock_snapshot(
+    conn: sqlite3.Connection, rows: list[MarketStockSnapshot]
+) -> None:
+    """全市場個股每日收盤快照，目前只有上市（market 固定 'TWSE'）；
+    TPEX 版本見 upsert_tpex_market_stock_snapshot。
+    last_bid_volume/last_ask_volume（最後揭示買/賣量）只有 TWSE 來源有，
+    用來算契約背景裡「大盤尾盤委買委賣」的替代指標，見 app.calc.market_order_book。"""
+    fetched_at = datetime.now(UTC).isoformat()
+    conn.executemany(
+        """
+        INSERT INTO market_stock_snapshot_daily (
+            date, market, code, name, open, high, low, close, change_pct,
+            volume, transaction_count, turnover, pe_ratio,
+            last_bid_volume, last_ask_volume, source, fetched_at
+        )
+        VALUES (?, 'TWSE', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'twse-mi-index-all', ?)
+        ON CONFLICT(date, market, code) DO UPDATE SET
+            name = excluded.name,
+            open = excluded.open,
+            high = excluded.high,
+            low = excluded.low,
+            close = excluded.close,
+            change_pct = excluded.change_pct,
+            volume = excluded.volume,
+            transaction_count = excluded.transaction_count,
+            turnover = excluded.turnover,
+            pe_ratio = excluded.pe_ratio,
+            last_bid_volume = excluded.last_bid_volume,
+            last_ask_volume = excluded.last_ask_volume,
+            source = excluded.source,
+            fetched_at = excluded.fetched_at
+        """,
+        [
+            (
+                row.date,
+                row.code,
+                row.name,
+                row.open,
+                row.high,
+                row.low,
+                row.close,
+                row.change_pct,
+                row.volume,
+                row.transaction_count,
+                row.turnover,
+                row.pe_ratio,
+                row.last_bid_volume,
+                row.last_ask_volume,
+                fetched_at,
+            )
+            for row in rows
+        ],
+    )
+    conn.commit()
+
+
+def upsert_tpex_market_stock_snapshot(
+    conn: sqlite3.Connection, rows: list[MarketStockSnapshot]
+) -> None:
+    """全市場個股每日收盤快照，上櫃版本（market 固定 'TPEX'）；
+    跟 upsert_market_stock_snapshot（TWSE 版）平行存在，欄位語意一致。"""
+    fetched_at = datetime.now(UTC).isoformat()
+    conn.executemany(
+        """
+        INSERT INTO market_stock_snapshot_daily (
+            date, market, code, name, open, high, low, close, change_pct,
+            volume, transaction_count, turnover, pe_ratio, source, fetched_at
+        )
+        VALUES (?, 'TPEX', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'tpex-mainboard-daily-close-quotes', ?)
+        ON CONFLICT(date, market, code) DO UPDATE SET
+            name = excluded.name,
+            open = excluded.open,
+            high = excluded.high,
+            low = excluded.low,
+            close = excluded.close,
+            change_pct = excluded.change_pct,
+            volume = excluded.volume,
+            transaction_count = excluded.transaction_count,
+            turnover = excluded.turnover,
+            pe_ratio = excluded.pe_ratio,
+            source = excluded.source,
+            fetched_at = excluded.fetched_at
+        """,
+        [
+            (
+                row.date,
+                row.code,
+                row.name,
+                row.open,
+                row.high,
+                row.low,
+                row.close,
+                row.change_pct,
+                row.volume,
+                row.transaction_count,
+                row.turnover,
+                row.pe_ratio,
+                fetched_at,
+            )
+            for row in rows
+        ],
     )
     conn.commit()
 

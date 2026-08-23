@@ -41,6 +41,7 @@ from app.db.repository import (
     upsert_market_cap_weights,
     upsert_market_institutional_trading,
     upsert_market_margin_short,
+    upsert_market_stock_snapshot,
     upsert_monthly_pe,
     upsert_monthly_revenue,
     upsert_quarterly_cashflow,
@@ -51,6 +52,7 @@ from app.db.repository import (
     upsert_stock,
     upsert_stock_info,
     upsert_stock_valuation_daily,
+    upsert_tpex_market_stock_snapshot,
 )
 from app.db.stock_events import upsert_stock_events
 from app.pricing import (
@@ -89,6 +91,9 @@ from app.scrapers.tpex_market_institutional import (
 from app.scrapers.tpex_market_margin import (
     fetch_market_margin as fetch_tpex_market_margin,
 )
+from app.scrapers.tpex_market_snapshot import (
+    fetch_tpex_market_stock_snapshot,
+)
 from app.scrapers.twse_board_holdings import fetch_board_holdings
 from app.scrapers.twse_capital_reduction import fetch_capital_reductions
 from app.scrapers.twse_financials import fetch_financial_health
@@ -106,6 +111,7 @@ from app.scrapers.twse_market_institutional import (
 from app.scrapers.twse_market_margin import (
     fetch_market_margin as fetch_twse_market_margin,
 )
+from app.scrapers.twse_market_snapshot import fetch_market_stock_snapshot
 from app.scrapers.twse_material_news import (
     fetch_material_news,
 )
@@ -598,6 +604,24 @@ _MARKET_STEPS = (
         lambda conn, client: upsert_sector_indices(
             conn,
             fetch_sector_index(_latest_market_date(conn), client=client),
+        ),
+    ),
+    (
+        "全市場個股快照(上市)",
+        "market_stock_snapshot_daily",
+        "twse-mi-index-all",
+        lambda conn, client: upsert_market_stock_snapshot(
+            conn,
+            fetch_market_stock_snapshot(_latest_market_date(conn), client=client),
+        ),
+    ),
+    (
+        "全市場個股快照(上櫃)",
+        "market_stock_snapshot_daily_tpex",
+        "tpex-mainboard-daily-close-quotes",
+        lambda conn, client: upsert_tpex_market_stock_snapshot(
+            conn,
+            fetch_tpex_market_stock_snapshot(client=client),
         ),
     ),
     (

@@ -466,6 +466,30 @@ CREATE TABLE IF NOT EXISTS futures_price_daily (
     PRIMARY KEY (date, contract, session)
 );
 
+-- 全市場個股每日收盤快照（TWSE MI_INDEX type=ALLBUT0999，官方，約1377檔含股票與ETF，
+-- 不篩選）。change_pct 是本模組自算（官方原始 table 沒有這欄），見
+-- app.scrapers.twse_market_snapshot 模組說明。market 目前固定 'TWSE'；TPEX 版本另案處理。
+CREATE TABLE IF NOT EXISTS market_stock_snapshot_daily (
+    date TEXT NOT NULL,
+    market TEXT NOT NULL,          -- 'TWSE' / 'TPEX'
+    code TEXT NOT NULL,
+    name TEXT,
+    open REAL,
+    high REAL,
+    low REAL,
+    close REAL,
+    change_pct REAL,
+    volume REAL,
+    transaction_count REAL,
+    turnover REAL,
+    pe_ratio REAL,
+    last_bid_volume REAL,          -- 最後揭示買量；僅 TWSE 有，TPEX 固定 NULL
+    last_ask_volume REAL,          -- 最後揭示賣量；僅 TWSE 有，TPEX 固定 NULL
+    source TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (date, market, code)
+);
+
 -- 產業資金流向（衍生計算，依 institutional_trading_daily × stock_industry_chain 分組加總，
 -- 不是原始擷取表，沒有官方 source）。注意 net_amount 目前實際單位是「張」不是新台幣金額——
 -- institutional_trading_daily 唯一資料源（Fubon）本身就是張數，不是金額；turnover_amount
@@ -543,6 +567,8 @@ CREATE INDEX IF NOT EXISTS idx_market_institutional_trading_date
     ON market_institutional_trading_daily(date DESC, market, institution);
 CREATE INDEX IF NOT EXISTS idx_market_margin_short_date
     ON market_margin_short_daily(date DESC, market);
+CREATE INDEX IF NOT EXISTS idx_market_stock_snapshot_date
+    ON market_stock_snapshot_daily(date DESC, market, code);
 CREATE INDEX IF NOT EXISTS idx_futures_large_trader_date
     ON futures_large_trader_oi_daily(date DESC, contract, trader_group);
 CREATE INDEX IF NOT EXISTS idx_futures_price_date
