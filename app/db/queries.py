@@ -178,7 +178,7 @@ def get_sector_index_series(
 ) -> list[sqlite3.Row]:
     return conn.execute(
         """
-        SELECT date, close_index, change_pct
+        SELECT date, close_index, change_pct, open_index, high_index, low_index
         FROM sector_index_daily
         WHERE index_name = ?
         ORDER BY date ASC

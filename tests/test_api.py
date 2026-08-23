@@ -157,9 +157,10 @@ def test_market_overview_endpoint_returns_shape_without_data(client):
         "index_ohlc",
         "industry_capital_flow",
         "sync_signal",
-        "stock_candidates",
+        "stock_rankings",
         "stock_change_distribution",
         "industry_turnover_share",
+        "industry_rankings",
         "index_contribution",
         "market_order_book",
     }
@@ -173,6 +174,10 @@ def test_market_overview_endpoint_returns_shape_without_data(client):
     assert body["sync_signal"]["insufficient_data"] is True
     assert body["stock_change_distribution"] is None
     assert body["industry_turnover_share"] == []
+    assert body["industry_rankings"] == {
+        "date": None, "top_gainers": [], "top_losers": [], "top_volume": [], "top_turnover": [],
+        "all_by_gainers": [], "all_by_losers": [], "all_by_volume": [], "all_by_turnover": [],
+    }
     assert body["index_contribution"] == {
         "weight_data_date": None,
         "index_prev_close": None,
@@ -182,7 +187,11 @@ def test_market_overview_endpoint_returns_shape_without_data(client):
     assert body["market_order_book"] == {
         "date": None, "market": "TWSE", "total_bid_volume": None, "total_ask_volume": None,
     }
-    assert body["stock_candidates"] == []
+    assert body["stock_rankings"] == {
+        "date": None, "universe_date": None, "universe_size": 0,
+        "top_gainers": [], "top_losers": [], "top_volume": [],
+        "limit_up": [], "limit_down": [],
+    }
 
 
 def test_valuation_benchmark_endpoint_returns_none_fields_without_data(client):

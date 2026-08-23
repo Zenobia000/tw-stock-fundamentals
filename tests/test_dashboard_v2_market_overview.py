@@ -336,6 +336,47 @@ def test_build_market_overview_wires_new_sections(tmp_path):
     assert overview["index_ohlc"]["twse"] is None  # 沒有灌 sector_index_daily 資料
     assert overview["industry_capital_flow"][0]["industry"] == "半導體"
     assert overview["sync_signal"]["insufficient_data"] is True  # 只有單日大盤法人/融資資料
-    candidate_codes = {c["code"] for c in overview["stock_candidates"]}
-    assert "2330" in candidate_codes
+    # 沒灌 stock_universe_top100／market_stock_snapshot_daily，stock_rankings 維持空結構
+    # （這裡不重複測 app.calc.stock_rankings 的排名邏輯，見 tests/test_stock_rankings.py）。
+    assert overview["stock_rankings"]["universe_size"] == 0
+    assert overview["stock_rankings"]["top_gainers"] == []
+    conn.close()
+
+
+def test_build_market_overview_index_ohlc_includes_amplitude_and_spread(tmp_path):
+    from app.db.repository import upsert_index_ohlc
+    from app.scrapers.twse_index_ohlc import IndexOhlc
+
+    conn = get_connection(tmp_path / "test.db")
+    upsert_sector_indices(
+        conn,
+        [
+            SectorIndex(
+                date="2026-08-20", index_name="發行量加權股價指數", close_index=44933.74,
+                change_direction="+", change_points=0, change_pct=0, remark="",
+            ),
+            SectorIndex(
+                date="2026-08-21", index_name="發行量加權股價指數", close_index=45224.29,
+                change_direction="+", change_points=290.55, change_pct=0.65, remark="",
+            ),
+        ],
+    )
+    upsert_index_ohlc(
+        conn,
+        [
+            IndexOhlc(date="2026-08-20", open_index=44942.01, high_index=45160.05, low_index=44446.36, close_index=44933.74),
+            IndexOhlc(date="2026-08-21", open_index=44923.34, high_index=45254.84, low_index=44583.87, close_index=45224.29),
+        ],
+    )
+
+    overview = build_market_overview(conn)
+    twse = overview["index_ohlc"]["twse"]
+
+    assert twse["open_index"] == 44923.34
+    assert twse["high_index"] == 45254.84
+    assert twse["low_index"] == 44583.87
+    # 振幅 = (45254.84-44583.87)/44933.74*100，跟籌碼K線截圖的 1.49% 一致（四捨五入到小數點後2位）
+    assert round(twse["amplitude_pct"], 2) == 1.49
+    # 高低價差 = 45254.84-44583.87，跟籌碼K線截圖的 670.97 一致
+    assert round(twse["high_low_spread"], 2) == 670.97
     conn.close()

@@ -6,6 +6,7 @@ from dataclasses import asdict
 
 from app.calc import market_sync
 from app.calc.index_contribution import compute_index_contribution
+from app.calc.industry_rankings import compute_industry_rankings
 from app.calc.industry_turnover_share import compute_industry_turnover_share
 from app.calc.market_order_book import compute_market_order_book
 from app.calc.market_valuation import market_median, relative_premium_pct
@@ -17,8 +18,8 @@ from app.calc.sector_momentum import (
     n_day_return,
     percentile_rank,
 )
-from app.calc.stock_candidates import compute_stock_candidates
 from app.calc.stock_change_distribution import compute_stock_change_distribution
+from app.calc.stock_rankings import compute_stock_rankings
 from app.calc.valuation import quarter_over_quarter_signal
 from app.calc.workbook_model import ValuationModelOptions
 from app.db import queries
@@ -444,20 +445,31 @@ _LARGE_TRADER_GROUPS = ("十大交易人", "十大特定法人")
 
 
 def _index_close_summary(conn: sqlite3.Connection, index_name: str) -> dict | None:
-    """指數收盤摘要。開高低目前無官方資料（TWSE MI_INDEX 不提供，見
-    docs/specs/market-daily-digest-contract.md 3.2 節），固定回傳 None，
-    不得用收盤價回推假造。"""
+    """指數收盤摘要。開高低只有「發行量加權股價指數」有資料（TWSE 官方
+    `MI_5MINS_HIST`，見 app.scrapers.twse_index_ohlc）；其餘指數（例如櫃買指數）
+    官方沒有逐日開高低，維持 None，不得用收盤價回推假造。振幅／高低價差是
+    開高低本身就有時才算得出來的衍生值，同樣的規則：缺資料就是 None。"""
     rows = queries.get_sector_index_series(conn, index_name)
     if not rows:
         return None
     latest = rows[-1]
+    prev_close = rows[-2]["close_index"] if len(rows) >= 2 else None
+    high, low = latest["high_index"], latest["low_index"]
+    amplitude_pct = (
+        (high - low) / prev_close * 100
+        if high is not None and low is not None and prev_close
+        else None
+    )
+    high_low_spread = high - low if high is not None and low is not None else None
     return {
         "date": latest["date"],
         "close_index": latest["close_index"],
         "change_pct": latest["change_pct"],
-        "open_index": None,
-        "high_index": None,
-        "low_index": None,
+        "open_index": latest["open_index"],
+        "high_index": high,
+        "low_index": low,
+        "amplitude_pct": amplitude_pct,
+        "high_low_spread": high_low_spread,
     }
 
 
@@ -538,25 +550,22 @@ def build_market_overview(conn: sqlite3.Connection) -> dict:
 
     契約新增欄位（`docs/specs/market-daily-digest-contract.md` API 邊界）：
     `futures_large_trader`、`index_ohlc`、`industry_capital_flow`、
-    `sync_signal`、`stock_candidates`。缺資料一律回傳 `null`/空陣列，不省略
-    欄位、不用 0 偽裝。
+    `sync_signal`。缺資料一律回傳 `null`/空陣列，不省略欄位、不用 0 偽裝。
 
     這輪（籌碼K線大盤頁排版重做）新增的全市場快照衍生欄位：
-    `stock_change_distribution`（個股漲跌分佈）、`industry_turnover_share`
-    （類股成交金額比重）、`index_contribution`（指數貢獻排行，近似值）、
-    `market_order_book`（尾盤最後揭示委買委賣，僅 TWSE，不是即時委託簿）。
-    這些都依賴 `market_stock_snapshot_daily`，該表沒資料時前三者回傳
+    `stock_change_distribution`（個股漲跌分佈，含漲跌停個股清單）、
+    `industry_turnover_share`（類股成交金額比重）、`industry_rankings`
+    （產業漲幅/跌幅/成交量/成交金額排行）、`index_contribution`（指數貢獻
+    排行，近似值，含前 20 名供「更多」抽屜用）、`market_order_book`（尾盤
+    最後揭示委買委賣，僅 TWSE，不是即時委託簿）、`stock_rankings`（台灣
+    前100大成分股當日強勢/弱勢/成交量/漲停/跌停五個排行，取代舊版
+    `stock_candidates`——見 `app.calc.stock_rankings` docstring）。這些都
+    依賴 `market_stock_snapshot_daily`，該表沒資料時對應欄位回傳
     `null`/空陣列，`index_contribution` 本身已對缺資料情況做防禦（見
     `app.calc.index_contribution` docstring）。
     """
     radar = build_market_radar(conn)
     sync_signal = build_market_sync_signal(conn)
-    candidates_date = queries.get_latest_industry_capital_flow_date(conn)
-    candidates = (
-        compute_stock_candidates(conn, candidates_date, sync_signal["signal"])
-        if candidates_date is not None
-        else []
-    )
     snapshot_date = queries.get_latest_market_stock_snapshot_date(conn)
     return {
         "index_trend": _dicts(
@@ -579,7 +588,13 @@ def build_market_overview(conn: sqlite3.Connection) -> dict:
         },
         "industry_capital_flow": _dicts(queries.get_industry_capital_flow_latest(conn)),
         "sync_signal": sync_signal,
-        "stock_candidates": candidates,
+        "stock_rankings": (
+            compute_stock_rankings(conn, snapshot_date)
+            if snapshot_date is not None
+            else {"date": None, "universe_date": None, "universe_size": 0,
+                  "top_gainers": [], "top_losers": [], "top_volume": [],
+                  "limit_up": [], "limit_down": []}
+        ),
         "stock_change_distribution": (
             compute_stock_change_distribution(conn, snapshot_date)
             if snapshot_date is not None
@@ -590,7 +605,13 @@ def build_market_overview(conn: sqlite3.Connection) -> dict:
             if snapshot_date is not None
             else []
         ),
-        "index_contribution": compute_index_contribution(conn),
+        "industry_rankings": (
+            compute_industry_rankings(conn, snapshot_date)
+            if snapshot_date is not None
+            else {"date": None, "top_gainers": [], "top_losers": [], "top_volume": [], "top_turnover": [],
+                  "all_by_gainers": [], "all_by_losers": [], "all_by_volume": [], "all_by_turnover": []}
+        ),
+        "index_contribution": compute_index_contribution(conn, top_n=20),
         "market_order_book": (
             compute_market_order_book(conn, snapshot_date)
             if snapshot_date is not None
