@@ -300,6 +300,13 @@ body.health-open > #empty-state { display: none !important; }
 .index-comparison-legend button i { width: 13px; height: 3px; background: var(--legend-color); }
 .index-comparison-legend button.hidden-series { color: var(--muted); opacity: .5; text-decoration: line-through; }
 
+.index-detail-grid { display: flex; flex-direction: column; gap: 22px; }
+.index-detail-row h4 { margin: 0 0 8px; font-size: 13px; color: var(--ink); }
+.index-detail-row-charts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.index-detail-cell { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.index-detail-cell-label { color: var(--muted); font-size: 10px; }
+@media (max-width: 900px) { .index-detail-row-charts { grid-template-columns: 1fr; } }
+
 .valuation-chain { display: flex; align-items: stretch; gap: 5px; overflow-x: auto; padding-bottom: 4px; }
 .chain-node { flex: 1 0 118px; padding: 12px; border: 1px solid var(--line); background: var(--paper-soft); }
 .chain-node span, .chain-node small { display: block; color: var(--muted); font-size: 9px; }

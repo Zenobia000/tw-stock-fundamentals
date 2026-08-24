@@ -823,7 +823,11 @@ function drawMultiLineChart(canvas, series, labels, opts = {}) {
   const showEveryLabel = labels.length <= (compact ? 8 : 12);
   const targetLabelCount = opts.labelCount || 8;
   const rotatedLabels = showEveryLabel ? labels.length > 8 : labels.length > targetLabelCount;
-  const padding = { left: compact ? 50 : 62, right: 14, top: 14, bottom: rotatedLabels ? 48 : 29 };
+  const hasPriceAnchor = opts.suffix === "%" && isValue(opts.percentAnchorBase);
+  const padding = {
+    left: hasPriceAnchor ? (compact ? 76 : 94) : (compact ? 50 : 62),
+    right: 14, top: 14, bottom: rotatedLabels ? 48 : 29,
+  };
   const axisFontSize = compact ? 9 : 11;
   const axisFont = `600 ${axisFontSize}px ui-monospace, monospace`;
   const plotW = width - padding.left - padding.right;
@@ -835,7 +839,13 @@ function drawMultiLineChart(canvas, series, labels, opts = {}) {
     ctx.beginPath(); ctx.moveTo(padding.left, y); ctx.lineTo(width - padding.right, y); ctx.stroke();
     const realValue = fromDomainSpace(domain.max - ((domain.max - domain.min) * i) / 3);
     ctx.fillStyle = palette.axisText; ctx.font = axisFont; ctx.textAlign = "right";
-    const label = opts.suffix === "%" ? `${nf(1).format(realValue)}%` : axisValue(realValue);
+    // 百分比模式的 Y 軸只顯示相對強弱，看不到絕對價位；使用者要求同時看到
+    // 「換算回參考指數的價位」，用第一條數列（加權指數）的基準價回推，
+    // 換算出的是「加權指數在這個百分比水位會是多少點」，不代表櫃買指數／
+    // 台指期貨當天真的站上同一個絕對價位（三者基準價不同）。
+    const label = hasPriceAnchor
+      ? `${axisValue(opts.percentAnchorBase * (1 + realValue / 100))} (${realValue >= 0 ? "+" : ""}${nf(1).format(realValue)}%)`
+      : opts.suffix === "%" ? `${nf(1).format(realValue)}%` : axisValue(realValue);
     ctx.fillText(label, padding.left - 6, y + 3);
   }
 
@@ -915,6 +925,69 @@ function renderIndexComparisonMatrix(aligned) {
   table.innerHTML = `${thead}<tbody>${rows}</tbody>`;
 }
 
+// 日／週／月同時排開顯示，不用分頁切換（使用者明確要求：三指數也不要用點卡片
+// 切換的方式一次看一個，直接排開）。跟 openIndexDetailDrawer() 等既有的
+// 「點卡片開抽屜、抽屜內用 K線週期 tab 切換」流程並存，不刪舊功能，這裡是
+// 在「指數對照」頁新增一個不用點擊就能同時看到全部的版本。
+const INDEX_DETAIL_GRANULARITIES = [
+  { key: "day", label: "日K", visible: 60 },
+  { key: "week", label: "週K", visible: 52 },
+  { key: "month", label: "月K", visible: 24 },
+];
+
+function aggregateCloseSeries(rows, granularity) {
+  if (granularity === "day") return rows;
+  const keyOf = granularity === "week" ? (r) => isoWeekKey(r.date) : (r) => r.date.slice(0, 7);
+  const order = [];
+  const buckets = new Map();
+  for (const row of rows) {
+    const key = keyOf(row);
+    if (!buckets.has(key)) { buckets.set(key, []); order.push(key); }
+    buckets.get(key).push(row);
+  }
+  return order.map((key) => {
+    const group = buckets.get(key);
+    return { date: key, close: group[group.length - 1].close };
+  });
+}
+
+function renderIndexComparisonDetailGrid(overview) {
+  const grid = byId("index-comparison-detail-grid");
+  if (!grid) return;
+  const rows = [
+    { key: "twse", name: "加權指數", kind: "candlestick", bars: indexTrendToBars(overview.index_trend) },
+    { key: "otc", name: "櫃買指數", kind: "line", rows: chronological(overview.index_ohlc?.otc_trend || [], "date").map((r) => ({ date: r.date, close: r.close_index })) },
+    { key: "futures", name: "台指期貨(日盤)", kind: "candlestick", bars: futuresSeriesToBars(overview.index_ohlc?.futures_series) },
+  ];
+  grid.innerHTML = rows.map((row) => `
+    <div class="index-detail-row">
+      <h4>${escapeHtml(row.name)}</h4>
+      <div class="index-detail-row-charts">
+        ${INDEX_DETAIL_GRANULARITIES.map((g) => `
+          <div class="index-detail-cell">
+            <span class="index-detail-cell-label">${g.label}</span>
+            <canvas id="index-comparison-detail-${row.key}-${g.key}" height="180"></canvas>
+          </div>
+        `).join("")}
+      </div>
+    </div>
+  `).join("") + `<p class="source-note">${escapeHtml("櫃買指數目前只有官方收盤指數，沒有逐日開高低來源，暫時只能畫收盤趨勢線，不是K線圖。")}</p>`;
+
+  rows.forEach((row) => {
+    INDEX_DETAIL_GRANULARITIES.forEach((g) => {
+      const canvas = byId(`index-comparison-detail-${row.key}-${g.key}`);
+      if (!canvas) return;
+      if (row.kind === "candlestick") {
+        canvas._candleView = null;
+        drawCandlestickChart(canvas, aggregateOhlcBars(row.bars, g.key), { defaultVisible: g.visible });
+      } else {
+        const points = aggregateCloseSeries(row.rows, g.key);
+        drawChart(canvas, [{ name: "收盤", values: points.map((p) => p.close), digits: 2 }], points.map((p) => p.date), { labelCount: 6 });
+      }
+    });
+  });
+}
+
 function renderIndexComparison(overview) {
   if (!overview) return;
   const aligned = alignedIndexSeries(overview);
@@ -928,12 +1001,14 @@ function renderIndexComparison(overview) {
   const labels = [...dateSet].sort();
 
   const scale = state.indexComparisonScale;
+  const bases = [];
   const series = INDEX_COMPARISON_SERIES.map(({ key, name }, index) => {
     const byDate = new Map(filtered[key].map((r) => [r.date, r.close]));
     let values = labels.map((date) => (byDate.has(date) && isValue(byDate.get(date)) ? Number(byDate.get(date)) : null));
     if (scale === "percent") {
       const baseIndex = values.findIndex(isValue);
       const base = baseIndex >= 0 ? values[baseIndex] : null;
+      bases[index] = base;
       values = values.map((v) => (isValue(v) && isValue(base) ? ((v / base) - 1) * 100 : null));
     }
     return {
@@ -948,10 +1023,12 @@ function renderIndexComparison(overview) {
     hidden: state.indexComparisonHidden,
     suffix: scale === "percent" ? "%" : "",
     emphasizeZero: scale === "percent",
+    percentAnchorBase: bases[0],
     labelCount: 8,
   });
   renderIndexComparisonLegend(series);
   renderIndexComparisonMatrix(aligned);
+  renderIndexComparisonDetailGrid(overview);
 
   const scaleLabel = scale === "percent" ? "百分比（相對強弱）" : scale === "log" ? "Log" : "一般";
   byId("index-comparison-meta").textContent = `資料至 ${labels[labels.length - 1] || "待補"}｜Y軸：${scaleLabel}`;

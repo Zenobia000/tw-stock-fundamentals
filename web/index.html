@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="個人台股研究平台，整合估值、營運基本面、財務品質、翁氏九宮格與籌碼市場。" />
   <title>台股基本面研究工作台</title>
-  <link rel="stylesheet" href="/static/style.css?v=20260824-6" />
+  <link rel="stylesheet" href="/static/style.css?v=20260824-7" />
 </head>
 <body>
   <header class="topbar">
@@ -478,7 +478,7 @@
       </div>
       <canvas id="chart-index-comparison" height="360"></canvas>
       <div id="index-comparison-legend" class="index-comparison-legend"></div>
-      <p class="source-note">百分比模式：每條線各自以「可視範圍內第一個有資料的交易日」收盤價為基準（=0%），不代表三者當天絕對點位相同。點圖例可單獨隱藏/顯示某條線。</p>
+      <p class="source-note">百分比模式：每條線各自以「可視範圍內第一個有資料的交易日」收盤價為基準（=0%），不代表三者當天絕對點位相同；Y軸括號內價位是換算回「加權指數」的參考點位，櫃買指數／台指期貨不會真的站上同一個絕對價位。點圖例可單獨隱藏/顯示某條線。</p>
     </article>
 
     <article class="card wide-card" id="index-comparison-matrix-card">
@@ -487,6 +487,14 @@
         <span class="source-note">依交易日數計算（1週≈5個交易日、1月≈20個、3月≈60個），跟板塊動能的 R 值同一套慣例</span>
       </div>
       <div class="table-scroll"><table id="index-comparison-matrix" class="data-table"><tbody></tbody></table></div>
+    </article>
+
+    <article class="card wide-card" id="index-comparison-detail-card">
+      <div class="card-head">
+        <h3>各指數走勢細項</h3>
+        <span class="source-note">日／週／月同時排開顯示，不用切換分頁；週K／月K 由日線聚合</span>
+      </div>
+      <div class="index-detail-grid" id="index-comparison-detail-grid"></div>
     </article>
     </div><!-- /.mkt-dark -->
   </section>
@@ -504,6 +512,6 @@
 
   <div id="loading" class="loading hidden"><span></span><p>正在組裝研究資料…</p></div>
   <div id="error-banner" class="error-banner hidden"></div>
-  <script src="/static/app.js?v=20260824-6"></script>
+  <script src="/static/app.js?v=20260824-7"></script>
 </body>
 </html>
