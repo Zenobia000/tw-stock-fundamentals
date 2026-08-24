@@ -32,6 +32,8 @@
 | 股息&現金流 | 除權息歷史、現金流量表 | histock 除權息；MoneyLink 當期現金流、FinMind 歷史回補、histock 簡表 fallback | 當期正式來源優先／歷史補充 |
 | 籌碼（個股層級） | 法人買賣超、大戶比、融資券、分點 | histock、Fubon | 入口/券商 |
 | 期貨籌碼（大盤層級） | 三大法人期貨未平倉 | `taifex.com.tw`（官方） | 官方，優先 |
+| 台指期貨每日OHLC（大盤層級） | 日盤／夜盤開高低收、結算價，供指數走勢細項與「指數對照」疊圖用 | TAIFEX `futDataDown`（官方，`taifex-futures-price`） | 官方，優先 |
+| 加權指數每日OHLC（大盤層級） | 加權指數開高低收，供K線細項與「指數對照」疊圖用 | TWSE `MI_5MINS_HIST`（官方，`twse-mi-5mins-hist`）；只涵蓋發行量加權股價指數，櫃買指數暫無官方開高低來源，維持收盤線 | 官方，優先 |
 | 期貨大戶集中度（大盤層級，規劃中） | 十大交易人／十大特定人淨未平倉，用於三層同步判讀的大戶集中度驗證 | TAIFEX 大額交易人未沖銷部位結構表（官方；實際欄位待 WebFetch／瀏覽器核對，不得依契約描述臆測寫 parser） | 官方，優先；見 `docs/specs/market-daily-digest-contract.md` |
 | 產業資金流向／依金額（規劃中） | 依三大法人買賣超金額彙總的產業資金流向，跟板塊動能的報酬排名口徑不同、互補 | 由既有 `institutional_trading_daily` 依 `stock_industry_chain` 彙總，非新爬蟲來源，屬衍生計算 | 見 `docs/specs/market-daily-digest-contract.md` |
 | 三大法人買賣超（大盤層級） | 上市／上櫃全市場三大法人買賣金額合計 | TWSE `rwd/zh/fund/BFI82U`；TPEX 開放 API `tpex_3insti_summary`（皆官方） | 官方，優先 |
@@ -69,7 +71,8 @@
 - `market_margin_short_daily(date, market, margin_buy, margin_sell, margin_redemption, margin_balance, short_buy, short_sell, short_redemption, short_balance, source, fetched_at)` — 大盤層級融資融券增減（單位：張，跟個股層級 `margin_short_daily` 一致，方便相對強弱比較）
 - `rankings_daily(date, category, rank, code, name, value, source, fetched_at)`
 - `market_cap_daily(date, code, rank, name, market_cap, pct_of_market, fetched_at)` — TAIFEX 官方月市值權重
-- `sector_index_daily(date, index_name, close_index, change_direction, change_points, change_pct, remark, source, fetched_at)` — 板塊動能排名用，見 `docs/specs/sector-momentum-formula-contract.md`
+- `sector_index_daily(date, index_name, close_index, change_direction, change_points, change_pct, remark, open_index, high_index, low_index, source, fetched_at)` — 板塊動能排名用，見 `docs/specs/sector-momentum-formula-contract.md`；`open_index`/`high_index`/`low_index` 目前只有 `發行量加權股價指數`（來源 `twse-mi-5mins-hist`）會填值，其他 index_name（含櫃買指數）維持 `NULL`，不得用收盤價回推假造
+- `futures_price_daily(date, contract, session, open, high, low, close, settlement_price, change_pct, source, fetched_at)` — 台指期貨日盤／夜盤 OHLC（來源 TAIFEX 官方期貨每日交易行情），`futures_oi_daily` 只有未平倉口數，價格另外落在這張表
 - `stock_industry_chain(stock_id, industry, sub_industry, tagged_at, fetched_at)` — 股票↔細產業標籤，慢變動維度表非時序
 - `stock_universe_top100(as_of_date, rank, stock_id, stock_name, market_value, source, fetched_at)` — 台灣前100大股票池；canonical 來源為 TAIFEX 月市值權重
 - `capital_reductions(name PK, code, stop_date, resume_date, exchange_ratio, adjust_factor, reason, source, fetched_at)`
@@ -99,7 +102,8 @@
 - 資料日期分頻率揭露：每日行情、月營收、季財報各自顯示資料截止日，不以單一擷取時間混稱為資料日期。
 - 伺服器運行期間於台北時間週一至週五 18:30 背景刷新已追蹤股票與市場排行；使用者也可由頁首手動更新。兩者都必須保留舊資料直到新資料成功寫入。
 - 市場排行是股池發現工具，資訊架構採「排行主題 → 上市／上櫃 → 個股明細」三層。成交值、券資比與週轉率是不同指標，不得互相冒充；資料源未接妥時顯示缺口。
-- 大盤層級籌碼（指數走勢、三大法人買賣超、融資融券增減、期貨未平倉、市值占大盤比重、產業資金流向）是獨立頂層 view（`/api/market/overview`），不需先搜尋股票代碼即可見，跟個股 workspace 平行；個股頁「籌碼與市場」分頁只放個股層級籌碼，並附一張精簡的大盤快照卡（同一份資料）供相對強弱比較，不重複整份大盤報表。
+- 大盤層級籌碼（指數走勢、三大法人買賣超、融資融券增減、期貨未平倉、熱門排行、產業排行、個股漲跌分佈含月新高/新低、市值占大盤比重）是獨立頂層 view（`/api/market/overview`），不需先搜尋股票代碼即可見，跟個股 workspace 平行；個股頁「籌碼與市場」分頁只放個股層級籌碼，並附一張精簡的大盤快照卡（同一份資料）供相對強弱比較，不重複整份大盤報表。
+- 「指數對照」是另一個獨立頂層 view（跟大盤總覽平行、共用同一份 `/api/market/overview` 資料，不另開端點），把加權指數／櫃買指數／台指期貨（日盤）疊圖比較相對強弱，因三者絕對量級差異極大（約4萬點 vs 約400點），核心是百分比模式（各自以可視範圍內第一個有資料的交易日收盤價為基準）；另提供一般／log 兩種原始值軸與報酬率矩陣表。用獨立頁面而非抽屜呈現（使用者要求要有更大畫面塞疊圖＋矩陣表）。
 
 ## 風險邊界
 

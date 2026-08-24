@@ -12,7 +12,9 @@
 | 大盤層級三大法人買賣超、融資融券（已有） | 分鐘級事件時間軸標註 |
 | 期貨三大法人未平倉（已有）＋大戶集中度（新增） | 大盤即時委買委賣 |
 | 依買賣超金額計算的產業資金流向（新增） | 盤中焦點快訊／即時新聞 |
-| 三層同步判讀訊號 ＋ 選股候選清單（新增，本契約核心） | — |
+| 三層同步判讀訊號（新增，本契約核心） | — |
+
+**2026-08-24 更新**：4.5 節「選股候選清單」（`overview.stock_candidates`）已停用並被 IA 改版取代，見下方「選股候選清單的後續」。
 
 ## 現況盤點（不重造已有的輪子）
 
@@ -127,15 +129,26 @@ CREATE TABLE IF NOT EXISTS industry_capital_flow_daily (
 3. 若當日 `sync_signal = RED`，當天不產生新增候選（避免在法人-散戶對做警訊當下選股），沿用既有候選但標示「今日暫停新增」。
 4. 輸出欄位：股票代碼、名稱、所屬產業、連續買超天數、產業資金流向排名、當日 `sync_signal`。**不含目標價或買賣建議**——維持本專案一貫「只做可追溯資料呈現，不做投資建議」的定位。
 
+### 選股候選清單的後續（2026-08-24）
+
+上面 4.5 節描述的「依產業資金流向＋連續買超天數＋`sync_signal` 閘門」候選清單，已被 IA 改版（使用者要求把 Dashboard 重要資訊往上擺、次要資訊收進第二層）取代，不再接進 `/api/market/overview`：
+
+- 模組 `app/calc/stock_candidates.py` 與 `tests/test_stock_candidates.py` 保留檔案作歷史對照，不刪除，但呼叫端已移除。
+- 取代它的是 `app/calc/stock_rankings.py`（`overview.stock_rankings`）：台灣前100大成分股當日強勢股／弱勢股／成交量／漲停／跌停五個排行維度，**不含**連續買超天數、產業資金流向排名或 `sync_signal` 閘門這些條件——是單純的當日排行榜，不是「候選」語意。
+- 同一輪改版新增 `app/calc/industry_rankings.py`（`overview.industry_rankings`）：依 `stock_industry_chain` 分組的產業漲幅／跌幅／成交量／成交金額排行（成交金額加權平均近似值，非官方板塊指數），含 `members_by_industry` 供點擊產業看成分股。
+- 若之後要重新做「候選清單」語意的功能，應該重新評估要不要接回 4.5 節這套公式，或設計新公式；不要假設 `stock_candidates.py` 還能直接接回去用（`market_stock_snapshot_daily`／`stock_universe_top100` 等周邊資料表在這之後也持續在變動）。
+
 ## API 邊界（擴充既有 `/api/market/overview`）
 
 沿用現有「單一入口」慣例（板塊動能、細產業動能都已整併進 `build_market_overview()`），新增欄位而非另開分散端點：
 
 - `overview.futures_large_trader`：十大交易人／十大特定人淨未平倉
-- `overview.index_ohlc`：加權指數／櫃買指數／台指期貨（日盤＋夜盤）當日 OHLC
-- `overview.industry_capital_flow`：產業資金流向排行（treemap 用）
+- `overview.index_ohlc`：`twse`/`otc` 當日收盤摘要（含 `open_index`/`high_index`/`low_index`/`amplitude_pct`/`high_low_spread`，櫃買指數暫無官方開高低故為 `null`）、`futures` 最新一筆日盤+夜盤、`futures_series`（台指期貨日盤歷史 OHLC 序列）、`otc_trend`（櫃買指數收盤歷史序列）——後兩者是給 K 線細項與「指數對照」疊圖頁用的完整序列，不只是最新一筆
+- `overview.industry_capital_flow`：產業資金流向排行（treemap 用），已與 `industry_rankings` 的 `members_by_industry` 合併呈現
 - `overview.sync_signal`：4.4 節燈號與明細
-- `overview.stock_candidates`：4.5 節候選清單
+- `overview.stock_rankings`：見上方「選股候選清單的後續」，取代 `overview.stock_candidates`
+- `overview.industry_rankings`：見上方「選股候選清單的後續」
+- `overview.stock_change_distribution`：個股漲跌分佈，含 `monthly_high_count`/`monthly_low_count`（歷史交易日不足 20 天時為 `null`，不是 0）與對應成分股清單
 
 `GET /api/market/overview` 維持現有回傳結構向後相容，新欄位缺資料時回傳 `null` 或空陣列，不得省略欄位或用 `0` 偽裝。
 
@@ -144,7 +157,7 @@ CREATE TABLE IF NOT EXISTS industry_capital_flow_daily (
 1. `futures_large_trader_oi_daily` 與 `futures_price_daily` 的 scraper 對真實 TAIFEX 來源跑過一次，欄位型別正確（非全 NULL），且已用 WebFetch／瀏覽器核對過實際 HTML 結構（不得依本文件臆測欄位直接寫 parser）。
 2. `industry_capital_flow_daily` 的固定基準案例（挑一個已知交易日與產業）與手算金額一致，golden-value pytest 通過。
 3. `sync_signal` 四種狀態（`SYNCED`／`DIVERGED`／對做警訊／築底訊號）各自至少一組固定基準案例覆蓋，含「大戶資料缺失時 `large_trader_agree` 回傳 `null`」的邊界情況。
-4. `stock_candidates` 在 `sync_signal=RED` 當日不新增候選的規則有測試覆蓋。
+4. ~~`stock_candidates` 在 `sync_signal=RED` 當日不新增候選的規則有測試覆蓋。~~ 該功能已停用（見上方「選股候選清單的後續」），規則仍由 `tests/test_stock_candidates.py` 覆蓋已停用模組本身，但不再是 `/api/market/overview` 的驗收項目。
 5. `GET /api/market/overview` 新增欄位後，既有測試（`tests/test_dashboard_v2_market_overview.py`）維持綠燈，不破壞既有回傳結構。
 6. 前端新增產業資金流向 treemap 元件，面積綁定 `turnover_amount`、顏色綁定 `net_amount` 正規化值，不綁定單純漲跌幅（呼應設計理念 artifact 第 4 節原則）。
 7. 所有新欄位在畫面上標示資料來源與 `fetched_at`／`data_as_of`，不得讓使用者誤以為是即時資料。
